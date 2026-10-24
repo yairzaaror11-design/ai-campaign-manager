@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: campaign-bachat
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: off
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: READ_ONLY
+        value: "true"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_ADS_ACCESS_TOKEN
+        sync: false
+      - key: AUTHORIZED_PHONE_NUMBERS
+        sync: false
