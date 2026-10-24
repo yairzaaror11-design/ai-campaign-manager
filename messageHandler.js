@@ -9,6 +9,7 @@ const {
 } = require('./approvalEngine');
 const { executeApprovedAction } = require('./actionExecutor');
 const { receiveWhatsAppMedia } = require('./mediaHandler');
+const { transcribeVoiceMessage } = require('./voiceHandler');
 const { logger } = require('./logger');
 
 const sessions = new Map();
@@ -73,6 +74,44 @@ async function handleMedia(from, message) {
   }
 }
 
+
+async function processNaturalLanguage(from, text, prefix = '') {
+  const history = getHistory(from);
+  const result = await processWithGemini(text, history);
+  let reply = prefix ? `${prefix}\n\n${result.text}` : result.text;
+
+  for (const plan of result.actionPlans || []) {
+    if (plan.missing?.length) continue;
+    const approval = createApproval(from, plan);
+    reply += `\n\n${formatActionPlan(plan)}${approvalInstruction(approval)}`;
+  }
+
+  history.push(
+    { role: 'user', content: text },
+    { role: 'assistant', content: reply }
+  );
+
+  if (history.length > 24) sessions.set(from, history.slice(-24));
+  await safeSend(from, reply);
+}
+
+async function handleVoice(from, message) {
+  try {
+    const transcript = await transcribeVoiceMessage(message);
+    await processNaturalLanguage(
+      from,
+      transcript,
+      `שמעתי: "${transcript}"`
+    );
+  } catch (error) {
+    logger.error('Voice handling failed', { error: error.message });
+    await safeSend(
+      from,
+      'לא הצלחתי לתמלל את ההודעה הקולית. נסה לשלוח אותה שוב.'
+    );
+  }
+}
+
 async function handleIncomingMessage(message, contact) {
   const from = String(message.from || '');
 
@@ -87,10 +126,15 @@ async function handleIncomingMessage(message, contact) {
     return;
   }
 
+  if (message.type === 'audio') {
+    await handleVoice(from, message);
+    return;
+  }
+
   if (message.type !== 'text') {
     await safeSend(
       from,
-      'כרגע אני תומך בטקסט, תמונות וסרטונים. הודעות קוליות יתווספו בשלב הבא.'
+      'כרגע אני תומך בטקסט, תמונות, סרטונים והודעות קוליות.'
     );
     return;
   }
@@ -101,7 +145,7 @@ async function handleIncomingMessage(message, contact) {
   if (text === '/start') {
     await safeSend(
       from,
-      'היי, אני קמפיין בצ׳ט. אני תומך בטקסט, תמונות וסרטונים. מנוע Meta ומנוע האישורים מותקנים, אבל פעולות שינוי עדיין נעולות ב-READ_ONLY.'
+      'היי, אני קמפיין בצ׳ט. אני תומך בטקסט, תמונות, סרטונים והודעות קוליות. מנוע Meta ומנוע האישורים מותקנים, אבל פעולות שינוי עדיין נעולות ב-READ_ONLY.'
     );
     return;
   }
@@ -120,23 +164,7 @@ async function handleIncomingMessage(message, contact) {
   }
 
   try {
-    const history = getHistory(from);
-    const result = await processWithGemini(text, history);
-    let reply = result.text;
-
-    for (const plan of result.actionPlans || []) {
-      if (plan.missing?.length) continue;
-      const approval = createApproval(from, plan);
-      reply += `\n\n${formatActionPlan(plan)}${approvalInstruction(approval)}`;
-    }
-
-    history.push(
-      { role: 'user', content: text },
-      { role: 'assistant', content: reply }
-    );
-
-    if (history.length > 24) sessions.set(from, history.slice(-24));
-    await safeSend(from, reply);
+    await processNaturalLanguage(from, text);
   } catch (error) {
     logger.error('Message handling failed', { error: error.message });
     await safeSend(from, 'הייתה תקלה בעיבוד הבקשה. נסה שוב בעוד רגע.');

@@ -19,6 +19,8 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.8-flash
+      - key: GEMINI_TRANSCRIBE_MODEL
+        value: gemini-3.5-transcribe
       - key: META_GRAPH_VERSION
         value: v26.0
       - key: WHATSAPP_ACCESS_TOKEN

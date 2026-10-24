@@ -3,8 +3,8 @@ const router = require('express').Router();
 router.get('/', (req, res) =>
   res.json({
     status: 'healthy',
-    version: '1.6.0',
-    stage: 4,
+    version: '1.7.0',
+    stage: 5,
     timestamp: new Date().toISOString(),
     ai: 'gemini',
     model: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
@@ -13,6 +13,7 @@ router.get('/', (req, res) =>
     metaWriteEngine: true,
     postWriteVerification: true,
     mediaHandler: true,
+    voiceHandler: true,
     configured: {
       whatsapp: !!(
         process.env.WHATSAPP_ACCESS_TOKEN &&

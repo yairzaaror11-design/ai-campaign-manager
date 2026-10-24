@@ -29,14 +29,15 @@ app.use('/health', health);
 app.get('/', (req, res) =>
   res.json({
     name: 'Campaign Bachat',
-    version: '1.6.0',
-    stage: 4,
+    version: '1.7.0',
+    stage: 5,
     status: 'running',
     ai: 'gemini',
     approvalEngine: true,
     metaWriteEngine: true,
     postWriteVerification: true,
     mediaHandler: true,
+    voiceHandler: true,
     readOnly: process.env.READ_ONLY !== 'false'
   })
 );
@@ -46,8 +47,8 @@ app.use(errorHandler);
 app.listen(PORT, '0.0.0.0', () =>
   logger.info('Campaign Bachat started', {
     port: PORT,
-    version: '1.6.0',
-    stage: 4,
+    version: '1.7.0',
+    stage: 5,
     readOnly: process.env.READ_ONLY !== 'false'
   })
 );
