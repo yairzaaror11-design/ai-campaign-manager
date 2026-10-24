@@ -3,26 +3,24 @@ const axios = require('axios');
 const base = () =>
   `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || 'v26.0'}`;
 
-async function get(path, params = {}) {
+function token() {
   if (!process.env.META_ADS_ACCESS_TOKEN) {
     throw Error('META_ADS_ACCESS_TOKEN is not configured');
   }
+  return process.env.META_ADS_ACCESS_TOKEN;
+}
 
+async function get(path, params = {}) {
   return (
     await axios.get(base() + path, {
-      params: {
-        ...params,
-        access_token: process.env.META_ADS_ACCESS_TOKEN
-      },
+      params: { ...params, access_token: token() },
       timeout: 15000
     })
   ).data;
 }
 
 function validateAccountId(id) {
-  if (!/^act_\d+$/.test(String(id))) {
-    throw Error('Invalid ad account ID');
-  }
+  if (!/^act_\d+$/.test(String(id))) throw Error('Invalid ad account ID');
 }
 
 async function getAdAccounts() {
@@ -34,7 +32,6 @@ async function getAdAccounts() {
 
 async function getCampaigns(id) {
   validateAccountId(id);
-
   return get(`/${id}/campaigns`, {
     fields:
       'id,name,status,effective_status,objective,daily_budget,lifetime_budget,created_time,updated_time',
@@ -42,19 +39,20 @@ async function getCampaigns(id) {
   });
 }
 
+async function getCampaign(campaignId) {
+  if (!/^\d+$/.test(String(campaignId))) throw Error('Invalid campaign ID');
+  return get(`/${campaignId}`, {
+    fields:
+      'id,name,status,effective_status,objective,daily_budget,lifetime_budget,created_time,updated_time'
+  });
+}
+
 async function getCampaignPerformance(id, date = 'last_7d') {
   validateAccountId(id);
-
   const allowed = new Set([
-    'today',
-    'yesterday',
-    'last_7d',
-    'last_14d',
-    'last_30d',
-    'this_month',
-    'last_month'
+    'today', 'yesterday', 'last_7d', 'last_14d',
+    'last_30d', 'this_month', 'last_month'
   ]);
-
   if (!allowed.has(date)) date = 'last_7d';
 
   return get(`/${id}/insights`, {
@@ -67,20 +65,11 @@ async function getCampaignPerformance(id, date = 'last_7d') {
 }
 
 async function getCampaignInsights(campaignId, date = 'last_7d') {
-  if (!/^\d+$/.test(String(campaignId))) {
-    throw Error('Invalid campaign ID');
-  }
-
+  if (!/^\d+$/.test(String(campaignId))) throw Error('Invalid campaign ID');
   const allowed = new Set([
-    'today',
-    'yesterday',
-    'last_7d',
-    'last_14d',
-    'last_30d',
-    'this_month',
-    'last_month'
+    'today', 'yesterday', 'last_7d', 'last_14d',
+    'last_30d', 'this_month', 'last_month'
   ]);
-
   if (!allowed.has(date)) date = 'last_7d';
 
   return get(`/${campaignId}/insights`, {
@@ -93,6 +82,7 @@ async function getCampaignInsights(campaignId, date = 'last_7d') {
 module.exports = {
   getAdAccounts,
   getCampaigns,
+  getCampaign,
   getCampaignPerformance,
   getCampaignInsights
 };

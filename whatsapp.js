@@ -16,10 +16,7 @@ async function sendWhatsAppMessage(to, text) {
       recipient_type: 'individual',
       to,
       type: 'text',
-      text: {
-        body: String(text || '').slice(0, 4000),
-        preview_url: false
-      }
+      text: { body: String(text || '').slice(0, 4000), preview_url: false }
     },
     {
       headers: {

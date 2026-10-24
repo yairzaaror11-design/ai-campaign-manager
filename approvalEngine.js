@@ -15,14 +15,10 @@ function ttlMs() {
 function createApproval(phone, actionPlan) {
   const normalizedPhone = normalizePhone(phone);
 
-  if (!normalizedPhone) {
-    throw Error('Invalid phone for approval');
-  }
-
+  if (!normalizedPhone) throw Error('Invalid phone for approval');
   if (!actionPlan?.id || !actionPlan?.requiresApproval) {
     throw Error('Action does not require approval');
   }
-
   if (Array.isArray(actionPlan.missing) && actionPlan.missing.length) {
     throw Error('Action is missing required information');
   }
@@ -53,17 +49,11 @@ function createApproval(phone, actionPlan) {
   return approval;
 }
 
-function getApproval(phone, code) {
-  return approvals.get(`${normalizePhone(phone)}:${String(code || '').trim()}`);
-}
-
 function consumeApproval(phone, code) {
-  const approval = getApproval(phone, code);
+  const key = `${normalizePhone(phone)}:${String(code || '').trim()}`;
+  const approval = approvals.get(key);
 
-  if (!approval) {
-    return { ok: false, reason: 'NOT_FOUND' };
-  }
-
+  if (!approval) return { ok: false, reason: 'NOT_FOUND' };
   if (approval.status !== 'PENDING' || approval.usedAt) {
     return { ok: false, reason: 'ALREADY_USED', approval };
   }
@@ -88,7 +78,6 @@ function consumeApproval(phone, code) {
 
 function cancelPendingApprovals(phone) {
   const normalizedPhone = normalizePhone(phone);
-
   for (const approval of approvals.values()) {
     if (approval.phone === normalizedPhone && approval.status === 'PENDING') {
       approval.status = 'CANCELLED';
@@ -98,7 +87,6 @@ function cancelPendingApprovals(phone) {
 
 module.exports = {
   createApproval,
-  getApproval,
   consumeApproval,
   cancelPendingApprovals
 };

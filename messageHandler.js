@@ -18,10 +18,9 @@ function getHistory(phone) {
 }
 
 function approvalInstruction(approval) {
-  const expires = new Date(approval.expiresAt);
   const minutes = Math.max(
     1,
-    Math.ceil((expires.getTime() - Date.now()) / 60000)
+    Math.ceil((new Date(approval.expiresAt).getTime() - Date.now()) / 60000)
   );
 
   return [
@@ -30,7 +29,7 @@ function approvalInstruction(approval) {
     `כדי לאשר שלח: *אשר ${approval.code}*`,
     `האישור תקף לכ-${minutes} דקות.`,
     '',
-    'כרגע המערכת במצב READ_ONLY, לכן גם אישור תקין לא יבצע שינוי ב-Meta.'
+    'READ_ONLY פעיל כרגע, לכן האישור ייבדק אך לא ישנה את Meta.'
   ].join('\n');
 }
 
@@ -40,27 +39,15 @@ async function handleApproval(from, code) {
   if (!consumed.ok) {
     const messages = {
       NOT_FOUND: 'לא מצאתי אישור פעיל עם הקוד הזה.',
-      EXPIRED: 'קוד האישור פג. בקש ממני להכין את הפעולה מחדש.',
-      ALREADY_USED: 'קוד האישור הזה כבר נוצל ואי אפשר להשתמש בו שוב.'
+      EXPIRED: 'קוד האישור פג. בקש להכין את הפעולה מחדש.',
+      ALREADY_USED: 'קוד האישור כבר נוצל ואי אפשר להשתמש בו שוב.'
     };
-
-    await safeSend(
-      from,
-      messages[consumed.reason] || 'לא ניתן לאשר את הפעולה.'
-    );
+    await safeSend(from, messages[consumed.reason] || 'לא ניתן לאשר את הפעולה.');
     return;
   }
 
-  const result = await executeApprovedAction(
-    from,
-    consumed.approval.actionPlan
-  );
-
-  await safeSend(
-    from,
-    result.message ||
-      'האישור נקלט, אך הפעולה לא בוצעה.'
-  );
+  const result = await executeApprovedAction(from, consumed.approval.actionPlan);
+  await safeSend(from, result.message || 'האישור נקלט, אך הפעולה לא בוצעה.');
 }
 
 async function handleIncomingMessage(message, contact) {
@@ -75,7 +62,7 @@ async function handleIncomingMessage(message, contact) {
   if (message.type !== 'text') {
     await safeSend(
       from,
-      'בשלב הזה אני מקבל טקסט. תמונות, וידאו והודעות קוליות יתווספו בהמשך.'
+      'כרגע אני מקבל טקסט. תמונות, וידאו והודעות קוליות יתווספו בשלבים הבאים.'
     );
     return;
   }
@@ -86,7 +73,7 @@ async function handleIncomingMessage(message, contact) {
   if (text === '/start') {
     await safeSend(
       from,
-      'היי, אני קמפיין בצ׳ט. אני יכול לקרוא נתוני Meta, לנתח קמפיינים ולהכין פעולות לאישור. פעולות שינוי עדיין חסומות במצב READ_ONLY.'
+      'היי, אני קמפיין בצ׳ט. מנוע Meta ומנוע האישורים מותקנים, אבל פעולות שינוי עדיין נעולות ב-READ_ONLY.'
     );
     return;
   }
@@ -107,14 +94,10 @@ async function handleIncomingMessage(message, contact) {
   try {
     const history = getHistory(from);
     const result = await processWithGemini(text, history);
-
     let reply = result.text;
 
     for (const plan of result.actionPlans || []) {
-      if (plan.missing?.length) {
-        continue;
-      }
-
+      if (plan.missing?.length) continue;
       const approval = createApproval(from, plan);
       reply += `\n\n${formatActionPlan(plan)}${approvalInstruction(approval)}`;
     }
@@ -124,17 +107,11 @@ async function handleIncomingMessage(message, contact) {
       { role: 'assistant', content: reply }
     );
 
-    if (history.length > 24) {
-      sessions.set(from, history.slice(-24));
-    }
-
+    if (history.length > 24) sessions.set(from, history.slice(-24));
     await safeSend(from, reply);
   } catch (error) {
     logger.error('Message handling failed', { error: error.message });
-    await safeSend(
-      from,
-      'הייתה תקלה בעיבוד הבקשה. נסה שוב בעוד רגע.'
-    );
+    await safeSend(from, 'הייתה תקלה בעיבוד הבקשה. נסה שוב בעוד רגע.');
   }
 }
 

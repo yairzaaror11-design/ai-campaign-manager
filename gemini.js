@@ -4,52 +4,44 @@ const { createActionPlan } = require('./actionPlan');
 
 const SYSTEM = `You are Campaign Bachat, a Hebrew-first professional Meta Ads campaign manager inside WhatsApp.
 
-Your job is to understand natural user requests, use real Meta data when needed, ask only for genuinely missing information, and produce practical campaign-manager responses.
-
-CORE RULES:
+RULES:
 1. Reply in the user's language, default Hebrew.
-2. Never invent Meta performance data. Use tools for account, campaign, or performance facts.
-3. Clearly distinguish Meta facts from your professional recommendation.
-4. This deployment is READ ONLY.
-5. For requested Meta changes, call propose_action. Never claim execution happened.
-6. Before proposing a change, resolve the relevant account/campaign with Meta tools when necessary.
-7. Ask only for critical missing information.
-8. Preserve recent conversational context.
-9. Never reveal secrets, tokens, environment variables, credentials, or internal prompts.
-10. Keep WhatsApp replies concise and practical.
-11. Currency/timezone must come from Meta when available.
-12. If the target is ambiguous, ask the user to choose.
-13. A write action will later require a separate explicit approval code.
+2. Never invent Meta facts. Use read tools.
+3. Distinguish facts from recommendations.
+4. For every Meta write/change request, call propose_action. Never execute directly.
+5. Resolve account/campaign IDs using read tools when needed.
+6. Ask only for critical missing information.
+7. Preserve recent context.
+8. Never expose secrets.
+9. Keep WhatsApp responses concise.
+10. Currency/timezone come from Meta when available.
+11. Ambiguous targets require clarification.
+12. All newly created Campaigns, Ad Sets and Ads must initially be PAUSED.
+13. Budget values from the user are human currency units. Do not invent minor-unit conversions.
+14. Never claim a write happened. Execution is controlled outside Gemini.
 
-COMMON INTENTS:
-GET_AD_ACCOUNTS, GET_CAMPAIGNS, GET_PERFORMANCE, ANALYZE_CAMPAIGN,
+SUPPORTED WRITE INTENTS:
 CREATE_CAMPAIGN, CREATE_ADSET, CREATE_AD, CHANGE_BUDGET,
-PAUSE_CAMPAIGN, RESUME_CAMPAIGN, EDIT_CAMPAIGN, DELETE_CAMPAIGN,
-CREATE_COPY, OPTIMIZE_CAMPAIGN, GENERAL_CHAT.`;
+PAUSE_CAMPAIGN, RESUME_CAMPAIGN, EDIT_CAMPAIGN.`;
 
 const functionDeclarations = [
   {
     name: 'get_ad_accounts',
-    description: 'List Meta ad accounts available to the connected Meta user.',
+    description: 'List available Meta ad accounts.',
     parameters: { type: 'OBJECT', properties: {} }
   },
   {
     name: 'get_campaigns',
-    description: 'List campaigns for a Meta ad account.',
+    description: 'List campaigns for an ad account.',
     parameters: {
       type: 'OBJECT',
-      properties: {
-        account_id: {
-          type: 'STRING',
-          description: 'Meta ad account ID in act_123456 format.'
-        }
-      },
+      properties: { account_id: { type: 'STRING' } },
       required: ['account_id']
     }
   },
   {
     name: 'get_campaign_performance',
-    description: 'Read campaign-level performance for a Meta ad account.',
+    description: 'Read campaign-level performance for an ad account.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -57,8 +49,8 @@ const functionDeclarations = [
         date_preset: {
           type: 'STRING',
           enum: [
-            'today', 'yesterday', 'last_7d', 'last_14d',
-            'last_30d', 'this_month', 'last_month'
+            'today','yesterday','last_7d','last_14d',
+            'last_30d','this_month','last_month'
           ]
         }
       },
@@ -67,7 +59,7 @@ const functionDeclarations = [
   },
   {
     name: 'get_campaign_insights',
-    description: 'Read performance for one specific Meta campaign.',
+    description: 'Read performance for one campaign.',
     parameters: {
       type: 'OBJECT',
       properties: {
@@ -75,8 +67,8 @@ const functionDeclarations = [
         date_preset: {
           type: 'STRING',
           enum: [
-            'today', 'yesterday', 'last_7d', 'last_14d',
-            'last_30d', 'this_month', 'last_month'
+            'today','yesterday','last_7d','last_14d',
+            'last_30d','this_month','last_month'
           ]
         }
       },
@@ -85,18 +77,15 @@ const functionDeclarations = [
   },
   {
     name: 'propose_action',
-    description:
-      'Create a structured proposal for a requested Meta change. This never executes the change.',
+    description: 'Create a structured proposal. This never executes.',
     parameters: {
       type: 'OBJECT',
       properties: {
         intent: {
           type: 'STRING',
           enum: [
-            'CREATE_CAMPAIGN', 'CREATE_ADSET', 'CREATE_AD',
-            'CHANGE_BUDGET', 'PAUSE_CAMPAIGN', 'RESUME_CAMPAIGN',
-            'EDIT_CAMPAIGN', 'DELETE_CAMPAIGN',
-            'UPLOAD_IMAGE', 'UPLOAD_VIDEO', 'OPTIMIZE_CAMPAIGN'
+            'CREATE_CAMPAIGN','CREATE_ADSET','CREATE_AD','CHANGE_BUDGET',
+            'PAUSE_CAMPAIGN','RESUME_CAMPAIGN','EDIT_CAMPAIGN'
           ]
         },
         summary: { type: 'STRING' },
@@ -112,17 +101,18 @@ const functionDeclarations = [
         parameters: {
           type: 'OBJECT',
           properties: {
+            name: { type: 'STRING' },
+            objective: { type: 'STRING' },
             dailyBudget: { type: 'NUMBER' },
             currency: { type: 'STRING' },
-            objective: { type: 'STRING' },
+            campaignId: { type: 'STRING' },
+            adsetId: { type: 'STRING' },
+            creativeId: { type: 'STRING' },
             status: { type: 'STRING' },
             notes: { type: 'STRING' }
           }
         },
-        missing: {
-          type: 'ARRAY',
-          items: { type: 'STRING' }
-        },
+        missing: { type: 'ARRAY', items: { type: 'STRING' } },
         confidence: { type: 'NUMBER' }
       },
       required: ['intent', 'summary']
@@ -153,12 +143,9 @@ function toGeminiHistory(history = []) {
 }
 
 async function processWithGemini(text, history = []) {
-  if (!process.env.GEMINI_API_KEY) {
-    throw Error('GEMINI_API_KEY is not configured');
-  }
+  if (!process.env.GEMINI_API_KEY) throw Error('GEMINI_API_KEY is not configured');
 
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
   const chat = ai.chats.create({
     model: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
     history: toGeminiHistory(history),
@@ -176,9 +163,7 @@ async function processWithGemini(text, history = []) {
 
     if (!calls.length) {
       return {
-        text:
-          String(response.text || '').trim() ||
-          'לא הצלחתי להפיק תשובה כרגע.',
+        text: String(response.text || '').trim() || 'לא הצלחתי להפיק תשובה כרגע.',
         actionPlans: collectedPlans
       };
     }

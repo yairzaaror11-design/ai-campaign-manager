@@ -16,10 +16,8 @@ function isValidMetaSignature(req) {
   const received = Buffer.from(signature);
   const expected = Buffer.from(expectedSignature);
 
-  return (
-    received.length === expected.length &&
-    crypto.timingSafeEqual(received, expected)
-  );
+  return received.length === expected.length &&
+    crypto.timingSafeEqual(received, expected);
 }
 
 router.get('/', (req, res) => {
@@ -47,14 +45,11 @@ router.post('/', async (req, res) => {
     for (const entry of req.body.entry || []) {
       for (const change of entry.changes || []) {
         if (change.field !== 'messages') continue;
-
         const value = change.value || {};
 
         for (const message of value.messages || []) {
           const contact =
-            (value.contacts || []).find((item) => item.wa_id === message.from) ||
-            {};
-
+            (value.contacts || []).find((item) => item.wa_id === message.from) || {};
           await handleIncomingMessage(message, contact);
         }
       }

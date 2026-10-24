@@ -7,11 +7,7 @@ const WRITE_INTENTS = new Set([
   'CHANGE_BUDGET',
   'PAUSE_CAMPAIGN',
   'RESUME_CAMPAIGN',
-  'EDIT_CAMPAIGN',
-  'DELETE_CAMPAIGN',
-  'UPLOAD_IMAGE',
-  'UPLOAD_VIDEO',
-  'OPTIMIZE_CAMPAIGN'
+  'EDIT_CAMPAIGN'
 ]);
 
 function isWriteIntent(intent) {
@@ -35,7 +31,6 @@ function createActionPlan({
     missing: Array.isArray(missing) ? missing : [],
     confidence,
     requiresApproval: isWriteIntent(intent),
-    executable: false,
     createdAt: new Date().toISOString()
   };
 }
@@ -43,24 +38,16 @@ function createActionPlan({
 function formatActionPlan(plan) {
   const lines = ['*פעולה מוצעת*', plan.summary || plan.intent];
 
-  if (plan.target?.accountName) {
-    lines.push(`חשבון: ${plan.target.accountName}`);
-  }
-
-  if (plan.target?.campaignName) {
-    lines.push(`קמפיין: ${plan.target.campaignName}`);
-  }
+  if (plan.target?.accountName) lines.push(`חשבון: ${plan.target.accountName}`);
+  if (plan.target?.campaignName) lines.push(`קמפיין: ${plan.target.campaignName}`);
 
   if (plan.parameters?.dailyBudget != null) {
-    const currency = plan.parameters.currency
-      ? ` ${plan.parameters.currency}`
-      : '';
+    const currency = plan.parameters.currency ? ` ${plan.parameters.currency}` : '';
     lines.push(`תקציב יומי מוצע: ${plan.parameters.dailyBudget}${currency}`);
   }
 
-  if (plan.missing.length) {
-    lines.push(`חסר לפני אישור: ${plan.missing.join(', ')}`);
-  }
+  if (plan.parameters?.status) lines.push(`סטטוס מוצע: ${plan.parameters.status}`);
+  if (plan.missing.length) lines.push(`חסר לפני אישור: ${plan.missing.join(', ')}`);
 
   return lines.join('\n');
 }
