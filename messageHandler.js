@@ -8,6 +8,7 @@ const {
   cancelPendingApprovals
 } = require('./approvalEngine');
 const { executeApprovedAction } = require('./actionExecutor');
+const { receiveWhatsAppMedia } = require('./mediaHandler');
 const { logger } = require('./logger');
 
 const sessions = new Map();
@@ -50,6 +51,28 @@ async function handleApproval(from, code) {
   await safeSend(from, result.message || 'האישור נקלט, אך הפעולה לא בוצעה.');
 }
 
+async function handleMedia(from, message) {
+  try {
+    const media = await receiveWhatsAppMedia(message);
+    const kind = media.type === 'image' ? 'תמונה' : 'סרטון';
+
+    const captionText = media.caption
+      ? `\nהכיתוב שקיבלתי: "${media.caption}"`
+      : '';
+
+    await safeSend(
+      from,
+      `קיבלתי את ה${kind} בהצלחה.${captionText}\nהקובץ עבר בדיקת סוג וגודל. בשלב הבא נחבר אותו ליצירת קריאייטיב ולהעלאה ל-Meta. כרגע לא פורסם ולא שונה שום קמפיין.`
+    );
+  } catch (error) {
+    logger.error('Media handling failed', { error: error.message });
+    await safeSend(
+      from,
+      'לא הצלחתי לעבד את קובץ המדיה. כרגע נתמכים JPG, PNG, WebP, MP4 ו-MOV בגודל סביר.'
+    );
+  }
+}
+
 async function handleIncomingMessage(message, contact) {
   const from = String(message.from || '');
 
@@ -59,10 +82,15 @@ async function handleIncomingMessage(message, contact) {
     return;
   }
 
+  if (['image', 'video'].includes(message.type)) {
+    await handleMedia(from, message);
+    return;
+  }
+
   if (message.type !== 'text') {
     await safeSend(
       from,
-      'כרגע אני מקבל טקסט. תמונות, וידאו והודעות קוליות יתווספו בשלבים הבאים.'
+      'כרגע אני תומך בטקסט, תמונות וסרטונים. הודעות קוליות יתווספו בשלב הבא.'
     );
     return;
   }
@@ -73,7 +101,7 @@ async function handleIncomingMessage(message, contact) {
   if (text === '/start') {
     await safeSend(
       from,
-      'היי, אני קמפיין בצ׳ט. מנוע Meta ומנוע האישורים מותקנים, אבל פעולות שינוי עדיין נעולות ב-READ_ONLY.'
+      'היי, אני קמפיין בצ׳ט. אני תומך בטקסט, תמונות וסרטונים. מנוע Meta ומנוע האישורים מותקנים, אבל פעולות שינוי עדיין נעולות ב-READ_ONLY.'
     );
     return;
   }
