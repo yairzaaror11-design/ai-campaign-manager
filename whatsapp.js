@@ -5,10 +5,7 @@ const base = () =>
   `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || 'v26.0'}`;
 
 async function sendWhatsAppMessage(to, text) {
-  if (
-    !process.env.WHATSAPP_PHONE_NUMBER_ID ||
-    !process.env.WHATSAPP_ACCESS_TOKEN
-  ) {
+  if (!process.env.WHATSAPP_PHONE_NUMBER_ID || !process.env.WHATSAPP_ACCESS_TOKEN) {
     throw Error('WhatsApp not configured');
   }
 

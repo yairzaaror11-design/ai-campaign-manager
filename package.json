@@ -1,11 +1,11 @@
 {
   "name": "campaign-bachat",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "check": "node --check index.js && node --check webhook.js && node --check gemini.js && node --check metaAds.js && node --check messageHandler.js && node --check actionPlan.js"
+    "check": "node --check index.js && node --check webhook.js && node --check gemini.js && node --check metaAds.js && node --check messageHandler.js && node --check actionPlan.js && node --check approvalEngine.js && node --check actionValidator.js && node --check actionExecutor.js && node --check auditLog.js"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",

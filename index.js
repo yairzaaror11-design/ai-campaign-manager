@@ -19,38 +19,35 @@ app.use(
 );
 
 app.use((req, res, next) => {
-  logger.info('request', {
-    method: req.method,
-    path: req.path
-  });
+  logger.info('request', { method: req.method, path: req.path });
   next();
 });
 
 app.use('/webhook', webhook);
 app.use('/health', health);
 
-app.get('/', (req, res) => {
+app.get('/', (req, res) =>
   res.json({
     name: 'Campaign Bachat',
-    version: '1.3.0',
-    stage: 1,
+    version: '1.4.0',
+    stage: 2,
     status: 'running',
     ai: 'gemini',
-    model: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+    approvalEngine: true,
     readOnly: process.env.READ_ONLY !== 'false'
-  });
-});
+  })
+);
 
 app.use(errorHandler);
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', () =>
   logger.info('Campaign Bachat started', {
     port: PORT,
-    version: '1.3.0',
-    stage: 1,
-    ai: 'gemini',
+    version: '1.4.0',
+    stage: 2,
+    approvalEngine: true,
     readOnly: process.env.READ_ONLY !== 'false'
-  });
-});
+  })
+);
 
 module.exports = app;

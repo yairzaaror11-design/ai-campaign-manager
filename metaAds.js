@@ -55,9 +55,7 @@ async function getCampaignPerformance(id, date = 'last_7d') {
     'last_month'
   ]);
 
-  if (!allowed.has(date)) {
-    date = 'last_7d';
-  }
+  if (!allowed.has(date)) date = 'last_7d';
 
   return get(`/${id}/insights`, {
     fields:
@@ -83,9 +81,7 @@ async function getCampaignInsights(campaignId, date = 'last_7d') {
     'last_month'
   ]);
 
-  if (!allowed.has(date)) {
-    date = 'last_7d';
-  }
+  if (!allowed.has(date)) date = 'last_7d';
 
   return get(`/${campaignId}/insights`, {
     fields:
@@ -94,20 +90,9 @@ async function getCampaignInsights(campaignId, date = 'last_7d') {
   });
 }
 
-async function executeApprovedAction() {
-  return {
-    ok: false,
-    blocked: true,
-    readOnly: true,
-    message:
-      'Write actions are disabled. No Meta changes were made.'
-  };
-}
-
 module.exports = {
   getAdAccounts,
   getCampaigns,
   getCampaignPerformance,
-  getCampaignInsights,
-  executeApprovedAction
+  getCampaignInsights
 };

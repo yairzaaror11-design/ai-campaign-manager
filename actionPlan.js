@@ -27,7 +27,7 @@ function createActionPlan({
   confidence = null
 }) {
   return {
-    id: crypto.randomBytes(3).toString('hex').toUpperCase(),
+    id: crypto.randomBytes(6).toString('hex').toUpperCase(),
     intent: String(intent || 'UNKNOWN').toUpperCase(),
     summary: String(summary || ''),
     target,
@@ -36,16 +36,12 @@ function createActionPlan({
     confidence,
     requiresApproval: isWriteIntent(intent),
     executable: false,
-    readOnlyBlocked: true,
     createdAt: new Date().toISOString()
   };
 }
 
 function formatActionPlan(plan) {
-  const lines = [
-    'פעולה מוצעת',
-    plan.summary || plan.intent
-  ];
+  const lines = ['*פעולה מוצעת*', plan.summary || plan.intent];
 
   if (plan.target?.accountName) {
     lines.push(`חשבון: ${plan.target.accountName}`);
@@ -56,18 +52,15 @@ function formatActionPlan(plan) {
   }
 
   if (plan.parameters?.dailyBudget != null) {
-    lines.push(`תקציב יומי מוצע: ${plan.parameters.dailyBudget}`);
+    const currency = plan.parameters.currency
+      ? ` ${plan.parameters.currency}`
+      : '';
+    lines.push(`תקציב יומי מוצע: ${plan.parameters.dailyBudget}${currency}`);
   }
 
   if (plan.missing.length) {
-    lines.push(`חסר: ${plan.missing.join(', ')}`);
+    lines.push(`חסר לפני אישור: ${plan.missing.join(', ')}`);
   }
-
-  lines.push('');
-  lines.push('לא בוצע שום שינוי ב-Meta.');
-  lines.push(
-    'מנגנון הביצוע והאישור יופעל בשלב הבא לאחר בדיקות.'
-  );
 
   return lines.join('\n');
 }
