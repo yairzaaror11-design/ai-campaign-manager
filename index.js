@@ -1,50 +1,27 @@
 require('dotenv').config();
-
 const express = require('express');
 const { logger } = require('./logger');
 const webhook = require('./webhook');
 const health = require('./health');
 const { errorHandler } = require('./errorHandler');
-
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-
-app.use(
-  express.json({
-    limit: '2mb',
-    verify: (req, res, buf) => {
-      req.rawBody = Buffer.from(buf);
-    }
-  })
-);
-
+app.use(express.json({
+  limit: '2mb',
+  verify: (req, res, buf) => { req.rawBody = Buffer.from(buf); }
+}));
 app.use((req, res, next) => {
-  logger.info('request', {
-    method: req.method,
-    path: req.path
-  });
+  logger.info('request', { method: req.method, path: req.path });
   next();
 });
-
 app.use('/webhook', webhook);
 app.use('/health', health);
-
-app.get('/', (req, res) => {
-  res.json({
-    name: 'Campaign Bachat',
-    version: '1.1.0',
-    status: 'running',
-    readOnly: process.env.READ_ONLY !== 'false'
-  });
-});
-
+app.get('/', (req, res) => res.json({
+  name: 'Campaign Bachat', version: '1.2.0', status: 'running',
+  ai: 'gemini', readOnly: process.env.READ_ONLY !== 'false'
+}));
 app.use(errorHandler);
-
-app.listen(PORT, '0.0.0.0', () => {
-  logger.info('Campaign Bachat started', {
-    port: PORT,
-    readOnly: process.env.READ_ONLY !== 'false'
-  });
-});
-
+app.listen(PORT, '0.0.0.0', () => logger.info('Campaign Bachat started', {
+  port: PORT, ai: 'gemini', readOnly: process.env.READ_ONLY !== 'false'
+}));
 module.exports = app;
