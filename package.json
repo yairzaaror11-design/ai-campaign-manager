@@ -1,18 +1,19 @@
 {
   "name": "campaign-bachat",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "private": true,
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "check": "node --check index.js && node --check webhook.js && node --check gemini.js && node --check metaAds.js && node --check metaWrite.js && node --check metaVerify.js && node --check messageHandler.js && node --check actionPlan.js && node --check approvalEngine.js && node --check actionValidator.js && node --check actionExecutor.js && node --check auditLog.js && node --check mediaHandler.js && node --check voiceHandler.js"
+    "check": "node --check index.js && node --check webhook.js && node --check gemini.js && node --check metaAds.js && node --check metaWrite.js && node --check metaVerify.js && node --check messageHandler.js && node --check actionPlan.js && node --check approvalEngine.js && node --check actionValidator.js && node --check actionExecutor.js && node --check auditLog.js && node --check mediaHandler.js && node --check voiceHandler.js && node --check db.js && node --check clientStore.js && node --check sessionStore.js && node --check actionStore.js"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
     "axios": "^1.7.9",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "winston": "^3.17.0"
+    "winston": "^3.17.0",
+    "pg": "^8.13.1"
   },
   "engines": {
     "node": ">=20"

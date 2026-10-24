@@ -11,13 +11,12 @@ const { executeApprovedAction } = require('./actionExecutor');
 const { receiveWhatsAppMedia } = require('./mediaHandler');
 const { transcribeVoiceMessage } = require('./voiceHandler');
 const { logger } = require('./logger');
-
-const sessions = new Map();
-
-function getHistory(phone) {
-  if (!sessions.has(phone)) sessions.set(phone, []);
-  return sessions.get(phone);
-}
+const {
+  getHistory,
+  appendMessages,
+  resetSession
+} = require('./sessionStore');
+const { getOrCreateClient } = require('./clientStore');
 
 function approvalInstruction(approval) {
   const minutes = Math.max(
@@ -36,7 +35,7 @@ function approvalInstruction(approval) {
 }
 
 async function handleApproval(from, code) {
-  const consumed = consumeApproval(from, code);
+  const consumed = await consumeApproval(from, code);
 
   if (!consumed.ok) {
     const messages = {
@@ -76,22 +75,21 @@ async function handleMedia(from, message) {
 
 
 async function processNaturalLanguage(from, text, prefix = '') {
-  const history = getHistory(from);
+  const history = await getHistory(from);
   const result = await processWithGemini(text, history);
   let reply = prefix ? `${prefix}\n\n${result.text}` : result.text;
 
   for (const plan of result.actionPlans || []) {
     if (plan.missing?.length) continue;
-    const approval = createApproval(from, plan);
+    const approval = await createApproval(from, plan);
     reply += `\n\n${formatActionPlan(plan)}${approvalInstruction(approval)}`;
   }
 
-  history.push(
+  await appendMessages(from, [
     { role: 'user', content: text },
     { role: 'assistant', content: reply }
-  );
+  ]);
 
-  if (history.length > 24) sessions.set(from, history.slice(-24));
   await safeSend(from, reply);
 }
 
@@ -120,6 +118,8 @@ async function handleIncomingMessage(message, contact) {
     await safeSend(from, 'אין הרשאה להשתמש במערכת מהמספר הזה.');
     return;
   }
+
+  await getOrCreateClient(from, contact?.profile?.name || null);
 
   if (['image', 'video'].includes(message.type)) {
     await handleMedia(from, message);
@@ -151,8 +151,8 @@ async function handleIncomingMessage(message, contact) {
   }
 
   if (text === '/reset') {
-    sessions.delete(from);
-    cancelPendingApprovals(from);
+    await resetSession(from);
+    await cancelPendingApprovals(from);
     await safeSend(from, 'איפסתי את הקשר השיחה וביטלתי אישורים ממתינים.');
     return;
   }

@@ -1,10 +1,13 @@
 const router = require('express').Router();
+const { databaseStatus } = require('./db');
 
-router.get('/', (req, res) =>
+router.get('/', async (req, res) => {
+  const database = await databaseStatus();
+
   res.json({
     status: 'healthy',
-    version: '1.7.0',
-    stage: 5,
+    version: '1.8.0',
+    stage: 6,
     timestamp: new Date().toISOString(),
     ai: 'gemini',
     model: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
@@ -14,6 +17,8 @@ router.get('/', (req, res) =>
     postWriteVerification: true,
     mediaHandler: true,
     voiceHandler: true,
+    persistentMemory: database.connected,
+    database,
     configured: {
       whatsapp: !!(
         process.env.WHATSAPP_ACCESS_TOKEN &&
@@ -24,7 +29,7 @@ router.get('/', (req, res) =>
       signatureVerification: !!process.env.META_APP_SECRET,
       authorizedPhones: !!process.env.AUTHORIZED_PHONE_NUMBERS
     }
-  })
-);
+  });
+});
 
 module.exports = router;
