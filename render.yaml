@@ -35,6 +35,12 @@ services:
         sync: false
       - key: AUTHORIZED_PHONE_NUMBERS
         sync: false
+      - key: TELNYX_PUBLIC_KEY
+        sync: false
+      - key: TELNYX_SMS_ADMIN_TOKEN
+        sync: false
+      - key: TELNYX_PHONE_NUMBER
+        value: "+12186580186"
 
 # Stage 6: connect an existing PostgreSQL database by setting DATABASE_URL in Render.
 # Do not create a paid database automatically from this file.
