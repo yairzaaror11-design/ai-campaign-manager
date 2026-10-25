@@ -146,6 +146,18 @@ async function initializeDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS telnyx_inbound_messages (
+      event_id TEXT PRIMARY KEY,
+      message_id TEXT,
+      from_number TEXT NOT NULL,
+      to_number TEXT NOT NULL,
+      message_text TEXT NOT NULL,
+      received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_telnyx_messages_expiry
+      ON telnyx_inbound_messages(expires_at);
+
     CREATE TABLE IF NOT EXISTS approvals (
       id BIGSERIAL PRIMARY KEY,
       client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
