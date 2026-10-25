@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const { logger } = require('./logger');
 const webhook = require('./webhook');
+const telnyx = require('./telnyx');
 const health = require('./health');
 const { errorHandler } = require('./errorHandler');
 const { initializeDatabase } = require('./db');
@@ -25,6 +26,7 @@ app.use((req, res, next) => {
 });
 
 app.use('/webhook', webhook);
+app.use('/telnyx', telnyx);
 app.use('/health', health);
 
 app.get('/', (req, res) =>
