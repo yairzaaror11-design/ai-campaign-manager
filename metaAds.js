@@ -82,7 +82,13 @@ async function getCampaignInsights(campaignId, date = 'last_7d') {
   });
 }
 
+async function getCampaignStructure(id) {
+ if(!/^\d+$/.test(String(id))) throw Error('Invalid campaign ID');
+ return get('/'+id+'/adsets',{fields:'id,name,status,campaign_id,ads{id,name,status,adset_id}',limit:100});
+}
+
 module.exports = {
+  getCampaignStructure,
   getAdAccounts,
   getCampaigns,
   getCampaign,

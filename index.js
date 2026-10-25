@@ -7,10 +7,13 @@ const telnyx = require('./telnyx');
 const health = require('./health');
 const { errorHandler } = require('./errorHandler');
 const { initializeDatabase } = require('./db');
-const { startWhatsAppWebhookWorker } = require('./whatsappWebhookWorker');
+const { startBackgroundJobs } = require('./backgroundJobs');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
+app.disable('x-powered-by');
+if(process.env.TRUST_PROXY_HOPS==='1') app.set('trust proxy',1);
+app.use((req,res,next)=>{res.set({'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});next();});
 
 app.use(
   express.json({
@@ -31,7 +34,7 @@ app.use('/telnyx', telnyx);
 app.use('/health', health);
 app.use('/auth/meta', require('./metaOAuth'));
 app.use('/meta', require('./metaDeletion').router);
-app.get('/data-deletion', (req,res)=>res.type('text').send('Meta data deletion requests are completed synchronously. To delete your Campaign Bachat account from your authorized chat, send /meta-delete-data-confirm. This deletes conversation history, drafts, approvals and the stored Meta connection. It does not delete campaigns in Meta. WhatsApp event queues, logs, backups and provider-held records are not currently included; contact the operator for those records.'));
+app.use(require('./privacyPages'));
 
 
 app.get('/', (req, res) =>
@@ -53,9 +56,11 @@ app.get('/', (req, res) =>
 app.use(errorHandler);
 
 async function start() {
+  require('./runtimeConfig').validateRuntime();
+  let stopJobs=async()=>{};
   try {
     await initializeDatabase();
-    startWhatsAppWebhookWorker();
+    if(process.env.WHATSAPP_WORKER_IN_WEB!=='false') stopJobs=startBackgroundJobs();
   } catch (error) {
     logger.error('Database initialization failed; refusing to start without persistent memory', {
       error: error.message
@@ -67,7 +72,7 @@ async function start() {
     throw Error('DATABASE_URL is required in production');
   }
 
-  app.listen(PORT, '0.0.0.0', () =>
+  const server=app.listen(PORT, '0.0.0.0', () =>
     logger.info('Campaign Bachat started', {
       port: PORT,
       version: '1.8.0',
@@ -75,8 +80,17 @@ async function start() {
       readOnly: process.env.READ_ONLY !== 'false'
     })
   );
+  let shuttingDown=false;
+  const shutdown=async()=>{
+    if(shuttingDown) return;shuttingDown=true;
+    const deadline=setTimeout(()=>process.exit(1),25000);deadline.unref();
+    server.close(async()=>{await stopJobs();await require('./db').closeDatabase();clearTimeout(deadline);});
+  };
+  process.once('SIGTERM',shutdown);process.once('SIGINT',shutdown);
+  return {server,shutdown};
 }
 
-start();
+if(require.main===module) start().catch(()=>{logger.error('Startup configuration or database failed');process.exitCode=1;});
 
 module.exports = app;
+module.exports.start=start;

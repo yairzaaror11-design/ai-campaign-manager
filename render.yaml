@@ -1,16 +1,58 @@
 services:
   - type: web
-    name: campaign-bachat
+    name: ai-campaign-manager
     runtime: node
     plan: free
-    region: frankfurt
-    buildCommand: npm install
+    region: oregon
+    buildCommand: npm ci --omit=dev --ignore-scripts
     startCommand: npm start
     healthCheckPath: /health
     autoDeployTrigger: off
+    branch: audit-security-hardening-20261025
+    maxShutdownDelaySeconds: 30
     envVars:
       - key: NODE_ENV
         value: production
+      - key: META_WRITES_ENABLED
+        value: "false"
+      - key: WHATSAPP_SEND_ENABLED
+        value: "false"
+      - key: WHATSAPP_WORKER_IN_WEB
+        value: "true"
+      - key: META_LEGACY_SINGLE_TENANT
+        value: "false"
+      - key: AI_PROVIDER
+        value: gemini
+      - key: TRUST_PROXY_HOPS
+        value: "1"
+      - key: REQUIRE_WORKER_HEARTBEAT
+        value: "true"
+      - key: DATA_RETENTION_DAYS
+        value: "90"
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_SSL
+        value: "true"
+      - key: APP_PUBLIC_URL
+        sync: false
+      - key: META_APP_ID
+        sync: false
+      - key: META_LOGIN_CONFIG_ID
+        sync: false
+      - key: META_TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: APPROVAL_HMAC_KEY
+        sync: false
+      - key: DELETION_HMAC_KEY
+        sync: false
+      - key: PRIVACY_OPERATOR_NAME
+        sync: false
+      - key: PRIVACY_CONTACT_EMAIL
+        sync: false
+      - key: PRIVACY_HOSTING_PROVIDER
+        sync: false
+      - key: PRIVACY_BACKUP_RETENTION
+        sync: false
       - key: READ_ONLY
         value: "true"
       - key: APPROVAL_TTL_MINUTES
@@ -30,8 +72,6 @@ services:
       - key: WHATSAPP_VERIFY_TOKEN
         sync: false
       - key: META_APP_SECRET
-        sync: false
-      - key: META_ADS_ACCESS_TOKEN
         sync: false
       - key: AUTHORIZED_PHONE_NUMBERS
         sync: false

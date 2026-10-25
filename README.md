@@ -1,16 +1,21 @@
 # Campaign Bachat — קמפיין בצ׳ט
 
-Node.js/Express + Google Gemini + WhatsApp Cloud API + PostgreSQL.
-The active application starts at root `index.js`. The `src/` tree and `DEPLOYMENT.md` are legacy Claude/Railway material.
+WhatsApp-driven Meta campaign management using Node.js/Express, PostgreSQL and a configurable Gemini/Claude service. The active entry point is root `index.js`; `src/` and the old Railway deployment guide are legacy.
 
-Per-client Meta OAuth, encrypted credentials, account selection, disconnect and local campaign drafts are implemented for development testing. Tenant Meta writes are disabled. Keep `READ_ONLY=true`; the application is not commercially ready.
+Implemented: per-client Meta OAuth and encrypted credentials; account-scoped reads/reports; secure media and voice input; persisted inbound and outbound WhatsApp queues; tenant-bound, versioned, one-time approvals; image upload and PAUSED full campaign creation; separately approved activation and budget/status changes; data deletion/retention; transactional migrations; readiness checks and graceful shutdown.
 
-See [Meta onboarding and limitations](docs/META-ONBOARDING.md) and the unpublished [privacy draft](docs/PRIVACY-DRAFT.md).
+All real effects remain disabled by default: `READ_ONLY=true`, `META_WRITES_ENABLED=false`, `WHATSAPP_SEND_ENABLED=false`. Mock/API tests passing do not establish commercial or production readiness.
 
 ```sh
-npm ci
+npm ci --ignore-scripts
 npm run check
 npm test
 ```
 
-Copy `.env.example` to a private environment file for local setup. Never commit tokens, encryption keys or app secrets. Do not deploy or publish the Meta app as part of this branch.
+- [Meta setup and chat commands](docs/META-ONBOARDING.md)
+- [Operations, backups, release and rollback](docs/OPERATIONS.md)
+- [Security review and remaining gates](docs/SECURITY-REVIEW.md)
+
+Copy `.env.example` into a private environment file for development. Production startup validates required configuration. `npm run preflight` performs read-only checks against a configured target database. `npm run worker:messages` starts a separate message worker when the embedded worker is disabled.
+
+No production deploy, Meta app publication, real campaign mutation, budget change or WhatsApp message is authorized by this branch alone.

@@ -1,3 +1,5 @@
+> Historical draft from the prior OAuth-only iteration. The current configurable /privacy and /data-deletion routes describe the updated implementation. Complete the operator details before release.
+
 # מדיניות פרטיות — קמפיין בצ׳ט
 
 טיוטה לבדיקת המפעיל. אין לפרסם לפני השלמת שם המפעיל, כתובת קשר, מדיניות גיבויים, תקופות שמירה ופרטי ספקי השירות בפועל.

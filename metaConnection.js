@@ -6,8 +6,10 @@ const db = require('./db');
 const context = new AsyncLocalStorage();
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 const random = () => crypto.randomBytes(32).toString('base64url');
-function key() {
-  const value = Buffer.from(process.env.META_TOKEN_ENCRYPTION_KEY || '', 'base64');
+function key(id = process.env.META_TOKEN_KEY_ID || 'primary') {
+  const current=process.env.META_TOKEN_KEY_ID || 'primary';
+  const encoded=id===current ? process.env.META_TOKEN_ENCRYPTION_KEY : JSON.parse(process.env.META_TOKEN_PREVIOUS_KEYS || '{}')[id];
+  const value = Buffer.from(encoded || '', 'base64');
   if (value.length !== 32) throw Error('META_ENCRYPTION_KEY_REQUIRED');
   return value;
 }
@@ -16,11 +18,15 @@ function encrypt(token, clientId) {
   const cipher = crypto.createCipheriv('aes-256-gcm', key(), iv);
   cipher.setAAD(Buffer.from(String(clientId)));
   const body = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]);
-  return Buffer.concat([iv, cipher.getAuthTag(), body]).toString('base64');
+  const id=process.env.META_TOKEN_KEY_ID || 'primary';
+  if(!/^[a-zA-Z0-9_-]{1,32}$/.test(id)) throw Error('INVALID_TOKEN_KEY_ID');
+  return id+'.'+Buffer.concat([iv, cipher.getAuthTag(), body]).toString('base64');
 }
 function decrypt(value, clientId) {
-  const bytes = Buffer.from(value, 'base64');
-  const cipher = crypto.createDecipheriv('aes-256-gcm', key(), bytes.subarray(0,12));
+  const parts=value.split('.');
+  const id=parts.length===2?parts[0]:(process.env.META_LEGACY_TOKEN_KEY_ID || process.env.META_TOKEN_KEY_ID || 'primary');
+  const bytes = Buffer.from(parts.at(-1), 'base64');
+  const cipher = crypto.createDecipheriv('aes-256-gcm', key(id), bytes.subarray(0,12));
   cipher.setAAD(Buffer.from(String(clientId)));
   cipher.setAuthTag(bytes.subarray(12,28));
   return Buffer.concat([cipher.update(bytes.subarray(28)), cipher.final()]).toString('utf8');
@@ -30,6 +36,7 @@ function config() {
   const origin = new URL(process.env.APP_PUBLIC_URL);
   if (origin.protocol !== 'https:' || origin.pathname !== '/' || origin.search || origin.hash || origin.username || origin.password) throw Error('HTTPS_APP_ORIGIN_REQUIRED');
   if (!/^\d+$/.test(process.env.META_APP_ID || '') || !process.env.META_APP_SECRET || !/^\d+$/.test(process.env.META_LOGIN_CONFIG_ID || '')) throw Error('META_LOGIN_CONFIG_REQUIRED');
+  if(!/^v\d+\.\d+$/.test(process.env.META_GRAPH_VERSION || 'v26.0')) throw Error('INVALID_GRAPH_VERSION');
   return { origin: origin.origin, redirect: origin.origin + '/auth/meta/callback', version: process.env.META_GRAPH_VERSION || 'v26.0' };
 }
 async function graph(path, token, params = {}) {
@@ -78,18 +85,48 @@ async function callback(state, browser, code) {
     const locked = await tx('SELECT meta_generation FROM clients WHERE id=$1 FOR UPDATE',[clientId]);
     if (String(locked.rows[0]?.meta_generation)!==String(generation)) throw Error('CONNECTION_REVOKED');
     await tx(`INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,expires_at) VALUES($1,$2,$3,$4) ON CONFLICT(client_id) DO UPDATE SET meta_user_id=$2,token_ciphertext=$3,expires_at=$4`,[clientId,user.id,encrypted,new Date(Date.now()+data.expires_in*1000)]);
-    await tx('UPDATE clients SET meta_ad_account_id=NULL WHERE id=$1',[clientId]);
+    await tx('UPDATE clients SET meta_ad_account_id=NULL,meta_user_id=$2,meta_generation=meta_generation+1 WHERE id=$1',[clientId,user.id]);
   });
   return clientId;
 }
 async function credentials(clientId) {
-  const r = await db.query('SELECT m.*,c.meta_ad_account_id FROM meta_connections m JOIN clients c ON c.id=m.client_id WHERE m.client_id=$1 AND m.expires_at>NOW()',[clientId]);
+  const r = await db.query('SELECT m.*,c.meta_ad_account_id,c.meta_generation FROM meta_connections m JOIN clients c ON c.id=m.client_id WHERE m.client_id=$1 AND m.expires_at>NOW()',[clientId]);
   if (!r.rows.length) throw Error('META_CONNECTION_REQUIRED');
   return {...r.rows[0],token:decrypt(r.rows[0].token_ciphertext,clientId)};
 }
-async function accounts(clientId) {
-  const c = await credentials(clientId);
-  return graph('/me/adaccounts',c.token,{fields:'id,name,currency,account_status',limit:100});
+async function allAccounts(c) {
+  const data=[];let after;
+  for(let page=0;page<20;page++) {
+    const result=await graph('/me/adaccounts',c.token,{fields:'id,name,currency,account_status',limit:100,...(after?{after}:{})});
+    data.push(...(result.data || []));
+    if(!result.paging?.next) return {data};
+    after=result.paging?.cursors?.after;
+    if(typeof after!=='string'||after.length>4096) throw Error('INVALID_META_CURSOR');
+  }
+  throw Error('META_ACCOUNT_LIMIT_EXCEEDED');
+}
+async function accounts(clientId) {return allAccounts(await credentials(clientId));}
+async function renew(clientId) {
+  return db.transaction(async tx=>{
+    const locked=await tx('SELECT id FROM clients WHERE id=$1 FOR UPDATE',[clientId]);
+    if(!locked.rows.length) throw Error('CLIENT_NOT_FOUND');
+    const c=await credentials(clientId);
+    let data;
+    try {
+      data=(await axios.post('https://graph.facebook.com/'+config().version+'/oauth/access_token',new URLSearchParams({grant_type:'fb_exchange_token',client_id:process.env.META_APP_ID,client_secret:process.env.META_APP_SECRET,fb_exchange_token:c.token}),{timeout:15000,maxRedirects:0})).data;
+    } catch {throw Error('TOKEN_RECONNECT_REQUIRED');}
+    if(!data.access_token||!Number.isFinite(data.expires_in)||data.expires_in<=0) throw Error('TOKEN_RECONNECT_REQUIRED');
+    const user=await graph('/me',data.access_token,{fields:'id'});
+    if(user.id!==c.meta_user_id) throw Error('TOKEN_IDENTITY_MISMATCH');
+    await tx('UPDATE meta_connections SET token_ciphertext=$2,expires_at=$3 WHERE client_id=$1',[clientId,encrypt(data.access_token,clientId),new Date(Date.now()+data.expires_in*1000)]);
+  });
+}
+async function rotateStoredKeys() {
+  return db.transaction(async tx=>{
+    const rows=await tx('SELECT client_id,token_ciphertext FROM meta_connections FOR UPDATE');
+    for(const row of rows.rows) await tx('UPDATE meta_connections SET token_ciphertext=$2 WHERE client_id=$1',[row.client_id,encrypt(decrypt(row.token_ciphertext,row.client_id),row.client_id)]);
+    return rows.rows.length;
+  });
 }
 async function selectAccount(clientId,accountId) {
   if (!/^act_\d+$/.test(accountId)) throw Error('INVALID_ACCOUNT');
@@ -97,7 +134,7 @@ async function selectAccount(clientId,accountId) {
     await tx('SELECT id FROM clients WHERE id=$1 FOR UPDATE',[clientId]);
     const list = await accounts(clientId);
     if (!list.data?.some(a=>a.id===accountId && a.account_status===1)) throw Error('ACCOUNT_NOT_GRANTED');
-    await tx('UPDATE clients SET meta_ad_account_id=$2 WHERE id=$1',[clientId,accountId]);
+    await tx('UPDATE clients SET meta_ad_account_id=$2,meta_generation=meta_generation+1 WHERE id=$1',[clientId,accountId]);
   });
 }
 async function disconnect(clientId) {
@@ -113,7 +150,7 @@ async function tenantRead(path,params) {
   const clientId = context.getStore();
   if (!clientId) throw Error('TENANT_CONTEXT_REQUIRED');
   const c = await credentials(clientId);
-  if (path==='/me/adaccounts') return graph(path,c.token,params);
+  if (path==='/me/adaccounts') return allAccounts(c);
   if (!c.meta_ad_account_id) throw Error('ACCOUNT_SELECTION_REQUIRED');
   const id = path.split('/')[1];
   if (id.startsWith('act_')) {
@@ -125,4 +162,4 @@ async function tenantRead(path,params) {
   }
   return graph(path,c.token,params);
 }
-module.exports = {hash,encrypt,decrypt,config,createInvite,begin,callback,consume,credentials,accounts,selectAccount,disconnect,tenantRead,context,graph};
+module.exports = {hash,encrypt,decrypt,config,createInvite,begin,callback,consume,credentials,accounts,selectAccount,disconnect,tenantRead,context,graph,renew,rotateStoredKeys};

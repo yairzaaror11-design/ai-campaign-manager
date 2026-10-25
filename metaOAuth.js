@@ -13,13 +13,13 @@ router.get('/connect', (req,res)=>{
   res.set('Content-Security-Policy',`default-src 'none'; script-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`);
   res.type('html').send(`<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><title>חיבור Meta</title><h1>חיבור חשבון Meta לקמפיין בצ׳ט</h1><p>החיבור מאפשר קריאת חשבונות והכנת טיוטות. לא יפורסם קמפיין.</p><button id="connect">המשך ל־Meta</button><script nonce="${nonce}">const invite=location.hash.slice(1);history.replaceState(null,'',location.pathname);document.getElementById('connect').onclick=async()=>{const r=await fetch('/auth/meta/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({invite})});const d=await r.json();if(r.ok)location.assign(d.url);else document.getElementById('connect').textContent='הקישור פג. בקש קישור חדש בצ׳אט.';};</script></html>`);
 });
-router.post('/start',wrap(async(req,res)=>{
+router.post('/start',require('./rateLimit').middleware('meta-start',10),wrap(async(req,res)=>{
   if (req.headers.origin!==meta.config().origin) throw Error('INVALID_ORIGIN');
   const started = await meta.begin(req.body.invite);
   res.cookie(cookieName,started.browser,{httpOnly:true,secure:true,sameSite:'lax',path:'/',maxAge:600000});
   res.json({url:started.url});
 }));
-router.get('/callback',wrap(async(req,res)=>{
+router.get('/callback',require('./rateLimit').middleware('meta-callback',30),wrap(async(req,res)=>{
   const cookie = String(req.headers.cookie || '').split(';').map(s=>s.trim()).find(s=>s.startsWith(cookieName+'='))?.slice(cookieName.length+1);
   res.clearCookie(cookieName,{httpOnly:true,secure:true,sameSite:'lax',path:'/'});
   await meta.callback(req.query.state,cookie,req.query.code);

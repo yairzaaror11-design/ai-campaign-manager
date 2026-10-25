@@ -2,7 +2,7 @@
 const { getOrCreateClient } = require('./clientStore');
 const { createLifecycle } = require('./campaignLifecycle');
 const { save: saveLifecycle } = require('./lifecycleStore');
-const { processWithGemini } = require('./gemini');
+const { processMessage: processWithGemini } = require('./aiService');
 const { loadBrief, saveBrief } = require('./briefStore');
 const { WORKFLOWS, newBrief, updateBrief, nextQuestion, reviewBrief, approveBrief, cancelBrief, draftStrategy } = require('./campaignWorkflows');
 

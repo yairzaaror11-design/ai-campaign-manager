@@ -42,7 +42,8 @@ async function getMediaMetadata(mediaId) {
 
   return (
     await axios.get(`${graphBase()}/${mediaId}`, {
-      params: { access_token: accessToken() },
+      headers: { Authorization: 'Bearer '+accessToken() },
+      maxRedirects:0,
       timeout: 15000
     })
   ).data;
@@ -50,7 +51,7 @@ async function getMediaMetadata(mediaId) {
 
 function assertTrustedMediaUrl(value) {
   const url = new URL(value);
-  if (url.protocol !== 'https:' || url.username || url.password ||
+  if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port!=='443') ||
       !(/^(?:[a-z0-9-]+\.)*fbcdn\.net$/i.test(url.hostname) || url.hostname === 'lookaside.fbsbx.com')) {
     throw Error('Untrusted WhatsApp media URL');
   }
@@ -69,7 +70,7 @@ async function downloadMedia(url, messageType) {
 
   const buffer = Buffer.from(response.data);
 
-  if (buffer.length > maxBytes(messageType)) {
+  if (!buffer.length || buffer.length > maxBytes(messageType)) {
     throw Error('Media file is too large');
   }
 

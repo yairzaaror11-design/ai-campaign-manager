@@ -3,7 +3,7 @@ const { handleBriefMessage } = require('./briefConversation');
 const { handleLifecycleMessage } = require('./lifecycleConversation');
 const { configured } = require('./db');
 const { safeSend } = require('./whatsapp');
-const { processWithGemini } = require('./gemini');
+const { processMessage: processWithGemini } = require('./aiService');
 const { formatActionPlan } = require('./actionPlan');
 const {
   createApproval,
@@ -59,6 +59,8 @@ async function handleApproval(from, code) {
 async function handleMedia(from, message) {
   try {
     const media = await receiveWhatsAppMedia(message);
+    const client = await getOrCreateClient(from);
+    const assetId=await require('./mediaStore').saveMedia(client.id,media);
     const kind = media.type === 'image' ? 'תמונה' : 'סרטון';
 
     const captionText = media.caption
@@ -67,7 +69,7 @@ async function handleMedia(from, message) {
 
     await safeSend(
       from,
-      `קיבלתי את ה${kind} בהצלחה.${captionText}\nהקובץ עבר בדיקת סוג וגודל. בשלב הבא נחבר אותו ליצירת קריאייטיב ולהעלאה ל-Meta. כרגע לא פורסם ולא שונה שום קמפיין.`
+      `קיבלתי את ה${kind} בהצלחה.${captionText}\nהקובץ עבר בדיקת סוג וגודל. מזהה מדיה: ${assetId}. הפניה זמינה ליום אחד. העלאת תמונה ל־Meta תדרוש אישור נפרד. וידאו מתקבל לעיון בלבד. כרגע לא פורסם ולא שונה שום קמפיין.`
     );
   } catch (error) {
     logger.error('Media handling failed', { error: error.message });
@@ -86,8 +88,10 @@ async function processNaturalLanguage(from, text, prefix = '') {
 
   for (const plan of result.actionPlans || []) {
     if (plan.missing?.length) continue;
-    const approval = await createApproval(from, plan);
-    reply += `\n\n${formatActionPlan(plan)}${approvalInstruction(approval)}`;
+    let approval;
+    try {approval = await createApproval(from, plan);}
+    catch {reply+='\nההצעה לא קיבלה קוד אישור: נדרש חשבון מחובר וכל פרטי הפעולה, הקהל, המטבע והתאריכים. לא בוצע שינוי.';continue;}
+    reply += `\n\n${formatActionPlan(approval.actionPlan)}${approvalInstruction(approval)}`;
   }
 
   await appendMessages(from, [
@@ -116,7 +120,7 @@ async function handleTenantMessage(message, contact) {
 
   if (!isAuthorized(from)) {
     logger.warn('Unauthorized sender rejected');
-    await safeSend(from, 'אין הרשאה להשתמש במערכת מהמספר הזה.');
+
     return;
   }
 
@@ -153,8 +157,9 @@ async function routeText(from, text, prefix = '') {
       let reply;
       if (text === '/meta-delete-data-confirm') {
         await require('./db').transaction(tx=>require('./metaDeletion').deleteClient(client.id,tx));
-        reply = 'נתוני הלקוח נמחקו מהמסד הפעיל, כולל שיחות, טיוטות והרשאות. קמפיינים ב־Meta לא שונו.';
+        return; // No post-deletion message may recreate the client or outbox row.
       }
+      else if (text === '/meta-renew') { await meta.renew(client.id); reply='הרשאת Meta חודשה. לא בוצע שינוי בקמפיינים.'; }
       else if (text === '/meta-connect') reply = 'קישור אישי לחיבור Meta (10 דקות, אין להעביר): ' + await meta.createInvite(client.id);
       else if (text === '/meta-accounts') reply = JSON.stringify((await meta.accounts(client.id)).data) + '\nלבחירה: /meta-select act_ID';
       else if (/^\/meta-select act_\d+$/.test(text)) { await meta.selectAccount(client.id,text.split(' ')[1]); reply = 'חשבון המודעות חובר. ניתן להתחיל בריף עם /brief TRAFFIC.'; }
@@ -163,6 +168,14 @@ async function routeText(from, text, prefix = '') {
       await safeSend(from,reply);
     } catch { await safeSend(from,'חיבור Meta אינו זמין או שההרשאה פגה. בקש /meta-connect מחדש.'); }
     return;
+  }
+  if (text === '/notifications-on' || text === '/notifications-off') {
+    await require('./db').query('UPDATE whatsapp_contacts SET opted_in=$2 WHERE phone=$1',[from,text==='/notifications-on']);
+    await safeSend(from,text==='/notifications-on'?'הסכמת לקבלת עדכונים נרשמה. ניתן לבטל עם /notifications-off.':'הסכמת העדכונים בוטלה.');return;
+  }
+  if (/^\/report(?: (today|yesterday|last_7d|last_14d|last_30d|this_month|last_month))?$/.test(text)) {
+    try {const client=await getOrCreateClient(from);await safeSend(from,await require('./reportService').campaignReport(client.id,text.split(' ')[1] || 'last_7d'));}
+    catch {await safeSend(from,'לא ניתן להפיק דוח כרגע. בדוק שחיבור Meta והחשבון הנבחר בתוקף.');}return;
   }
   if (text === '/start') {
     await safeSend(
@@ -208,6 +221,10 @@ async function routeText(from, text, prefix = '') {
 async function handleIncomingMessage(message, contact) {
   if (!isAuthorized(message.from)) return handleTenantMessage(message, contact);
   const client = await getOrCreateClient(message.from,contact?.profile?.name);
-  return require('./metaConnection').context.run(String(client.id),()=>handleTenantMessage(message, contact));
+  const delivery=require('./whatsappDelivery');
+  await delivery.recordInbound(message);
+  if(!await require('./rateLimit').take('chat:'+client.id,20)) return;
+  return delivery.messageContext.run({eventId:message.id,sequence:0},()=>
+    require('./metaConnection').context.run(String(client.id),()=>handleTenantMessage(message, contact)));
 }
 module.exports = { handleIncomingMessage };

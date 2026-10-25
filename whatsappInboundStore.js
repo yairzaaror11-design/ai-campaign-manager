@@ -9,6 +9,9 @@ function extractInboundEvents(body) {
     for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
       if (change?.field !== 'messages') continue;
       const value = change.value || {};
+      if (process.env.WHATSAPP_PHONE_NUMBER_ID && value.metadata?.phone_number_id!==process.env.WHATSAPP_PHONE_NUMBER_ID) {
+        const error=Error('Wrong WhatsApp receiver');error.code='INVALID_WHATSAPP_EVENT';throw error;
+      }
       const contacts = Array.isArray(value.contacts) ? value.contacts : [];
       const messages = Array.isArray(value.messages) ? value.messages : [];
 
@@ -34,9 +37,9 @@ function extractInboundEvents(body) {
   return events;
 }
 
-async function enqueueInboundEvents(events) {
+async function enqueueInboundEvents(events, suppliedTx = null) {
   if (!Array.isArray(events) || events.length === 0) return { inserted: 0 };
-  return transaction(async tx => {
+  const work = async tx => {
     let inserted = 0;
     for (const event of events) {
       const result = await tx(
@@ -49,7 +52,8 @@ async function enqueueInboundEvents(events) {
       inserted += result.rowCount;
     }
     return { inserted };
-  });
+  };
+  return suppliedTx ? work(suppliedTx) : transaction(work);
 }
 
 async function claimNextInboundEvent() {

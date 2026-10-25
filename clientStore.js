@@ -1,4 +1,4 @@
-const { query, configured } = require('./db');
+const { query, configured, transaction } = require('./db');
 const { normalizePhone } = require('./auth');
 
 const fallback = new Map();
@@ -19,7 +19,11 @@ async function getOrCreateClient(phone, displayName = null) {
     return fallback.get(normalized);
   }
 
-  const result = await query(
+  return transaction(async tx=>{
+    await tx('SELECT pg_advisory_xact_lock(hashtextextended($1,874223002))',[normalized]);
+  const guard=await tx('SELECT phone_digest FROM deleted_client_guards WHERE phone_digest=$1',[require('./metaDeletion').phoneDigest(normalized)]);
+  if(guard.rows.length) throw Error('CLIENT_DELETED_REENROLL_REQUIRED');
+  const result = await tx(
     `INSERT INTO clients (phone, display_name)
      VALUES ($1, $2)
      ON CONFLICT (phone)
@@ -31,6 +35,7 @@ async function getOrCreateClient(phone, displayName = null) {
   );
 
   return result.rows[0];
+  });
 }
 
 async function setMetaAdAccount(phone, accountId) {

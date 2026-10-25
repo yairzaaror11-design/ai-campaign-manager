@@ -4,6 +4,10 @@ const WRITE_INTENTS = new Set([
   'CREATE_CAMPAIGN',
   'CREATE_ADSET',
   'CREATE_AD',
+  'CREATE_CREATIVE',
+  'UPLOAD_IMAGE',
+  'CREATE_BUNDLE',
+  'ACTIVATE_BUNDLE',
   'CHANGE_BUDGET',
   'PAUSE_CAMPAIGN',
   'RESUME_CAMPAIGN',
@@ -36,20 +40,21 @@ function createActionPlan({
 }
 
 function formatActionPlan(plan) {
-  const lines = ['*פעולה מוצעת*', plan.summary || plan.intent];
-
-  if (plan.target?.accountName) lines.push(`חשבון: ${plan.target.accountName}`);
-  if (plan.target?.campaignName) lines.push(`קמפיין: ${plan.target.campaignName}`);
-
-  if (plan.parameters?.dailyBudget != null) {
-    const currency = plan.parameters.currency ? ` ${plan.parameters.currency}` : '';
-    lines.push(`תקציב יומי מוצע: ${plan.parameters.dailyBudget}${currency}`);
-  }
-
-  if (plan.parameters?.status) lines.push(`סטטוס מוצע: ${plan.parameters.status}`);
-  if (plan.missing.length) lines.push(`חסר לפני אישור: ${plan.missing.join(', ')}`);
-
-  return lines.join('\n');
+  const p=plan.parameters || {},t=plan.target || {};
+  return ['*פעולה מוצעת — נדרש אישור מפורש*',plan.summary || plan.intent,
+    'פעולה: '+plan.intent,
+    'חשבון: '+(t.accountName || '')+' ('+(t.accountId || 'לא נבחר')+')',
+    'קמפיין/מודעה: '+(t.campaignName || p.name || t.campaignId || 'לא הוגדר'),
+    'מטרה: '+(p.objective || plan.review?.objective || 'לפי הקמפיין הקיים'),
+    'קהל: '+(p.adSets ? JSON.stringify(p.adSets) : p.targeting ? JSON.stringify(p.targeting) : 'ללא שינוי קהל'),
+    ...(plan.review?.adSets ? ['פרטי קהל, תקציב ביחידות משנה ותאריכים ב־'+plan.review.currency+': '+JSON.stringify(plan.review.adSets)] : []),
+    ...(p.adsetIds ? ['קבוצות מודעות: '+p.adsetIds.join(', '),'מודעות: '+p.adIds.join(', ')] : []),
+    'תקציב יומי: '+(p.dailyBudget!==undefined ? p.dailyBudget+' '+p.currency : 'ללא שינוי תקציב'),
+    'התחלה: '+(p.startTime || 'ללא שינוי'),
+    'סיום: '+(p.endTime || 'ללא שינוי'),
+    'גרסת פעולה: '+require('./approvalPolicy').planHash(plan).slice(0,12),
+    'יצירה מתחילה במצב PAUSED. הפעלה דורשת אישור נפרד.'
+  ].join('\n');
 }
 
 module.exports = {

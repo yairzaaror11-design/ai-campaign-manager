@@ -16,11 +16,13 @@ test('tenant OAuth lifecycle: real PostgreSQL semantics, encryption, state, isol
   // initializeDatabase uses its private query binding; capture the schema through the pool boundary.
   const {Pool} = require('pg');
   const originalPoolQuery=Pool.prototype.query;
+  const originalConnect=Pool.prototype.connect;
   const originalQuery=db.query, originalTransaction=db.transaction;
   const originalGet=axios.get, originalPost=axios.post;
   process.env.DATABASE_URL='postgresql://unused';
   Pool.prototype.query=async function(sql,params){return params?.length ? pg.query(sql,params) : (await pg.exec(sql)).at(-1);};
-  db.query=(sql,params=[])=>pg.query(sql,params);
+  Pool.prototype.connect=async()=>({query:Pool.prototype.query,release(){}});
+  db.query=(sql,params=[])=>params.length ? pg.query(sql,params) : pg.exec(sql).then(rows=>rows.at(-1));
   db.transaction=async work=>{await pg.exec('BEGIN');try {const result=await work(db.query);await pg.exec('COMMIT');return result;}catch(e){await pg.exec('ROLLBACK');throw e;}};
   try {
     await db.initializeDatabase();
@@ -91,7 +93,7 @@ test('tenant OAuth lifecycle: real PostgreSQL semantics, encryption, state, isol
     assert.equal((await db.query('SELECT id FROM clients WHERE id=$1',[b])).rows.length,1);
   } finally {
     axios.get=originalGet;axios.post=originalPost;
-    Pool.prototype.query=originalPoolQuery;db.query=originalQuery;db.transaction=originalTransaction;
+    Pool.prototype.connect=originalConnect;Pool.prototype.query=originalPoolQuery;db.query=originalQuery;db.transaction=originalTransaction;
     await db.closeDatabase();await pg.close();
   }
 });

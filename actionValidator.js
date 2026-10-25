@@ -61,6 +61,10 @@ function validateActionPlan(plan) {
     }
   }
 
+  if (plan.intent === 'CREATE_CREATIVE') {
+    if (!plan.target?.accountId || !plan.parameters?.pageId) errors.push('Missing creative account/page');
+  }
+
   if (plan.intent === 'CREATE_AD') {
     if (!plan.target?.accountId) errors.push('Missing account ID');
     if (!plan.parameters?.adsetId) errors.push('Missing ad set ID');

@@ -43,7 +43,10 @@ router.post('/', async (req, res) => {
 
   try {
     const events = extractInboundEvents(req.body);
-    await enqueueInboundEvents(events);
+    await require('./db').transaction(async tx=>{
+      await enqueueInboundEvents(events,tx);
+      await require('./whatsappDelivery').ingestReceipts(req.body,tx);
+    });
     return res.status(200).send('EVENT_RECEIVED');
   } catch (error) {
     const invalidPayload = error.code === 'INVALID_WHATSAPP_EVENT';

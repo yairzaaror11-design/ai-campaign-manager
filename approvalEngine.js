@@ -1,180 +1,51 @@
-const crypto = require('crypto');
-const { normalizePhone } = require('./auth');
-const { audit } = require('./auditLog');
-const { query, configured } = require('./db');
-const { getOrCreateClient } = require('./clientStore');
-const { saveActionPlan, updateActionStatus } = require('./actionStore');
-
-const fallbackApprovals = new Map();
-
-function ttlMs() {
-  const minutes = Math.max(
-    1,
-    Math.min(60, Number(process.env.APPROVAL_TTL_MINUTES || 10))
-  );
-  return minutes * 60 * 1000;
-}
-
-async function createApproval(phone, actionPlan) {
-  const normalizedPhone = normalizePhone(phone);
-
-  if (!normalizedPhone) throw Error('Invalid phone for approval');
-  if (!actionPlan?.id || !actionPlan?.requiresApproval) {
-    throw Error('Action does not require approval');
-  }
-  if (actionPlan.missing?.length) {
-    throw Error('Action is missing required information');
-  }
-
-  await saveActionPlan(normalizedPhone, actionPlan);
-
-  const code = String(crypto.randomInt(100000, 1000000));
-  const now = Date.now();
-  const expiresAt = new Date(now + ttlMs()).toISOString();
-
-  if (!configured()) {
-    const approval = {
-      code,
-      phone: normalizedPhone,
-      actionId: actionPlan.id,
-      actionPlan,
-      createdAt: new Date(now).toISOString(),
-      expiresAt,
-      usedAt: null,
-      status: 'PENDING'
-    };
-    fallbackApprovals.set(`${normalizedPhone}:${code}`, approval);
-    return approval;
-  }
-
-  const client = await getOrCreateClient(normalizedPhone);
-  const result = await query(
-    `INSERT INTO approvals (client_id, action_id, code, expires_at)
-     VALUES ($1, $2, $3, $4)
-     RETURNING code, action_id, status, expires_at, used_at, created_at`,
-    [client.id, actionPlan.id, code, expiresAt]
-  );
-
-  audit('approval_created', {
-    phone: normalizedPhone,
-    actionId: actionPlan.id,
-    intent: actionPlan.intent,
-    result: 'PENDING'
+'use strict';
+const crypto=require('node:crypto');
+const db=require('./db');
+const {getOrCreateClient}=require('./clientStore');
+const policy=require('./approvalPolicy');
+async function createApproval(phone,input) {
+  if(!db.configured()) throw Error('DATABASE_REQUIRED_FOR_APPROVALS');
+  if(!input?.requiresApproval || input.missing?.length) throw Error('INCOMPLETE_ACTION');
+  const client=await getOrCreateClient(phone);
+  const plan=await policy.preparePlan(client.id,input);
+  const hash=policy.planHash(plan);
+  const code=String(crypto.randomInt(100000,1000000));
+  const minutes=Math.max(1,Math.min(30,Number(process.env.APPROVAL_TTL_MINUTES)||10));
+  const expiresAt=new Date(Date.now()+minutes*60000);
+  await db.transaction(async tx=>{
+    await tx('SELECT id FROM clients WHERE id=$1 FOR UPDATE',[client.id]);
+    await tx("UPDATE approvals SET status='SUPERSEDED' WHERE client_id=$1 AND status='PENDING'",[client.id]);
+    const saved=await tx(`INSERT INTO action_plans(id,client_id,intent,payload,status,plan_hash,account_id,connection_generation)
+      VALUES($1,$2,$3,$4::jsonb,'PROPOSED',$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id`,[plan.id,client.id,plan.intent,JSON.stringify(plan),hash,plan.target.accountId,plan.connectionGeneration]);
+    if(!saved.rows.length) throw Error('ACTION_ALREADY_EXISTS');
+    await tx('INSERT INTO approvals(client_id,action_id,code,expires_at,plan_hash) VALUES($1,$2,$3,$4,$5)',[client.id,plan.id,policy.codeDigest(client.id,code),expiresAt,hash]);
+    await tx("INSERT INTO tenant_audit(client_id,action_id,event,result) VALUES($1,$2,'APPROVAL_CREATED','PENDING')",[client.id,plan.id]);
   });
-
-  const row = result.rows[0];
-  return {
-    code: row.code,
-    phone: normalizedPhone,
-    actionId: row.action_id,
-    actionPlan,
-    createdAt: row.created_at,
-    expiresAt: row.expires_at,
-    usedAt: row.used_at,
-    status: row.status
-  };
+  return {code,phone:client.phone,actionPlan:plan,actionId:plan.id,expiresAt};
 }
-
-async function consumeApproval(phone, code) {
-  const normalizedPhone = normalizePhone(phone);
-
-  if (!configured()) {
-    const approval = fallbackApprovals.get(`${normalizedPhone}:${String(code).trim()}`);
-    if (!approval) return { ok: false, reason: 'NOT_FOUND' };
-    if (approval.status !== 'PENDING' || approval.usedAt) {
-      return { ok: false, reason: 'ALREADY_USED', approval };
-    }
-    if (Date.now() > new Date(approval.expiresAt).getTime()) {
-      approval.status = 'EXPIRED';
-      return { ok: false, reason: 'EXPIRED', approval };
-    }
-    approval.status = 'APPROVED';
-    approval.usedAt = new Date().toISOString();
-    return { ok: true, approval };
-  }
-
-  const client = await getOrCreateClient(normalizedPhone);
-  const result = await query(
-    `SELECT a.id, a.code, a.action_id, a.status, a.expires_at, a.used_at,
-            ap.payload, ap.intent
-     FROM approvals a
-     JOIN action_plans ap ON ap.id = a.action_id
-     WHERE a.client_id = $1 AND a.code = $2
-     LIMIT 1`,
-    [client.id, String(code).trim()]
-  );
-
-  if (!result.rows.length) return { ok: false, reason: 'NOT_FOUND' };
-  const row = result.rows[0];
-
-  if (row.status !== 'PENDING' || row.used_at) {
-    return { ok: false, reason: 'ALREADY_USED' };
-  }
-
-  if (Date.now() > new Date(row.expires_at).getTime()) {
-    await query(`UPDATE approvals SET status = 'EXPIRED' WHERE id = $1`, [row.id]);
-    await updateActionStatus(row.action_id, 'EXPIRED');
-    return { ok: false, reason: 'EXPIRED' };
-  }
-
-  const updated = await query(
-    `UPDATE approvals
-     SET status = 'APPROVED', used_at = NOW()
-     WHERE id = $1 AND status = 'PENDING' AND used_at IS NULL AND expires_at > NOW()
-     RETURNING *`,
-    [row.id]
-  );
-
-  if (!updated.rows.length) {
-    return { ok: false, reason: 'ALREADY_USED' };
-  }
-
-  await updateActionStatus(row.action_id, 'APPROVED');
-
-  audit('approval_consumed', {
-    phone: normalizedPhone,
-    actionId: row.action_id,
-    intent: row.intent,
-    result: 'APPROVED'
+async function consumeApproval(phone,code) {
+  if(!/^\d{6}$/.test(code)) return {ok:false,reason:'NOT_FOUND'};
+  const client=await getOrCreateClient(phone);
+  if(!await require('./rateLimit').take('approval:'+client.id,8,600)) return {ok:false,reason:'RATE_LIMITED'};
+  return db.transaction(async tx=>{
+    const result=await tx(`SELECT a.*,p.payload,p.status AS plan_status,p.plan_hash AS stored_hash,p.account_id,p.connection_generation,
+       c.meta_ad_account_id,c.meta_generation
+       FROM approvals a JOIN action_plans p ON p.id=a.action_id AND p.client_id=a.client_id
+       JOIN clients c ON c.id=a.client_id WHERE a.client_id=$1 AND a.code=$2 FOR UPDATE OF a,p,c`,[client.id,policy.codeDigest(client.id,code)]);
+    const r=result.rows[0];
+    if(!r) return {ok:false,reason:'NOT_FOUND'};
+    if(r.status!=='PENDING'||r.used_at||r.plan_status!=='PROPOSED') return {ok:false,reason:'ALREADY_USED'};
+    if(new Date(r.expires_at)<=new Date()) return {ok:false,reason:'EXPIRED'};
+    if(r.account_id!==r.meta_ad_account_id || String(r.connection_generation)!==String(r.meta_generation) || r.plan_hash!==r.stored_hash || policy.planHash(r.payload)!==r.plan_hash) return {ok:false,reason:'STALE_PLAN'};
+    policy.strictPlan(r.payload);
+    await tx("UPDATE approvals SET status='APPROVED',used_at=NOW() WHERE id=$1",[r.id]);
+    await tx("UPDATE action_plans SET status='APPROVED',updated_at=NOW() WHERE id=$1 AND client_id=$2",[r.action_id,client.id]);
+    await tx("INSERT INTO tenant_audit(client_id,action_id,event,result) VALUES($1,$2,'APPROVAL_CONSUMED','APPROVED')",[client.id,r.action_id]);
+    return {ok:true,approval:{actionId:r.action_id,actionPlan:r.payload,expiresAt:r.expires_at}};
   });
-
-  return {
-    ok: true,
-    approval: {
-      code: row.code,
-      phone: normalizedPhone,
-      actionId: row.action_id,
-      actionPlan: row.payload,
-      expiresAt: row.expires_at,
-      usedAt: updated.rows[0].used_at,
-      status: 'APPROVED'
-    }
-  };
 }
-
 async function cancelPendingApprovals(phone) {
-  const normalizedPhone = normalizePhone(phone);
-
-  if (!configured()) {
-    for (const approval of fallbackApprovals.values()) {
-      if (approval.phone === normalizedPhone && approval.status === 'PENDING') {
-        approval.status = 'CANCELLED';
-      }
-    }
-    return;
-  }
-
-  const client = await getOrCreateClient(normalizedPhone);
-  await query(
-    `UPDATE approvals
-     SET status = 'CANCELLED'
-     WHERE client_id = $1 AND status = 'PENDING'`,
-    [client.id]
-  );
+ const client=await getOrCreateClient(phone);
+ await db.query("UPDATE approvals SET status='CANCELLED' WHERE client_id=$1 AND status='PENDING'",[client.id]);
 }
-
-module.exports = {
-  createApproval,
-  consumeApproval,
-  cancelPendingApprovals
-};
+module.exports={createApproval,consumeApproval,cancelPendingApprovals};

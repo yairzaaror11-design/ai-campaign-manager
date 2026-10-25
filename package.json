@@ -5,8 +5,10 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "check": "node -e \"const fs=require('fs'),cp=require('child_process');for(const f of fs.readdirSync('.').filter(x=>x.endsWith('.js')).concat(fs.readdirSync('tests').filter(x=>x.endsWith('.js')).map(x=>'tests/'+x))){cp.execFileSync(process.execPath,['--check',f],{stdio:'inherit'})}\"",
-    "test": "node --test tests/*.test.js"
+    "check": "node -e \"const fs=require('fs'),cp=require('child_process');function scan(d){for(const e of fs.readdirSync(d,{withFileTypes:true})){if(['node_modules','.git','src'].includes(e.name))continue;const p=d+'/'+e.name;if(e.isDirectory())scan(p);else if(e.name.endsWith('.js'))cp.execFileSync(process.execPath,['--check',p],{stdio:'inherit'})}}scan('.')\"",
+    "test": "node --test tests/*.test.js",
+    "preflight": "node scripts/preflight.js",
+    "worker:messages": "node messageWorker.js"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",

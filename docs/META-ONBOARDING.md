@@ -1,30 +1,33 @@
-# Meta client onboarding — development only
+# Meta onboarding and permissions
 
-The active entry point is root index.js (Express, Gemini and PostgreSQL). src/ and the old Railway/Claude instructions describe the previous architecture. Keep READ_ONLY=true. Do not deploy or publish Meta as part of this change.
+Use an HTTPS test origin, separate test database and an app-role/tester ad account first. Production customer access is not established by the dashboard saying Ready for testing or Testing complete.
 
-## Configuration
+## Routes and credentials
 
-Use a separate test database and HTTPS development origin. Supply APP_PUBLIC_URL (origin only), META_APP_ID, META_APP_SECRET, META_LOGIN_CONFIG_ID and META_TOKEN_ENCRYPTION_KEY (base64 encoding of 32 random bytes). Keep the encryption key outside the database, back it up separately, and do not replace it while encrypted connections exist: key rotation/migration is still pending.
+- OAuth redirect: APP_PUBLIC_URL/auth/meta/callback
+- Privacy policy: APP_PUBLIC_URL/privacy (503 until operator/contact/hosting/backup details are supplied)
+- User instructions: APP_PUBLIC_URL/data-deletion
+- Meta deletion callback: APP_PUBLIC_URL/meta/deletion
+- Deauthorization callback: APP_PUBLIC_URL/meta/deauthorize
 
-Create a Facebook Login for Business configuration using expiring **user** access tokens with ads_read. System-user/non-expiring tokens are deliberately rejected. Register exactly APP_PUBLIC_URL/auth/meta/callback as the Valid OAuth Redirect URI. Never put secrets in redirect URIs. The app can remain unpublished; use an authorized app role/tester and an ad account they may access. Verify current requirements in Meta before changing any dashboard settings.
+Use a Facebook Login for Business configuration with expiring user access tokens. Supply META_APP_ID, META_APP_SECRET, META_LOGIN_CONFIG_ID, APP_PUBLIC_URL and META_TOKEN_ENCRYPTION_KEY. ads_read is needed for reading; ads_management and the relevant Page permissions are needed for approved write/creative paths. Configure the minimum actual scope; the implementation additionally verifies ads_management before writing and Page membership before creating an image creative. Non-expiring/system-user token configurations are rejected by this onboarding path.
 
-## Test journey
+The authorization-code response is exchanged server-side. Hashed one-time state is bound to the browser's Secure, HttpOnly, SameSite=Lax cookie and originating client. No phone or client ID submitted from a browser is accepted as authentication. PKCE is not enabled without verified support for this Meta Login configuration; confidential client secret, state, cookie binding and exact redirect URI are enforced. Do not add unverified PKCE parameters or weaken state protection.
 
-1. From an already authorized WhatsApp sender, request /meta-connect. No public endpoint accepts a phone/client ID as proof of identity.
-2. Open the personal link within ten minutes. It contains a bearer invite in the URL fragment, removed before starting OAuth. Do not forward it. Invite and state hashes are stored, not raw secrets. The state is consumed atomically and bound to an HttpOnly Secure SameSite=Lax cookie.
-3. Approve Meta login. Return to chat and use /meta-accounts, then /meta-select act_ID. The selection must be in Meta's account list and active. This first version shows up to 100 accounts; pagination is a follow-up.
-4. Start /brief TRAFFIC (or another supported workflow), complete the questions, /brief-review, then /brief-approve REVISION. A local draft and strategy are saved for the linked real ad account. This is not a Meta campaign, ad set, ad creative or ad. There is no publication/billing path for tenant connections.
-5. /meta-disconnect removes credentials and pending login links and cancels pending action approvals. A callback already in flight cannot restore a disconnected connection. Removing the app in Meta settings revokes Meta-side consent.
-6. /meta-delete-data-confirm deletes the client's active relational data. POST /meta/deletion accepts a recent HMAC-SHA256 Meta signed_request and synchronously deletes clients matching an active connection's Meta user ID. It returns Meta's confirmation response. After disconnection, use chat deletion: the local Meta user mapping no longer exists. The status URL /data-deletion explains synchronous completion; no per-request status registry is retained.
+## Authorized chat journey
 
-## Isolation and limitations
+1. An allowlisted phone requests /meta-connect. The ten-minute personal invite appears in a URL fragment and is removed by the connection page before OAuth starts. Do not forward it.
+2. The person approves Meta Login and returns to the authorized chat. /meta-accounts lists accessible accounts using cursor pagination (bounded to 20 pages); /meta-select act_ID validates membership and active status. Selection changes invalidate existing approval generations.
+3. /brief TRAFFIC (or another supported brief workflow) gathers business, goal, audience, geography, budget and required assets. /brief-review and /brief-approve REVISION persist a local strategy draft. Natural-language requests use the AI read/propose layer and exact approval policy for real-write proposals.
+4. Send an image to receive a one-day tenant media reference. The AI may propose UPLOAD_IMAGE, then CREATE_BUNDLE using the resulting image hash and an authorized Page. CREATE_BUNDLE includes exact per-ad-set audience, budget, currency and dates. With writes authorized/enabled, an explicit code approval creates only PAUSED objects. ACTIVATE_BUNDLE requires a new explicit approval naming all object IDs. The operator has not authorized these live actions in this task.
+5. /report last_7d produces and stores a deterministic Meta performance summary. /meta-renew attempts the supported fb_exchange_token exchange for the same Meta user; expired/unsupported credentials require a fresh /meta-connect. There is no fabricated refresh token or promise of indefinite renewal.
+6. /meta-disconnect deletes credentials and pending login links and invalidates approval generations. The Meta deauthorization callback performs local revocation. Meta-side consent can also be removed in Meta settings.
+7. /meta-delete-data-confirm deletes the active tenant data, cancels outbox items, scrubs matching inbound payloads and records a keyed guard against recreation. The deletion command deliberately sends no post-deletion WhatsApp reply. Signed Meta deletion requests also work after disconnect because a user mapping is retained on the client until deletion. A random confirmation URL exposes only deletion status and expires under retention.
 
-WhatsApp processing runs in an AsyncLocalStorage tenant context. Every Meta read loads that client's unexpired encrypted credentials, checks selected account IDs and checks campaign account ownership. It never falls back to the server token. Tenant writes remain blocked even if READ_ONLY is accidentally disabled. Old standalone integration calls also fail closed unless META_LEGACY_SINGLE_TENANT=true is explicitly set; do not enable that switch for a multi-client deployment.
+## Current Meta release requirements
 
-Tokens use AES-256-GCM with the client ID as authenticated associated data. Meta errors are sanitized; token and code responses are never logged. HTTP access logs record only paths. Enforce the same query-string redaction in reverse proxies and hosting logs. Expiry requires a fresh login; automatic refresh is not implemented. No in-memory OAuth credential fallback exists.
+Verify the exact app's requirements in the authenticated App Dashboard: App Review, the requested permissions' Advanced Access, Marketing API access tier, business verification and WhatsApp business/phone/template status. Role-authorized API tests are not commercial approval. Keep the app unpublished for development.
 
-Commercial readiness remains blocked on: real Meta role/account OAuth verification, hosted identity/user interface beyond authorized chat, tenant-aware live write adapters and independent publication approval, full deletion/retention of WhatsApp queue payloads, media, logs and backups, privacy operator/contact/provider details, token key rotation, rate limiting and expired-secret cleanup. Existing mock workers can simulate activation; keep MOCK_META_ENABLED unset for this journey. The privacy document is an unpublished draft, not a deployed policy.
+Official pages attempted during this task: Marketing API authorization, Facebook Login long-lived tokens, WhatsApp send-message guide and data-deletion callback documentation. These requests returned access errors/429 through the documentation tool, so current detailed commercial eligibility could not be verified from the official pages. The previously observed dashboard confirms test readiness only. The implementation must undergo a role-authorized live integration test and a review of the actual current dashboard requirements before commercial use; no live campaign/message or permission-grant action was performed.
 
-## Verification
-
-npm run check and npm test. metaConnection.test.js runs the schema and lifecycle against embedded PostgreSQL (PGlite), while mocking Meta HTTP. Existing TEST_DATABASE_URL integration tests require a separate external PostgreSQL instance and otherwise skip. No external Meta or WhatsApp call is performed by the new test.
+See OPERATIONS.md for configuration, release and rollback gates and the known video/backup/production-validation limitations.
