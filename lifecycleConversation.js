@@ -1,9 +1,8 @@
 'use strict';
 const { getOrCreateClient } = require('./clientStore');
 const { latest, save } = require('./lifecycleStore');
-const { approveStage, createPaused, activate } = require('./campaignLifecycle');
-const { createMockMetaAdapter } = require('./mockMetaAdapter');
-const adapter = createMockMetaAdapter();
+const { approveStage } = require('./campaignLifecycle');
+const { runOne } = require('./workflowWorker');
 
 async function handleLifecycleMessage(phone, text) {
   if (!/^\/campaign-(?:status|draft|activate)\b/.test(text)) return { handled: false };
@@ -23,9 +22,10 @@ async function handleLifecycleMessage(phone, text) {
     flow = approveStage(flow, stage, String(client.id), match[2]);
     // Persist approval before attempting any external side effect.
     let revision = await save(client.id, flow, row.revision);
-    flow = stage === 'CREATE_PAUSED' ? await createPaused(flow, adapter) : await activate(flow, adapter);
-    await save(client.id, flow, revision);
-    return { handled: true, reply: 'תוצאת סביבת Mock בלבד: ' + flow.status + '\n' + JSON.stringify(flow.objects || {}) + (flow.status === 'AWAITING_ACTIVATION_APPROVAL' ? '\nלהפעלה נדרש אישור נפרד: /campaign-activate ' + flow.planHash : '') };
+    const result = await runOne();
+    const updated = await latest(client.id);
+    flow = updated?.payload || flow;
+    return { handled: true, reply: 'תוצאת סביבת Mock בלבד: ' + result.status + '\n' + JSON.stringify(flow.objects || {}) + (flow.status === 'AWAITING_ACTIVATION_APPROVAL' ? '\nלהפעלה נדרש אישור נפרד: /campaign-activate ' + flow.planHash : '') };
   } catch (error) { return { handled: true, reply: 'הפעולה נעצרה: ' + error.message }; }
 }
 module.exports = { handleLifecycleMessage };
