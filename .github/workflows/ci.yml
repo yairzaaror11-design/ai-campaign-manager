@@ -1,0 +1,20 @@
+name: CI
+on:
+  push:
+    branches: [audit-security-hardening-20261025]
+  pull_request:
+    branches: [render-safe-deploy]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm install --ignore-scripts
+      - run: npm run check
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
