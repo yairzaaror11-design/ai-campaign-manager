@@ -143,7 +143,7 @@ function toGeminiHistory(history = []) {
 }
 
 async function processWithGemini(text, history = [], options = {}) {
-  if (!process.env.GEMINI_API_KEY) throw Error('GEMINI_API_KEY is not configured');
+  if (!options.ai && !process.env.GEMINI_API_KEY) throw Error('GEMINI_API_KEY is not configured');
 
   const ai = options.ai || new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const chat = ai.chats.create({
