@@ -75,6 +75,18 @@ async function initializeDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS campaign_briefs (
+      id UUID PRIMARY KEY,
+      client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      payload JSONB NOT NULL,
+      status TEXT NOT NULL,
+      revision INTEGER NOT NULL CHECK (revision > 0),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_campaign_briefs_client_status
+      ON campaign_briefs(client_id, status, updated_at DESC);
+
     CREATE TABLE IF NOT EXISTS approvals (
       id BIGSERIAL PRIMARY KEY,
       client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
