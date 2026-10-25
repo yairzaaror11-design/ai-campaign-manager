@@ -1,5 +1,6 @@
 'use strict';
 const crypto = require('node:crypto');
+const { isDeepStrictEqual } = require('node:util');
 const { query, transaction } = require('./db');
 
 function createDurableMockMetaAdapter(clientId, lifecycleId) {
@@ -25,7 +26,7 @@ function createDurableMockMetaAdapter(clientId, lifecycleId) {
     },
     async verifyPaused(objects) {
       const row = await fetch();
-      return !!row && row.status === 'PAUSED' && JSON.stringify(row.objects) === JSON.stringify(objects);
+      return !!row && row.status === 'PAUSED' && isDeepStrictEqual(row.objects, objects);
     },
     async activate(objects) {
       const r = await query("UPDATE mock_meta_objects SET status='ACTIVE',updated_at=NOW() WHERE client_id=$1 AND lifecycle_id=$2 AND objects=$3::jsonb AND status IN ('PAUSED','ACTIVE') RETURNING status", [clientId,lifecycleId,JSON.stringify(objects)]);
@@ -33,7 +34,7 @@ function createDurableMockMetaAdapter(clientId, lifecycleId) {
     },
     async verifyActive(objects) {
       const row = await fetch();
-      return !!row && row.status === 'ACTIVE' && JSON.stringify(row.objects) === JSON.stringify(objects);
+      return !!row && row.status === 'ACTIVE' && isDeepStrictEqual(row.objects, objects);
     },
     async inspect() { return fetch(); }
   };
