@@ -49,3 +49,11 @@ test('integrated mock adapter creates paused objects and verifies activation', a
   assert.equal(flow.status, 'ACTIVE_VERIFIED');
   assert.equal(await adapter.verifyActive(flow.objects), true);
 });
+
+test('mutating plan after approval is blocked before mock writes', async () => {
+  let flow = createLifecycle(plan);
+  flow = approveStage(flow, 'CREATE_PAUSED', 'owner', flow.planHash);
+  const altered = { ...flow, plan: { ...flow.plan, creatives: [{ ...flow.plan.creatives[0], copy: 'Changed after approval' }] } };
+  await assert.rejects(createPaused(altered, mock), /Plan changed after approval/);
+  assert.throws(() => approveStage({ ...flow, status: 'AWAITING_ACTIVATION_APPROVAL', plan: altered.plan }, 'ACTIVATE', 'owner', flow.planHash), /stale plan/);
+});
