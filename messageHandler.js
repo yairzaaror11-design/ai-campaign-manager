@@ -1,4 +1,6 @@
 const { isAuthorized } = require('./auth');
+const { handleBriefMessage } = require('./briefConversation');
+const { configured } = require('./db');
 const { safeSend } = require('./whatsapp');
 const { processWithGemini } = require('./gemini');
 const { formatActionPlan } = require('./actionPlan');
@@ -166,6 +168,13 @@ async function handleIncomingMessage(message, contact) {
   }
 
   try {
+    if (configured()) {
+      const briefResult = await handleBriefMessage(from, text);
+      if (briefResult.handled) {
+        await safeSend(from, briefResult.reply);
+        return;
+      }
+    }
     await processNaturalLanguage(from, text);
   } catch (error) {
     logger.error('Message handling failed', { error: error.message });
