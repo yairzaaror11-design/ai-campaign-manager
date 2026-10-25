@@ -128,12 +128,16 @@ async function initializeDatabase() {
       kind TEXT NOT NULL CHECK (kind IN ('CREATE_PAUSED','ACTIVATE')),
       status TEXT NOT NULL DEFAULT 'PENDING',
       attempts INTEGER NOT NULL DEFAULT 0,
+      available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      last_error TEXT,
       locked_until TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(lifecycle_id, kind)
     );
-    CREATE INDEX IF NOT EXISTS idx_workflow_jobs_ready ON workflow_jobs(status, locked_until);
+    ALTER TABLE workflow_jobs ADD COLUMN IF NOT EXISTS available_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+    ALTER TABLE workflow_jobs ADD COLUMN IF NOT EXISTS last_error TEXT;
+    CREATE INDEX IF NOT EXISTS idx_workflow_jobs_ready ON workflow_jobs(status, available_at, locked_until);
     CREATE TABLE IF NOT EXISTS mock_meta_objects (
       lifecycle_id UUID PRIMARY KEY REFERENCES campaign_lifecycles(id) ON DELETE CASCADE,
       client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
