@@ -29,7 +29,7 @@ function whatsappToken() {
 function assertTrustedMediaUrl(value) {
   const url = new URL(value);
   if (url.protocol !== 'https:' || url.username || url.password ||
-      !/^(?:[a-z0-9-]+\.)*fbcdn\.net$/i.test(url.hostname)) {
+      !(/^(?:[a-z0-9-]+\.)*fbcdn\.net$/i.test(url.hostname) || url.hostname === 'lookaside.fbsbx.com')) {
     throw Error('Untrusted WhatsApp audio URL');
   }
   return url.toString();
