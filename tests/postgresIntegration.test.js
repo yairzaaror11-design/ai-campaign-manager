@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Pool } = require('pg');
-const { initializeDatabase, transaction, query } = require('../db');
+const { initializeDatabase, transaction, query, closeDatabase } = require('../db');
 const { createLifecycle } = require('../campaignLifecycle');
 const { save } = require('../lifecycleStore');
 const { approveLifecycle } = require('../lifecycleApprovalService');
@@ -57,5 +57,6 @@ test('PostgreSQL transaction, optimistic locking, stage approval, durable mock a
   } finally {
     await query('DELETE FROM campaign_journal WHERE client_id=$1',[clientId]);
     await query('DELETE FROM clients WHERE id=$1',[clientId]);
+    await closeDatabase();
   }
 });
