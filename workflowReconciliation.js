@@ -1,5 +1,6 @@
 'use strict';
-const { query, transaction } = require('./db');
+const { query } = require('./db');
+const { isDeepStrictEqual } = require('node:util');
 const { save } = require('./lifecycleStore');
 const { createDurableMockMetaAdapter } = require('./durableMockMetaAdapter');
 
@@ -19,7 +20,7 @@ async function reconcileOne(job) {
     }
   } else if (kind === 'ACTIVATE' && state?.status === 'ACTIVE') {
     if (flow.status === 'ACTIVE_VERIFIED') next = flow;
-    else if (['ACTIVATION_APPROVED','NEEDS_RECONCILIATION'].includes(flow.status) && JSON.stringify(flow.objects) === JSON.stringify(state.objects)) {
+    else if (['ACTIVATION_APPROVED','NEEDS_RECONCILIATION'].includes(flow.status) && isDeepStrictEqual(flow.objects, state.objects)) {
       next = { ...flow, status: 'ACTIVE_VERIFIED', journal: [...flow.journal, { type: 'ACTIVATION_RECONCILED', at: new Date().toISOString() }] };
     }
   } else if (kind === 'CREATE_PAUSED' && !state && flow.status === 'DRAFT_APPROVED') {
