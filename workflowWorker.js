@@ -38,6 +38,7 @@ async function runOne(targetLifecycleId = null) {
     else if ((kind === 'CREATE_PAUSED' && flow.status === 'AWAITING_ACTIVATION_APPROVAL') || (kind === 'ACTIVATE' && flow.status === 'ACTIVE_VERIFIED')) next = flow;
     else throw Error('State requires manual reconciliation');
     if (next !== flow) await save(client_id,next,row.revision);
+    if (next.status === 'NEEDS_RECONCILIATION') throw Error('Operation result unknown; reconcile persisted mock state');
     await query("UPDATE workflow_jobs SET status='DONE',locked_until=NULL,updated_at=NOW() WHERE id=$1", [id]);
     return { status: next.status, jobId: id };
   } catch (error) {
