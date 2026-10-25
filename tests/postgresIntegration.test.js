@@ -55,8 +55,9 @@ test('PostgreSQL transaction, optimistic locking, stage approval, durable mock a
     const journal = await query('SELECT event FROM campaign_journal WHERE lifecycle_id=$1',[flow.id]);
     assert.ok(journal.rows.length >= 4);
   } finally {
-    await query('DELETE FROM campaign_journal WHERE client_id=$1',[clientId]);
-    await query('DELETE FROM clients WHERE id=$1',[clientId]);
-    await closeDatabase();
+    try {
+      await query('DELETE FROM campaign_journal WHERE client_id=$1',[clientId]);
+      await query('DELETE FROM clients WHERE id=$1',[clientId]);
+    } finally { await closeDatabase(); }
   }
 });
