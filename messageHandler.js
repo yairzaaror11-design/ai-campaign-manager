@@ -1,5 +1,6 @@
 const { isAuthorized } = require('./auth');
 const { handleBriefMessage } = require('./briefConversation');
+const { handleLifecycleMessage } = require('./lifecycleConversation');
 const { configured } = require('./db');
 const { safeSend } = require('./whatsapp');
 const { processWithGemini } = require('./gemini');
@@ -169,6 +170,11 @@ async function handleIncomingMessage(message, contact) {
 
   try {
     if (configured()) {
+      const lifecycleResult = await handleLifecycleMessage(from, text);
+      if (lifecycleResult.handled) {
+        await safeSend(from, lifecycleResult.reply);
+        return;
+      }
       const briefResult = await handleBriefMessage(from, text);
       if (briefResult.handled) {
         await safeSend(from, briefResult.reply);
