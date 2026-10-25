@@ -4,13 +4,13 @@ const { loadBrief, saveBrief } = require('./briefStore');
 const { WORKFLOWS, newBrief, updateBrief, nextQuestion, reviewBrief, approveBrief, cancelBrief, draftStrategy } = require('./campaignWorkflows');
 
 function summary(brief) {
-  return Object.entries(brief.fields).map(([key, value]) => key + ': ' + value).join('\\n');
+  return Object.entries(brief.fields).map(([key, value]) => key + ': ' + value).join('\n');
 }
 
 async function handleBriefMessage(phone, text) {
   const client = await getOrCreateClient(phone);
   let brief = await loadBrief(client.id);
-  const start = text.match(/^\\/brief\\s+(\\w+)(?:\\s+(\\d+(?:\\.\\d+)?))?$/i);
+  const start = text.match(/^\/brief\s+(\w+)(?:\s+(\d+(?:\.\d+)?))?$/i);
   if (start) {
     const type = start[1].toUpperCase();
     if (!WORKFLOWS[type]) return { handled: true, reply: 'סוג קמפיין לא נתמך: ' + Object.keys(WORKFLOWS).join(', ') };
@@ -25,23 +25,23 @@ async function handleBriefMessage(phone, text) {
     await saveBrief(client.id, cancelBrief(brief));
     return { handled: true, reply: 'הבריף בוטל.' };
   }
-  if (text === '/brief-status') return { handled: true, reply: summary(brief) + '\\n' + (nextQuestion(brief)?.question || 'שלח /brief-review לסיכום.') };
+  if (text === '/brief-status') return { handled: true, reply: summary(brief) + '\n' + (nextQuestion(brief)?.question || 'שלח /brief-review לסיכום.') };
   if (text === '/brief-review') {
     if (nextQuestion(brief)) return { handled: true, reply: nextQuestion(brief).question };
     brief = reviewBrief(brief);
     await saveBrief(client.id, brief);
-    return { handled: true, reply: 'סיכום הבריף (גרסה ' + brief.revision + '):\\n' + summary(brief) + '\\nלאישור שלח /brief-approve ' + brief.revision + '. לתיקון: /brief-set FIELD VALUE' };
+    return { handled: true, reply: 'סיכום הבריף (גרסה ' + brief.revision + '):\n' + summary(brief) + '\nלאישור שלח /brief-approve ' + brief.revision + '. לתיקון: /brief-set FIELD VALUE' };
   }
-  const approval = text.match(/^\\/brief-approve\\s+(\\d+)$/);
+  const approval = text.match(/^\/brief-approve\s+(\d+)$/);
   if (approval) {
     try {
       brief = approveBrief(brief, Number(approval[1]));
       await saveBrief(client.id, brief);
       const strategy = draftStrategy(brief);
-      return { handled: true, reply: 'הבריף אושר. הצעת אסטרטגיה ראשונית: ' + JSON.stringify(strategy) + '\\nלא נוצר קמפיין ולא בוצעה פעולה ב-Meta.' };
+      return { handled: true, reply: 'הבריף אושר. הצעת אסטרטגיה ראשונית: ' + JSON.stringify(strategy) + '\nלא נוצר קמפיין ולא בוצעה פעולה ב-Meta.' };
     } catch { return { handled: true, reply: 'האישור נדחה: הגרסה השתנתה או שהבריף טרם נבדק.' }; }
   }
-  const set = text.match(/^\\/brief-set\\s+(\\w+)\\s+([\\s\\S]+)$/);
+  const set = text.match(/^\/brief-set\s+(\w+)\s+([\s\S]+)$/);
   if (set) {
     try { brief = updateBrief(brief, { [set[1]]: set[2].trim() }); }
     catch (error) { return { handled: true, reply: 'שדה לא תקין: ' + error.message }; }
