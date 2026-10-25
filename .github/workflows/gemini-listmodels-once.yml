@@ -1,0 +1,24 @@
+name: One-time Gemini ListModels metadata probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: write # Required solely for atomic create-ref claim.
+concurrency:
+  group: gemini-listmodels-one-time-20261025
+  cancel-in-progress: false
+jobs:
+  metadata-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Claim permanent lock, then perform at most one metadata GET
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/run-gemini-listmodels-once.js
