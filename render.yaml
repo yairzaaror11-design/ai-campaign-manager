@@ -36,9 +36,9 @@ services:
       - key: APP_PUBLIC_URL
         sync: false
       - key: META_APP_ID
-        sync: false
+        value: "1893122418791568"
       - key: META_LOGIN_CONFIG_ID
-        sync: false
+        value: "1893382361625002"
       - key: META_TOKEN_ENCRYPTION_KEY
         sync: false
       - key: APPROVAL_HMAC_KEY
@@ -46,11 +46,11 @@ services:
       - key: DELETION_HMAC_KEY
         sync: false
       - key: PRIVACY_OPERATOR_NAME
-        sync: false
+        value: "קמפיין בצ׳ט"
       - key: PRIVACY_CONTACT_EMAIL
-        sync: false
+        value: yairdigitalil@gmail.com
       - key: PRIVACY_HOSTING_PROVIDER
-        sync: false
+        value: Render
       - key: PRIVACY_BACKUP_RETENTION
         sync: false
       - key: READ_ONLY
