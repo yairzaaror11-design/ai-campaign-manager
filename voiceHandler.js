@@ -26,6 +26,15 @@ function whatsappToken() {
   return process.env.WHATSAPP_ACCESS_TOKEN;
 }
 
+function assertTrustedMediaUrl(value) {
+  const url = new URL(value);
+  if (url.protocol !== 'https:' || url.username || url.password ||
+      !/^(?:[a-z0-9-]+\.)*fbcdn\.net$/i.test(url.hostname)) {
+    throw Error('Untrusted WhatsApp audio URL');
+  }
+  return url.toString();
+}
+
 async function getAudio(message) {
   const mediaId = message?.audio?.id;
   if (!mediaId || !/^[A-Za-z0-9_-]+$/.test(String(mediaId))) {
@@ -45,8 +54,9 @@ async function getAudio(message) {
     throw Error(`Unsupported audio format: ${mimeType}`);
   }
 
-  const response = await axios.get(metadata.url, {
+  const response = await axios.get(assertTrustedMediaUrl(metadata.url), {
     responseType: 'arraybuffer',
+    maxRedirects: 0,
     headers: { Authorization: `Bearer ${whatsappToken()}` },
     maxContentLength: MAX_AUDIO_BYTES,
     maxBodyLength: MAX_AUDIO_BYTES,
