@@ -10,7 +10,7 @@ function createLifecycle({ tenantId, brief, strategy, creatives }) {
 }
 
 function approveStage(flow, stage, actorId, expectedHash) {
-  if (!actorId || expectedHash !== flow.planHash) throw Error('Missing actor or stale plan');
+  if (!actorId || expectedHash !== flow.planHash || hash(flow.plan) !== flow.planHash) throw Error('Missing actor or stale plan');
   const required = stage === 'CREATE_PAUSED' ? 'AWAITING_DRAFT_APPROVAL' : stage === 'ACTIVATE' ? 'AWAITING_ACTIVATION_APPROVAL' : null;
   if (!required || flow.status !== required) throw Error('Invalid approval stage');
   const approval = { stage, actorId, planHash: flow.planHash, at: new Date().toISOString(), expiresAt: new Date(Date.now() + Math.max(1, Math.min(60, Number(process.env.APPROVAL_TTL_MINUTES || 10))) * 60000).toISOString(), id: crypto.randomUUID() };
@@ -19,6 +19,7 @@ function approveStage(flow, stage, actorId, expectedHash) {
 
 async function createPaused(flow, adapter) {
   if (flow.status !== 'DRAFT_APPROVED') throw Error('Draft approval required');
+  if (hash(flow.plan) !== flow.planHash) throw Error('Plan changed after approval');
   const approval = flow.approvals.findLast(a => a.stage === 'CREATE_PAUSED');
   if (!approval || Date.now() > Date.parse(approval.expiresAt)) throw Error('Draft approval expired');
   if (!adapter || typeof adapter.createPaused !== 'function' || typeof adapter.verifyPaused !== 'function') throw Error('Explicit adapter required');
@@ -36,6 +37,7 @@ async function createPaused(flow, adapter) {
 async function activate(flow, adapter) {
   if (flow.status !== 'ACTIVATION_APPROVED' || !flow.approvals.some(a => a.stage === 'CREATE_PAUSED') || !flow.approvals.some(a => a.stage === 'ACTIVATE')) throw Error('Separate activation approval required');
   if (!adapter || typeof adapter.verifyPaused !== 'function' || typeof adapter.activate !== 'function' || typeof adapter.verifyActive !== 'function') throw Error('Explicit adapter required');
+  if (hash(flow.plan) !== flow.planHash) throw Error('Plan changed after approval');
   const approval = flow.approvals.findLast(a => a.stage === 'ACTIVATE');
   if (!approval || Date.now() > Date.parse(approval.expiresAt)) throw Error('Activation approval expired');
   try {
