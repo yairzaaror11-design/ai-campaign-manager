@@ -22,7 +22,7 @@ async function handleBriefMessage(phone, text) {
     if (brief) return { handled: true, reply: 'קיים בריף פתוח. שלח /brief-cancel לפני יצירת חדש.' };
     const { latest } = require('./lifecycleStore');
     const activeFlow = await latest(client.id);
-    if (activeFlow && !['ACTIVE_VERIFIED', 'NEEDS_RECONCILIATION', 'CANCELLED'].includes(activeFlow.payload.status)) {
+    if (activeFlow && !['ACTIVE_VERIFIED', 'CANCELLED'].includes(activeFlow.payload.status)) {
       return { handled: true, reply: 'קיים תהליך קמפיין ממתין. שלח /campaign-status להמשך.' };
     }
     brief = newBrief({ tenantId: String(client.id), adAccountId: client.meta_ad_account_id, type, dailyBudget: start[2] ? Number(start[2]) : undefined });
