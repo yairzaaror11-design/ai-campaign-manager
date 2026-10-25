@@ -1,6 +1,8 @@
 'use strict';
 const crypto = require('node:crypto');
-const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object'
+  ? Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])])) : value;
+const hash = value => crypto.createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 
 function createLifecycle({ tenantId, brief, strategy, creatives }) {
   if (!tenantId || tenantId !== brief?.tenantId || strategy?.tenantId !== tenantId) throw Error('Tenant mismatch');
