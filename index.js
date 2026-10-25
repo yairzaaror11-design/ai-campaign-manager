@@ -49,9 +49,14 @@ async function start() {
   try {
     await initializeDatabase();
   } catch (error) {
-    logger.error('Database initialization failed; server will continue without persistent memory', {
+    logger.error('Database initialization failed; refusing to start without persistent memory', {
       error: error.message
     });
+    throw error;
+  }
+
+  if (process.env.NODE_ENV === 'production' && !process.env.DATABASE_URL) {
+    throw Error('DATABASE_URL is required in production');
   }
 
   app.listen(PORT, '0.0.0.0', () =>
