@@ -125,7 +125,6 @@ async function initializeDatabase() {
       id BIGSERIAL PRIMARY KEY,
       client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
       lifecycle_id UUID NOT NULL REFERENCES campaign_lifecycles(id) ON DELETE CASCADE,
-      generation BIGINT NOT NULL,
       kind TEXT NOT NULL CHECK (kind IN ('CREATE_PAUSED','ACTIVATE')),
       status TEXT NOT NULL DEFAULT 'PENDING',
       attempts INTEGER NOT NULL DEFAULT 0,

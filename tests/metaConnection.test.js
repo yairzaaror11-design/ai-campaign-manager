@@ -24,6 +24,8 @@ test('tenant OAuth lifecycle: real PostgreSQL semantics, encryption, state, isol
   db.transaction=async work=>{await pg.exec('BEGIN');try {const result=await work(db.query);await pg.exec('COMMIT');return result;}catch(e){await pg.exec('ROLLBACK');throw e;}};
   try {
     await db.initializeDatabase();
+    const workflowColumns = await db.query("SELECT column_name FROM information_schema.columns WHERE table_name='workflow_jobs' AND column_name='generation'");
+    assert.equal(workflowColumns.rows.length,0);
     const a=(await db.query("INSERT INTO clients(phone) VALUES('111') RETURNING id")).rows[0].id;
     const b=(await db.query("INSERT INTO clients(phone) VALUES('222') RETURNING id")).rows[0].id;
     const encrypted=meta.encrypt('secret',a);
