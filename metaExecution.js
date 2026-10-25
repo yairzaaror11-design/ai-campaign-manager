@@ -9,7 +9,7 @@ async function runApproved(clientId,input,work) {
     const r=await tx(`SELECT p.*,c.meta_ad_account_id,c.meta_generation FROM action_plans p JOIN clients c ON c.id=p.client_id
       WHERE p.id=$1 AND p.client_id=$2 FOR UPDATE OF p,c`,[input.id,clientId]);
     const row=r.rows[0];
-    if(!row || row.status!=='APPROVED' || row.plan_hash!==planHash(input) || row.plan_hash!==planHash(row.payload) || row.account_id!==row.meta_ad_account_id || String(row.connection_generation)!==String(row.meta_generation)) throw Error('APPROVED_ACTION_REQUIRED');
+    if(!row || row.payload.metaAppId!==process.env.META_APP_ID || row.status!=='APPROVED' || row.plan_hash!==planHash(input) || row.plan_hash!==planHash(row.payload) || row.account_id!==row.meta_ad_account_id || String(row.connection_generation)!==String(row.meta_generation)) throw Error('APPROVED_ACTION_REQUIRED');
     const approved=await tx("SELECT id FROM approvals WHERE action_id=$1 AND client_id=$2 AND status='APPROVED' AND plan_hash=$3 AND expires_at>NOW()",[input.id,clientId,row.plan_hash]);
     if(!approved.rows.length) throw Error('APPROVAL_EXPIRED');
     const attempt=await tx("SELECT action_id FROM meta_execution_attempts WHERE action_id=$1 AND client_id=$2 AND status='CLAIMED'",[input.id,clientId]);

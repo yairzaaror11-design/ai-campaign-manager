@@ -90,6 +90,7 @@ async function preparePlan(clientId,input) {
   const plan=JSON.parse(JSON.stringify(input));
   plan.target={...plan.target,accountId:connection.meta_ad_account_id};
   plan.tenantId=String(clientId);
+  plan.metaAppId=connection.app_id;
   plan.connectionGeneration=String(connection.meta_generation);
   const accountInfo=await meta.graph('/'+connection.meta_ad_account_id,connection.token,{fields:'id,name,currency,timezone_name'});
   plan.target.accountName=accountInfo.name;

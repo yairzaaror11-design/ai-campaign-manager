@@ -50,13 +50,13 @@ async function graph(path, token, params = {}) {
 async function createInvite(clientId) {
   config();
   const value = random();
-  await db.query(`INSERT INTO meta_login_secrets(secret_hash,client_id,kind,generation,expires_at) SELECT $1,id,'INVITE',meta_generation,NOW()+INTERVAL '10 minutes' FROM clients WHERE id=$2`,[hash(value),clientId]);
+  await db.query(`INSERT INTO meta_login_secrets(secret_hash,client_id,kind,generation,expires_at,app_id) SELECT $1,id,'INVITE',meta_generation,NOW()+INTERVAL '10 minutes',$3 FROM clients WHERE id=$2`,[hash(value),clientId,process.env.META_APP_ID]);
   // Fragment keeps the bearer invite out of request URLs and proxy logs.
   return config().origin + '/auth/meta/connect#' + value;
 }
 async function consume(value, kind, binding = null) {
   if (!/^[A-Za-z0-9_-]{43}$/.test(String(value))) throw Error('INVALID_LOGIN');
-  const result = await db.query(`DELETE FROM meta_login_secrets WHERE secret_hash=$1 AND kind=$2 AND expires_at>NOW() AND ($3::text IS NULL OR binding_hash=$3) RETURNING client_id,generation`,[hash(value),kind,binding && hash(binding)]);
+  const result = await db.query(`DELETE FROM meta_login_secrets WHERE secret_hash=$1 AND kind=$2 AND app_id=$4 AND expires_at>NOW() AND ($3::text IS NULL OR binding_hash=$3) RETURNING client_id,generation`,[hash(value),kind,binding && hash(binding),process.env.META_APP_ID]);
   if (!result.rows.length) throw Error('INVALID_LOGIN');
   return result.rows[0];
 }
@@ -64,7 +64,7 @@ async function begin(invite) {
   const cfg = config();
   const {client_id:clientId,generation} = await consume(invite,'INVITE');
   const state = random(), browser = random();
-  await db.query(`INSERT INTO meta_login_secrets(secret_hash,client_id,kind,binding_hash,generation,expires_at) VALUES($1,$2,'STATE',$3,$4,NOW()+INTERVAL '10 minutes')`,[hash(state),clientId,hash(browser),generation]);
+  await db.query(`INSERT INTO meta_login_secrets(secret_hash,client_id,kind,binding_hash,generation,expires_at,app_id) VALUES($1,$2,'STATE',$3,$4,NOW()+INTERVAL '10 minutes',$5)`,[hash(state),clientId,hash(browser),generation,process.env.META_APP_ID]);
   const params = new URLSearchParams({client_id:process.env.META_APP_ID,redirect_uri:cfg.redirect,response_type:'code',state,config_id:process.env.META_LOGIN_CONFIG_ID});
   return {url:'https://www.facebook.com/'+cfg.version+'/dialog/oauth?'+params,browser};
 }
@@ -84,13 +84,13 @@ async function callback(state, browser, code) {
   await db.transaction(async tx => {
     const locked = await tx('SELECT meta_generation FROM clients WHERE id=$1 FOR UPDATE',[clientId]);
     if (String(locked.rows[0]?.meta_generation)!==String(generation)) throw Error('CONNECTION_REVOKED');
-    await tx(`INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,expires_at) VALUES($1,$2,$3,$4) ON CONFLICT(client_id) DO UPDATE SET meta_user_id=$2,token_ciphertext=$3,expires_at=$4`,[clientId,user.id,encrypted,new Date(Date.now()+data.expires_in*1000)]);
+    await tx(`INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,expires_at,app_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT(client_id) DO UPDATE SET meta_user_id=$2,token_ciphertext=$3,expires_at=$4,app_id=$5`,[clientId,user.id,encrypted,new Date(Date.now()+data.expires_in*1000),process.env.META_APP_ID]);
     await tx('UPDATE clients SET meta_ad_account_id=NULL,meta_user_id=$2,meta_generation=meta_generation+1 WHERE id=$1',[clientId,user.id]);
   });
   return clientId;
 }
 async function credentials(clientId) {
-  const r = await db.query('SELECT m.*,c.meta_ad_account_id,c.meta_generation FROM meta_connections m JOIN clients c ON c.id=m.client_id WHERE m.client_id=$1 AND m.expires_at>NOW()',[clientId]);
+  const r = await db.query('SELECT m.*,c.meta_ad_account_id,c.meta_generation FROM meta_connections m JOIN clients c ON c.id=m.client_id WHERE m.client_id=$1 AND m.app_id=$2 AND m.expires_at>NOW()',[clientId,process.env.META_APP_ID]);
   if (!r.rows.length) throw Error('META_CONNECTION_REQUIRED');
   return {...r.rows[0],token:decrypt(r.rows[0].token_ciphertext,clientId)};
 }

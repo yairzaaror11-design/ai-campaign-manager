@@ -31,11 +31,11 @@ test('production services with embedded PostgreSQL and mocked providers',async t
  try {
   a=await clientStore.getOrCreateClient('972500000001');b=await clientStore.getOrCreateClient('972500000002');
   for(const c of [a,b]) {
-   await db.query('INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,expires_at) VALUES($1,$2,$3,NOW()+INTERVAL \'1 hour\')',[c.id,'10'+c.id,meta.encrypt('token-'+c.id,c.id)]);
+   await db.query('INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,app_id,expires_at) VALUES($1,$2,$3,\'123\',NOW()+INTERVAL \'1 hour\')',[c.id,'10'+c.id,meta.encrypt('token-'+c.id,c.id)]);
    await db.query('UPDATE clients SET meta_ad_account_id=$2,meta_user_id=$3 WHERE id=$1',[c.id,c.id===a.id?'act_11':'act_22','10'+c.id]);
   }
   await t.test('migration checksums and repeat initialization preserve rows',async()=>{
-   await db.initializeDatabase();assert.equal((await db.query('SELECT * FROM schema_migrations')).rows.length,2);
+   await db.initializeDatabase();assert.equal((await db.query('SELECT * FROM schema_migrations')).rows.length,3);
    assert.equal((await db.query('SELECT id FROM clients')).rows.length,2);
   });
   await t.test('cross-tenant approval codes are rejected and stored as keyed digests',async()=>{
@@ -85,7 +85,7 @@ test('production services with embedded PostgreSQL and mocked providers',async t
   });
   await t.test('ad sets, creatives, ads, image uploads and approved changes use tenant-scoped verified endpoints',async()=>{
    const c=await clientStore.getOrCreateClient('972500000003');
-   await db.query('INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,expires_at) VALUES($1,$2,$3,NOW()+INTERVAL \'1 hour\')',[c.id,'10'+c.id,meta.encrypt('token-'+c.id,c.id)]);
+   await db.query('INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,app_id,expires_at) VALUES($1,$2,$3,\'123\',NOW()+INTERVAL \'1 hour\')',[c.id,'10'+c.id,meta.encrypt('token-'+c.id,c.id)]);
    await db.query('UPDATE clients SET meta_ad_account_id=$2 WHERE id=$1',[c.id,'act_11']);
    const beforeGet=axios.get,beforePost=axios.post;
    const objects=new Map([['123',{id:'123',account_id:'11',name:'Existing',objective:'OUTCOME_TRAFFIC'}],['222',{id:'222',account_id:'11'}],['333',{id:'333',account_id:'11'}]]);
@@ -131,7 +131,7 @@ test('production services with embedded PostgreSQL and mocked providers',async t
   });
   await t.test('full campaign creation remains PAUSED until a second bundle-specific activation approval',async()=>{
    const c=await clientStore.getOrCreateClient('972500000004');
-   await db.query('INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,expires_at) VALUES($1,$2,$3,NOW()+INTERVAL \'1 hour\')',[c.id,'10'+c.id,meta.encrypt('token-'+c.id,c.id)]);
+   await db.query('INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,app_id,expires_at) VALUES($1,$2,$3,\'123\',NOW()+INTERVAL \'1 hour\')',[c.id,'10'+c.id,meta.encrypt('token-'+c.id,c.id)]);
    await db.query('UPDATE clients SET meta_ad_account_id=$2 WHERE id=$1',[c.id,'act_11']);
    const beforeGet=axios.get,beforePost=axios.post;
    const objects=new Map();let sequence=1000,activations=0;

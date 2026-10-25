@@ -51,6 +51,11 @@ test('tenant OAuth lifecycle: real PostgreSQL semantics, encryption, state, isol
     await meta.callback(state,login.browser,'code');
     await assert.rejects(meta.callback(state,login.browser,'code'),/INVALID_LOGIN/);
     assert.equal((await meta.credentials(a)).token,'tenant-token');
+    const oldInvite=(await meta.createInvite(a)).split('#')[1];
+    process.env.META_APP_ID='789';
+    await assert.rejects(meta.credentials(a),/META_CONNECTION_REQUIRED/);
+    await assert.rejects(meta.begin(oldInvite),/INVALID_LOGIN/);
+    process.env.META_APP_ID='123';
     await assert.rejects(meta.credentials(b),/META_CONNECTION_REQUIRED/);
     await assert.rejects(meta.selectAccount(a,'act_22'),/ACCOUNT_NOT_GRANTED/);
     await meta.selectAccount(a,'act_11');

@@ -36,7 +36,7 @@ async function consumeApproval(phone,code) {
     if(!r) return {ok:false,reason:'NOT_FOUND'};
     if(r.status!=='PENDING'||r.used_at||r.plan_status!=='PROPOSED') return {ok:false,reason:'ALREADY_USED'};
     if(new Date(r.expires_at)<=new Date()) return {ok:false,reason:'EXPIRED'};
-    if(r.account_id!==r.meta_ad_account_id || String(r.connection_generation)!==String(r.meta_generation) || r.plan_hash!==r.stored_hash || policy.planHash(r.payload)!==r.plan_hash) return {ok:false,reason:'STALE_PLAN'};
+    if(r.payload.metaAppId!==process.env.META_APP_ID || r.account_id!==r.meta_ad_account_id || String(r.connection_generation)!==String(r.meta_generation) || r.plan_hash!==r.stored_hash || policy.planHash(r.payload)!==r.plan_hash) return {ok:false,reason:'STALE_PLAN'};
     policy.strictPlan(r.payload);
     await tx("UPDATE approvals SET status='APPROVED',used_at=NOW() WHERE id=$1",[r.id]);
     await tx("UPDATE action_plans SET status='APPROVED',updated_at=NOW() WHERE id=$1 AND client_id=$2",[r.action_id,client.id]);

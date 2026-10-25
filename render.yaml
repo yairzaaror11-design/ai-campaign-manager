@@ -36,9 +36,9 @@ services:
       - key: APP_PUBLIC_URL
         sync: false
       - key: META_APP_ID
-        value: "1893122418791568"
+        value: "3244596585929846"
       - key: META_LOGIN_CONFIG_ID
-        value: "1893382361625002"
+        sync: false
       - key: META_TOKEN_ENCRYPTION_KEY
         sync: false
       - key: APPROVAL_HMAC_KEY
