@@ -34,6 +34,8 @@ test('PostgreSQL transaction, optimistic locking, stage approval, durable mock a
     // Restore state before approval.
     const reset = await query('SELECT revision FROM campaign_lifecycles WHERE id=$1',[flow.id]);
     await save(clientId,flow,reset.rows[0].revision);
+    await assert.rejects(approveLifecycle({clientId,actorId:'unauthorized',adAccountId:'act_12345',lifecycleId:flow.id,stage:'CREATE_PAUSED',planHash:flow.planHash}), /Unauthorized actor/);
+    await assert.rejects(approveLifecycle({clientId,actorId:tenantId,adAccountId:'act_99999',lifecycleId:flow.id,stage:'CREATE_PAUSED',planHash:flow.planHash}), /Approval scope mismatch/);
     const approved = await Promise.allSettled([approveLifecycle({clientId,actorId:tenantId,adAccountId:'act_12345',lifecycleId:flow.id,stage:'CREATE_PAUSED',planHash:flow.planHash}),approveLifecycle({clientId,actorId:tenantId,adAccountId:'act_12345',lifecycleId:flow.id,stage:'CREATE_PAUSED',planHash:flow.planHash})]);
     assert.equal(approved.filter(x=>x.status==='fulfilled').length,1, JSON.stringify(approved.map(x=>x.status==='rejected'?x.reason.message:x.value)));
     const draft = await runOne(flow.id);
