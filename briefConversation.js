@@ -1,5 +1,8 @@
 'use strict';
 const { getOrCreateClient } = require('./clientStore');
+const { createLifecycle } = require('./campaignLifecycle');
+const { save: saveLifecycle } = require('./lifecycleStore');
+const { processWithGemini } = require('./gemini');
 const { loadBrief, saveBrief } = require('./briefStore');
 const { WORKFLOWS, newBrief, updateBrief, nextQuestion, reviewBrief, approveBrief, cancelBrief, draftStrategy } = require('./campaignWorkflows');
 
@@ -38,7 +41,15 @@ async function handleBriefMessage(phone, text) {
       brief = approveBrief(brief, Number(approval[1]));
       await saveBrief(client.id, brief);
       const strategy = draftStrategy(brief);
-      return { handled: true, reply: 'הבריף אושר. הצעת אסטרטגיה ראשונית: ' + JSON.stringify(strategy) + '\nלא נוצר קמפיין ולא בוצעה פעולה ב-Meta.' };
+      if (process.env.MOCK_META_ENABLED !== 'true') {
+        return { handled: true, reply: 'הבריף אושר. הצעת אסטרטגיה: ' + JSON.stringify(strategy) + '\\nיצירת הטיוטה אינה זמינה מחוץ לסביבת Mock.' };
+      }
+      const creativeResponse = await processWithGemini('כתוב מודעת Meta בעברית בפורמט שתי שורות: כותרת ואז טקסט, עבור ' + brief.fields.businessName + ' / ' + brief.fields.product + '. ללא הבטחות לא מבוססות. אל תפעיל כלים.', []);
+      const lines = String(creativeResponse.text).split('\\n').filter(Boolean);
+      const creatives = [{ headline: (lines[0] || 'מודעה לבדיקה').slice(0, 100), copy: (lines.slice(1).join(' ') || lines[0] || 'טקסט לבדיקה').slice(0, 1000), assetId: 'mock-asset-' + brief.id }];
+      const flow = createLifecycle({ tenantId: String(client.id), brief, strategy, creatives });
+      await saveLifecycle(client.id, flow);
+      return { handled: true, reply: 'הבריף אושר. אסטרטגיה: ' + JSON.stringify(strategy) + '\\nקריאייטיב: ' + JSON.stringify(creatives) + '\\nתוכנית Mock בלבד. לאישור יצירת טיוטה PAUSED שלח /campaign-draft ' + flow.planHash + '\\nהפעלה תדרוש אישור נוסף.' };
     } catch { return { handled: true, reply: 'האישור נדחה: הגרסה השתנתה או שהבריף טרם נבדק.' }; }
   }
   const set = text.match(/^\/brief-set\s+(\w+)\s+([\s\S]+)$/);
