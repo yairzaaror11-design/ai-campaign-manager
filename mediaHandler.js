@@ -48,9 +48,19 @@ async function getMediaMetadata(mediaId) {
   ).data;
 }
 
+function assertTrustedMediaUrl(value) {
+  const url = new URL(value);
+  if (url.protocol !== 'https:' || url.username || url.password ||
+      !/^(?:[a-z0-9-]+\.)*fbcdn\.net$/i.test(url.hostname)) {
+    throw Error('Untrusted WhatsApp media URL');
+  }
+  return url.toString();
+}
+
 async function downloadMedia(url, messageType) {
-  const response = await axios.get(url, {
+  const response = await axios.get(assertTrustedMediaUrl(url), {
     responseType: 'arraybuffer',
+    maxRedirects: 0,
     headers: { Authorization: `Bearer ${accessToken()}` },
     maxContentLength: maxBytes(messageType),
     maxBodyLength: maxBytes(messageType),
