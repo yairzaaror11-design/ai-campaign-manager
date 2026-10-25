@@ -1,7 +1,7 @@
 'use strict';
 const { getOrCreateClient } = require('./clientStore');
-const { latest, save } = require('./lifecycleStore');
-const { approveStage } = require('./campaignLifecycle');
+const { latest } = require('./lifecycleStore');
+const { approveLifecycle } = require('./lifecycleApprovalService');
 const { runOne } = require('./workflowWorker');
 
 async function handleLifecycleMessage(phone, text) {
@@ -19,9 +19,7 @@ async function handleLifecycleMessage(phone, text) {
   if (process.env.MOCK_META_ENABLED !== 'true') return { handled: true, reply: 'יצירת קמפיינים נעולה. ניתן לבדוק רק עם MOCK_META_ENABLED=true בסביבה מבודדת.' };
   const stage = match[1] === 'draft' ? 'CREATE_PAUSED' : 'ACTIVATE';
   try {
-    flow = approveStage(flow, stage, String(client.id), match[2]);
-    // Persist approval before attempting any external side effect.
-    let revision = await save(client.id, flow, row.revision);
+    await approveLifecycle({ clientId: client.id, actorId: String(client.id), adAccountId: client.meta_ad_account_id, lifecycleId: flow.id, stage, planHash: match[2] });
     const result = await runOne(flow.id);
     const updated = await latest(client.id);
     flow = updated?.payload || flow;
