@@ -51,7 +51,7 @@ async function handleBriefMessage(phone, text) {
       const flow = createLifecycle({ tenantId: String(client.id), brief, strategy, creatives });
       await saveLifecycle(client.id, flow);
       return { handled: true, reply: 'הבריף אושר. אסטרטגיה: ' + JSON.stringify(strategy) + '\\nקריאייטיב: ' + JSON.stringify(creatives) + '\\nתוכנית Mock בלבד. לאישור יצירת טיוטה PAUSED שלח /campaign-draft ' + flow.planHash + '\\nהפעלה תדרוש אישור נוסף.' };
-    } catch { return { handled: true, reply: 'האישור נדחה: הגרסה השתנתה או שהבריף טרם נבדק.' }; }
+    } catch (error) { return { handled: true, reply: 'האישור או יצירת התוכנית נעצרו: ' + (error.message === 'STALE_BRIEF_UPDATE' ? 'הבריף השתנה. שלח /brief-status לקבלת המצב העדכני.' : 'לא ניתן להשלים כרגע; אין אישור ליצירת קמפיין.') }; }
   }
   const set = text.match(/^\/brief-set\s+(\w+)\s+([\s\S]+)$/);
   if (set) {
