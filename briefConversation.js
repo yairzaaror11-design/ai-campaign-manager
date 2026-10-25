@@ -20,6 +20,11 @@ async function handleBriefMessage(phone, text) {
     if (!WORKFLOWS[type]) return { handled: true, reply: 'סוג קמפיין לא נתמך: ' + Object.keys(WORKFLOWS).join(', ') };
     if (!client.meta_ad_account_id) return { handled: true, reply: 'לפני אפיון הקמפיין צריך לחבר ולאמת חשבון מודעות Meta.' };
     if (brief) return { handled: true, reply: 'קיים בריף פתוח. שלח /brief-cancel לפני יצירת חדש.' };
+    const { latest } = require('./lifecycleStore');
+    const activeFlow = await latest(client.id);
+    if (activeFlow && !['ACTIVE_VERIFIED', 'NEEDS_RECONCILIATION', 'CANCELLED'].includes(activeFlow.payload.status)) {
+      return { handled: true, reply: 'קיים תהליך קמפיין ממתין. שלח /campaign-status להמשך.' };
+    }
     brief = newBrief({ tenantId: String(client.id), adAccountId: client.meta_ad_account_id, type, dailyBudget: start[2] ? Number(start[2]) : undefined });
     await saveBrief(client.id, brief, null);
     return { handled: true, reply: nextQuestion(brief)?.question || 'הבריף מוכן לבדיקה.' };
