@@ -37,6 +37,23 @@ async function query(text, params = []) {
   return p.query(text, params);
 }
 
+async function transaction(work) {
+  const p = getPool();
+  if (!p) throw Error('DATABASE_NOT_CONFIGURED');
+  const client = await p.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await work((sql, params = []) => client.query(sql, params));
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch (rollbackError) {
+      logger.error('Database rollback failed', { error: rollbackError.message });
+    }
+    throw error;
+  } finally { client.release(); }
+}
+
 async function initializeDatabase() {
   if (!configured()) {
     logger.warn('DATABASE_URL is not configured; persistent memory is disabled');
@@ -104,6 +121,27 @@ async function initializeDatabase() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS workflow_jobs (
+      id BIGSERIAL PRIMARY KEY,
+      client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      lifecycle_id UUID NOT NULL REFERENCES campaign_lifecycles(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL CHECK (kind IN ('CREATE_PAUSED','ACTIVATE')),
+      status TEXT NOT NULL DEFAULT 'PENDING',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      locked_until TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(lifecycle_id, kind)
+    );
+    CREATE INDEX IF NOT EXISTS idx_workflow_jobs_ready ON workflow_jobs(status, locked_until);
+    CREATE TABLE IF NOT EXISTS mock_meta_objects (
+      lifecycle_id UUID PRIMARY KEY REFERENCES campaign_lifecycles(id) ON DELETE CASCADE,
+      client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      objects JSONB NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('PAUSED','ACTIVE')),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS approvals (
       id BIGSERIAL PRIMARY KEY,
       client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
@@ -145,6 +183,7 @@ function isReady() {
 
 module.exports = {
   query,
+  transaction,
   initializeDatabase,
   databaseStatus,
   configured,
