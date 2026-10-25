@@ -1,7 +1,7 @@
 'use strict';
 const crypto = require('node:crypto');
 function createMockMetaAdapter() {
-  const records = new Map();
+  const records = new Map(); // Test-only, in-memory: restart requires reconciliation.
   const id = () => crypto.randomUUID();
   return {
     async createPaused(plan) {
