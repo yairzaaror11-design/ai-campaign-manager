@@ -14,7 +14,7 @@ async function save(clientId, flow, previousRevision = null) {
     r = await query('UPDATE campaign_lifecycles SET payload=$3::jsonb,status=$4,revision=revision+1,updated_at=NOW() WHERE id=$1 AND client_id=$2 AND revision=$5 RETURNING revision', [flow.id,clientId,JSON.stringify(flow),flow.status,previousRevision]);
   }
   if (!r.rows.length) throw Error('STALE_LIFECYCLE_UPDATE');
-  for (const event of flow.journal || []) {
+  for (const event of (previousRevision === null ? flow.journal : flow.journal.slice(-1)) || []) {
     await query('INSERT INTO campaign_journal (client_id,lifecycle_id,event) VALUES ($1,$2,$3::jsonb)', [clientId,flow.id,JSON.stringify(event)]);
   }
   return r.rows[0].revision;
