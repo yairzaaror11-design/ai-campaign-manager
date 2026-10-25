@@ -43,11 +43,6 @@ jobs:
       - run: npm test
       - name: Enforce production dependency security
         run: npm audit --omit=dev --audit-level=high
-      - name: One-time Gemini API connectivity check (explicit opt-in commit only)
-        if: github.event_name == 'push' && github.actor == 'yairzaaror11-design' && contains(github.event.head_commit.message, '[gemini-probe-once]')
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: node scripts/check-gemini-connectivity.js
       - name: Commit lockfile only after all gates pass
         if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'audit-security-hardening-20261025')
         run: |
