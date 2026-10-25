@@ -27,7 +27,7 @@ jobs:
       - name: Enforce production dependency security
         run: npm audit --omit=dev --audit-level=high
       - name: Commit lockfile only after all gates pass
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'audit-security-hardening-20261025')
         run: |
           if ! git diff --quiet -- package-lock.json; then
             git config user.name 'github-actions[bot]'
