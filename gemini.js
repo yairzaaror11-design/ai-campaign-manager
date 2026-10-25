@@ -142,16 +142,18 @@ function toGeminiHistory(history = []) {
   }));
 }
 
-async function processWithGemini(text, history = []) {
+async function processWithGemini(text, history = [], options = {}) {
   if (!process.env.GEMINI_API_KEY) throw Error('GEMINI_API_KEY is not configured');
 
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = options.ai || new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const chat = ai.chats.create({
-    model: process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     history: toGeminiHistory(history),
     config: {
       systemInstruction: SYSTEM,
-      tools: [{ functionDeclarations }]
+      tools: [{ functionDeclarations }],
+      maxOutputTokens: Math.max(128, Math.min(2048, Number(process.env.GEMINI_MAX_OUTPUT_TOKENS) || 1024)),
+      httpOptions: { timeout: Math.max(3000, Math.min(30000, Number(process.env.GEMINI_TIMEOUT_MS) || 12000)) }
     }
   });
 
@@ -160,6 +162,7 @@ async function processWithGemini(text, history = []) {
 
   for (let attempt = 0; attempt < 6; attempt += 1) {
     const calls = response.functionCalls || [];
+    if (calls.length > 5) throw Error('AI tool call limit exceeded');
 
     if (!calls.length) {
       return {
@@ -200,4 +203,4 @@ async function processWithGemini(text, history = []) {
   };
 }
 
-module.exports = { processWithGemini };
+module.exports = { processWithGemini, toGeminiHistory, SYSTEM };
