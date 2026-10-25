@@ -120,7 +120,7 @@ async function consumeApproval(phone, code) {
   const updated = await query(
     `UPDATE approvals
      SET status = 'APPROVED', used_at = NOW()
-     WHERE id = $1 AND status = 'PENDING' AND used_at IS NULL
+     WHERE id = $1 AND status = 'PENDING' AND used_at IS NULL AND expires_at > NOW()
      RETURNING *`,
     [row.id]
   );
