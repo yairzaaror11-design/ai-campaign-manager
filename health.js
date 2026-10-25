@@ -27,7 +27,9 @@ router.get('/', async (req, res) => {
       gemini: !!process.env.GEMINI_API_KEY,
       metaAds: !!process.env.META_ADS_ACCESS_TOKEN,
       signatureVerification: !!process.env.META_APP_SECRET,
-      authorizedPhones: !!process.env.AUTHORIZED_PHONE_NUMBERS
+      authorizedPhones: !!process.env.AUTHORIZED_PHONE_NUMBERS,
+      telnyxWebhook: !!process.env.TELNYX_PUBLIC_KEY,
+      telnyxSmsInbox: !!process.env.TELNYX_SMS_ADMIN_TOKEN
     }
   });
 });
