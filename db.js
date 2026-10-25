@@ -146,6 +146,24 @@ async function initializeDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS whatsapp_inbound_events (
+      event_id TEXT PRIMARY KEY,
+      payload JSONB NOT NULL,
+      status TEXT NOT NULL DEFAULT 'PENDING'
+        CHECK (status IN ('PENDING','PROCESSING','DONE','MANUAL_REVIEW')),
+      attempts INTEGER NOT NULL DEFAULT 0,
+      available_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      locked_until TIMESTAMPTZ,
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_inbound_ready
+      ON whatsapp_inbound_events(status, available_at, created_at);
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_inbound_expired
+      ON whatsapp_inbound_events(status, locked_until)
+      WHERE status = 'PROCESSING';
+
     CREATE TABLE IF NOT EXISTS telnyx_inbound_messages (
       event_id TEXT PRIMARY KEY,
       message_id TEXT,

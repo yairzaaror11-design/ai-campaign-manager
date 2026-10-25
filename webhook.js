@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const router = require('express').Router();
 const { logger } = require('./logger');
-const { handleIncomingMessage } = require('./messageHandler');
+const { extractInboundEvents, enqueueInboundEvents } = require('./whatsappInboundStore');
 
 function isValidMetaSignature(req) {
   const appSecret = process.env.META_APP_SECRET;
@@ -37,25 +37,20 @@ router.post('/', async (req, res) => {
     return res.sendStatus(401);
   }
 
-  res.status(200).send('EVENT_RECEIVED');
+  if (req.body?.object !== 'whatsapp_business_account') {
+    return res.status(200).send('EVENT_RECEIVED');
+  }
 
   try {
-    if (req.body?.object !== 'whatsapp_business_account') return;
-
-    for (const entry of req.body.entry || []) {
-      for (const change of entry.changes || []) {
-        if (change.field !== 'messages') continue;
-        const value = change.value || {};
-
-        for (const message of value.messages || []) {
-          const contact =
-            (value.contacts || []).find((item) => item.wa_id === message.from) || {};
-          await handleIncomingMessage(message, contact);
-        }
-      }
-    }
+    const events = extractInboundEvents(req.body);
+    await enqueueInboundEvents(events);
+    return res.status(200).send('EVENT_RECEIVED');
   } catch (error) {
-    logger.error('Webhook processing failed', { error: error.message });
+    const invalidPayload = error.code === 'INVALID_WHATSAPP_EVENT';
+    logger.error('WhatsApp webhook could not be durably queued', {
+      category: invalidPayload ? 'INVALID_EVENT' : 'QUEUE_UNAVAILABLE'
+    });
+    return res.sendStatus(invalidPayload ? 400 : 503);
   }
 });
 

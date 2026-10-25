@@ -7,6 +7,7 @@ const telnyx = require('./telnyx');
 const health = require('./health');
 const { errorHandler } = require('./errorHandler');
 const { initializeDatabase } = require('./db');
+const { startWhatsAppWebhookWorker } = require('./whatsappWebhookWorker');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -50,6 +51,7 @@ app.use(errorHandler);
 async function start() {
   try {
     await initializeDatabase();
+    startWhatsAppWebhookWorker();
   } catch (error) {
     logger.error('Database initialization failed; refusing to start without persistent memory', {
       error: error.message
