@@ -23,14 +23,28 @@ function inspectModels(models, target = MODEL) {
   const supported = entry?.supportedGenerationMethods ?? entry?.supportedActions ?? [];
   return { result: 'SUCCESS', model: target, listed: Boolean(entry), supportsGenerateContent: Boolean(entry) && Array.isArray(supported) && supported.some(x => x === 'generateContent') };
 }
-async function listModels(client, target = MODEL) {
-  // SDK returns a pager that is async-iterable; exhaust pages before declaring a model absent.
-  const pager = await client.models.list({ config: { pageSize: 100 } });
-  const models = [];
-  for await (const model of pager) {
-    models.push({ name: model.name, supportedGenerationMethods: model.supportedGenerationMethods, supportedActions: model.supportedActions });
-    if (models.length > 1000) throw new Error('MODEL_LIST_TOO_LARGE');
+async function listModelsOnce(apiKey, { request = globalThis.fetch, timeoutMs = 10000 } = {}) {
+  if (!apiKey || typeof apiKey !== 'string') throw new Error('MISSING_API_KEY');
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000';
+  // One fetch invocation; redirect handling disabled; no pagination and no retries.
+  const response = await request(url, {
+    method: 'GET',
+    headers: { 'x-goog-api-key': apiKey, 'accept': 'application/json' },
+    redirect: 'manual',
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+  if (!response.ok) {
+    const error = new Error('MODEL_LIST_HTTP_ERROR');
+    error.status = response.status;
+    throw error;
   }
-  return inspectModels(models, target);
+  const data = await response.json();
+  if (!data || !Array.isArray(data.models)) throw new Error('INVALID_MODEL_LIST_RESPONSE');
+  const models = data.models.map(model => ({
+    name: normalizeModelName(model.name),
+    supportedActions: Array.isArray(model.supportedGenerationMethods) ? model.supportedGenerationMethods.filter(x => typeof x === 'string') : []
+  }));
+  const selected = inspectModels(models);
+  return { ...selected, complete: !data.nextPageToken, models };
 }
-module.exports = { MODEL, classifyError, summarizeGeneration, normalizeModelName, inspectModels, listModels };
+module.exports = { MODEL, classifyError, summarizeGeneration, normalizeModelName, inspectModels, listModelsOnce };
