@@ -4,6 +4,7 @@ const base = () =>
   `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || 'v26.0'}`;
 
 function assertWriteEnabled() {
+  if (require('./metaConnection').context.getStore() || process.env.META_LEGACY_SINGLE_TENANT !== 'true') throw Error('TENANT_WRITES_DISABLED');
   if (process.env.READ_ONLY !== 'false') {
     throw Error('READ_ONLY_BLOCK');
   }

@@ -1,21 +1,16 @@
-# 🤖 AI Campaign Manager
+# Campaign Bachat — קמפיין בצ׳ט
 
-Manage your Meta (Facebook/Instagram) ad campaigns via WhatsApp using Claude AI.
+Node.js/Express + Google Gemini + WhatsApp Cloud API + PostgreSQL.
+The active application starts at root `index.js`. The `src/` tree and `DEPLOYMENT.md` are legacy Claude/Railway material.
 
-## Features
-- 📊 Real-time campaign performance
-- 🏆 Multi-account management
-- 📈 AI-generated reports
-- 💡 Optimization suggestions
-- 💰 Budget changes with approval flow
-- 📅 Daily & weekly automated reports
+Per-client Meta OAuth, encrypted credentials, account selection, disconnect and local campaign drafts are implemented for development testing. Tenant Meta writes are disabled. Keep `READ_ONLY=true`; the application is not commercially ready.
 
-## Quick Start
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for full Railway deployment guide.
+See [Meta onboarding and limitations](docs/META-ONBOARDING.md) and the unpublished [privacy draft](docs/PRIVACY-DRAFT.md).
 
-## Stack
-- Node.js + Express
-- WhatsApp Cloud API
-- Claude AI (claude-sonnet-4)
-- Meta Marketing API v19
-- Railway (hosting)
+```sh
+npm ci
+npm run check
+npm test
+```
+
+Copy `.env.example` to a private environment file for local setup. Never commit tokens, encryption keys or app secrets. Do not deploy or publish the Meta app as part of this branch.

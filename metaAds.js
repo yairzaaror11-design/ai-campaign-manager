@@ -11,6 +11,9 @@ function token() {
 }
 
 async function get(path, params = {}) {
+  const connection = require('./metaConnection');
+  if (connection.context.getStore()) return connection.tenantRead(path, params);
+  if (process.env.META_LEGACY_SINGLE_TENANT !== 'true') throw Error('TENANT_CONTEXT_REQUIRED');
   return (
     await axios.get(base() + path, {
       params: { ...params, access_token: token() },

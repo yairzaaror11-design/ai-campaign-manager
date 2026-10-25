@@ -29,6 +29,10 @@ app.use((req, res, next) => {
 app.use('/webhook', webhook);
 app.use('/telnyx', telnyx);
 app.use('/health', health);
+app.use('/auth/meta', require('./metaOAuth'));
+app.use('/meta', require('./metaDeletion').router);
+app.get('/data-deletion', (req,res)=>res.type('text').send('Meta data deletion requests are completed synchronously. To delete your Campaign Bachat account from your authorized chat, send /meta-delete-data-confirm. This deletes conversation history, drafts, approvals and the stored Meta connection. It does not delete campaigns in Meta. WhatsApp event queues, logs, backups and provider-held records are not currently included; contact the operator for those records.'));
+
 
 app.get('/', (req, res) =>
   res.json({

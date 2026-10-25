@@ -125,6 +125,7 @@ async function initializeDatabase() {
       id BIGSERIAL PRIMARY KEY,
       client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
       lifecycle_id UUID NOT NULL REFERENCES campaign_lifecycles(id) ON DELETE CASCADE,
+      generation BIGINT NOT NULL,
       kind TEXT NOT NULL CHECK (kind IN ('CREATE_PAUSED','ACTIVATE')),
       status TEXT NOT NULL DEFAULT 'PENDING',
       attempts INTEGER NOT NULL DEFAULT 0,
@@ -193,6 +194,31 @@ async function initializeDatabase() {
   `;
 
   await query(schema);
+  await query(`
+    ALTER TABLE clients ADD COLUMN IF NOT EXISTS meta_generation BIGINT NOT NULL DEFAULT 0;
+    CREATE TABLE IF NOT EXISTS campaign_local_drafts (
+      id UUID PRIMARY KEY,
+      client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      ad_account_id TEXT NOT NULL,
+      payload JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS meta_connections (
+      client_id BIGINT PRIMARY KEY REFERENCES clients(id) ON DELETE CASCADE,
+      meta_user_id TEXT NOT NULL,
+      token_ciphertext TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS meta_login_secrets (
+      secret_hash TEXT PRIMARY KEY,
+      client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      generation BIGINT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('INVITE','STATE')),
+      binding_hash TEXT,
+      expires_at TIMESTAMPTZ NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_meta_login_expiry ON meta_login_secrets(expires_at);
+  `);
   await query('SELECT 1');
   ready = true;
   logger.info('Database initialized');

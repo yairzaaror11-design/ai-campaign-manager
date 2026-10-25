@@ -45,11 +45,23 @@ async function handleBriefMessage(phone, text) {
   if (approval) {
     try {
       brief = approveBrief(brief, Number(approval[1]));
-      await saveBrief(client.id, brief, previousRevision);
       const strategy = draftStrategy(brief);
       if (process.env.MOCK_META_ENABLED !== 'true') {
-        return { handled: true, reply: 'הבריף אושר. הצעת אסטרטגיה: ' + JSON.stringify(strategy) + '\\nיצירת הטיוטה אינה זמינה מחוץ לסביבת Mock.' };
+        const connection = await require('./metaConnection').credentials(client.id);
+        if (connection.meta_ad_account_id !== brief.adAccountId) throw Error('TENANT_ACCOUNT_MISMATCH');
+        const draftId = require('node:crypto').randomUUID();
+        await require('./db').transaction(async tx => {
+          const locked = await tx('SELECT meta_ad_account_id FROM clients WHERE id=$1 FOR UPDATE',[client.id]);
+          if (locked.rows[0]?.meta_ad_account_id !== brief.adAccountId) throw Error('TENANT_ACCOUNT_MISMATCH');
+          const saved = await tx('UPDATE campaign_briefs SET payload=$3::jsonb,status=$4,revision=$5,updated_at=NOW() WHERE id=$1 AND client_id=$2 AND revision=$6 RETURNING id',
+            [brief.id,client.id,JSON.stringify(brief),brief.status,brief.revision,previousRevision]);
+          if (!saved.rows.length) throw Error('STALE_BRIEF_UPDATE');
+          await tx('INSERT INTO campaign_local_drafts(id,client_id,ad_account_id,payload) VALUES($1,$2,$3,$4::jsonb)',
+            [draftId,client.id,brief.adAccountId,JSON.stringify({brief,strategy,status:'LOCAL_DRAFT',requiresPublicationApproval:true})]);
+        });
+        return { handled: true, reply: 'נשמרה טיוטה מקומית לחשבון המחובר: ' + draftId + '\nאסטרטגיה: ' + JSON.stringify(strategy) + '\nלא נוצר קמפיין ב־Meta ולא בוצע חיוב. פרסום אינו זמין בשלב זה.' };
       }
+      await saveBrief(client.id, brief, previousRevision);
       const creativeResponse = await processWithGemini('כתוב מודעת Meta בעברית בפורמט שתי שורות: כותרת ואז טקסט, עבור ' + brief.fields.businessName + ' / ' + brief.fields.product + '. ללא הבטחות לא מבוססות. אל תפעיל כלים.', []);
       const lines = String(creativeResponse.text).split('\\n').filter(Boolean);
       const creatives = [{ headline: (lines[0] || 'מודעה לבדיקה').slice(0, 100), copy: (lines.slice(1).join(' ') || lines[0] || 'טקסט לבדיקה').slice(0, 1000), assetId: 'mock-asset-' + brief.id }];

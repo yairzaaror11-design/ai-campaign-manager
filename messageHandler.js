@@ -111,7 +111,7 @@ async function handleVoice(from, message) {
   }
 }
 
-async function handleIncomingMessage(message, contact) {
+async function handleTenantMessage(message, contact) {
   const from = String(message.from || '');
 
   if (!isAuthorized(from)) {
@@ -146,6 +146,24 @@ async function handleIncomingMessage(message, contact) {
 }
 
 async function routeText(from, text, prefix = '') {
+  const meta = require('./metaConnection');
+  if (text.startsWith('/meta-')) {
+    try {
+      const client = await getOrCreateClient(from);
+      let reply;
+      if (text === '/meta-delete-data-confirm') {
+        await require('./db').transaction(tx=>require('./metaDeletion').deleteClient(client.id,tx));
+        reply = 'נתוני הלקוח נמחקו מהמסד הפעיל, כולל שיחות, טיוטות והרשאות. קמפיינים ב־Meta לא שונו.';
+      }
+      else if (text === '/meta-connect') reply = 'קישור אישי לחיבור Meta (10 דקות, אין להעביר): ' + await meta.createInvite(client.id);
+      else if (text === '/meta-accounts') reply = JSON.stringify((await meta.accounts(client.id)).data) + '\nלבחירה: /meta-select act_ID';
+      else if (/^\/meta-select act_\d+$/.test(text)) { await meta.selectAccount(client.id,text.split(' ')[1]); reply = 'חשבון המודעות חובר. ניתן להתחיל בריף עם /brief TRAFFIC.'; }
+      else if (text === '/meta-disconnect') { await meta.disconnect(client.id); reply = 'החיבור המקומי והטוקן נמחקו. ניתן להסיר את האפליקציה גם בהגדרות Meta.'; }
+      else reply = 'פקודות: /meta-connect /meta-accounts /meta-select act_ID /meta-disconnect';
+      await safeSend(from,reply);
+    } catch { await safeSend(from,'חיבור Meta אינו זמין או שההרשאה פגה. בקש /meta-connect מחדש.'); }
+    return;
+  }
   if (text === '/start') {
     await safeSend(
       from,
@@ -187,4 +205,9 @@ async function routeText(from, text, prefix = '') {
   }
 }
 
+async function handleIncomingMessage(message, contact) {
+  if (!isAuthorized(message.from)) return handleTenantMessage(message, contact);
+  const client = await getOrCreateClient(message.from,contact?.profile?.name);
+  return require('./metaConnection').context.run(String(client.id),()=>handleTenantMessage(message, contact));
+}
 module.exports = { handleIncomingMessage };
