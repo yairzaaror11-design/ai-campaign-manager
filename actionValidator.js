@@ -14,6 +14,13 @@ function positiveNumber(value) {
   return Number.isFinite(n) && n > 0;
 }
 
+function validMinorBudget(parameters) {
+  return Number.isSafeInteger(parameters?.dailyBudgetMinor) &&
+    parameters.dailyBudgetMinor > 0 &&
+    typeof parameters.currency === 'string' &&
+    /^[A-Z]{3}$/.test(parameters.currency);
+}
+
 function validateActionPlan(plan) {
   const errors = [];
 
@@ -49,6 +56,9 @@ function validateActionPlan(plan) {
     if (!positiveNumber(plan.parameters?.dailyBudget)) {
       errors.push('Invalid daily budget');
     }
+    if (!validMinorBudget(plan.parameters)) {
+      errors.push('Missing verified budget in Meta minor units and currency');
+    }
   }
 
   if (plan.intent === 'CREATE_AD') {
@@ -62,6 +72,9 @@ function validateActionPlan(plan) {
     if (!plan.target?.campaignId) errors.push('Missing campaign ID');
     if (!positiveNumber(plan.parameters?.dailyBudget)) {
       errors.push('Invalid daily budget');
+    }
+    if (!validMinorBudget(plan.parameters)) {
+      errors.push('Missing verified budget in Meta minor units and currency');
     }
   }
 
