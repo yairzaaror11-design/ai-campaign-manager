@@ -8,6 +8,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   metadata-probe:
+    if: github.ref == 'refs/heads/audit-security-hardening-20261025' && github.repository == 'yairzaaror11-design/ai-campaign-manager'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
