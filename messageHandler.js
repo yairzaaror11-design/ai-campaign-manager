@@ -101,11 +101,7 @@ async function processNaturalLanguage(from, text, prefix = '') {
 async function handleVoice(from, message) {
   try {
     const transcript = await transcribeVoiceMessage(message);
-    await processNaturalLanguage(
-      from,
-      transcript,
-      `שמעתי: "${transcript}"`
-    );
+    await routeText(from, transcript, `שמעתי: "${transcript}"`);
   } catch (error) {
     logger.error('Voice handling failed', { error: error.message });
     await safeSend(
@@ -146,7 +142,10 @@ async function handleIncomingMessage(message, contact) {
 
   const text = String(message.text?.body || '').trim();
   if (!text) return;
+  await routeText(from, text);
+}
 
+async function routeText(from, text, prefix = '') {
   if (text === '/start') {
     await safeSend(
       from,
@@ -181,7 +180,7 @@ async function handleIncomingMessage(message, contact) {
         return;
       }
     }
-    await processNaturalLanguage(from, text);
+    await processNaturalLanguage(from, text, prefix);
   } catch (error) {
     logger.error('Message handling failed', { error: error.message });
     await safeSend(from, 'הייתה תקלה בעיבוד הבקשה. נסה שוב בעוד רגע.');
