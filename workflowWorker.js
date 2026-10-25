@@ -5,7 +5,7 @@ const { createPaused, activate } = require('./campaignLifecycle');
 const { createDurableMockMetaAdapter } = require('./durableMockMetaAdapter');
 
 async function runOne(targetLifecycleId = null) {
-  if (process.env.MOCK_META_ENABLED !== 'true') return { status: 'DISABLED' };
+  if (process.env.MOCK_META_ENABLED !== 'true' || process.env.READ_ONLY !== 'true') return { status: 'DISABLED' };
   const claimed = await transaction(async tx => {
     const r = await tx(`SELECT id,client_id,lifecycle_id,kind FROM workflow_jobs
       WHERE status IN ('PENDING','LEASED') AND (locked_until IS NULL OR locked_until < NOW()) AND ($1::uuid IS NULL OR lifecycle_id=$1::uuid)
@@ -25,7 +25,7 @@ async function runOne(targetLifecycleId = null) {
     let next;
     if (kind === 'CREATE_PAUSED' && flow.status === 'DRAFT_APPROVED') next = await createPaused(flow,adapter);
     else if (kind === 'ACTIVATE' && flow.status === 'ACTIVATION_APPROVED') next = await activate(flow,adapter);
-    else if (['AWAITING_ACTIVATION_APPROVAL','ACTIVE_VERIFIED'].includes(flow.status)) next = flow;
+    else if ((kind === 'CREATE_PAUSED' && flow.status === 'AWAITING_ACTIVATION_APPROVAL') || (kind === 'ACTIVATE' && flow.status === 'ACTIVE_VERIFIED')) next = flow;
     else throw Error('State requires manual reconciliation');
     if (next !== flow) await save(client_id,next,row.revision);
     await query("UPDATE workflow_jobs SET status='DONE',locked_until=NULL,updated_at=NOW() WHERE id=$1", [id]);
