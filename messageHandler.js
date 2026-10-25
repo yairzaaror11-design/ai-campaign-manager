@@ -30,7 +30,9 @@ function approvalInstruction(approval) {
     `כדי לאשר שלח: *אשר ${approval.code}*`,
     `האישור תקף לכ-${minutes} דקות.`,
     '',
-    'READ_ONLY פעיל כרגע, לכן האישור ייבדק אך לא ישנה את Meta.'
+    process.env.READ_ONLY === 'false'
+      ? 'לאחר אישור, המערכת עשויה לבצע את הפעולה בחשבון Meta.'
+      : 'READ_ONLY פעיל כרגע, לכן האישור ייבדק אך לא ישנה את Meta.'
   ].join('\n');
 }
 
