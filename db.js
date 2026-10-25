@@ -181,6 +181,10 @@ async function databaseStatus() {
   }
 }
 
+async function closeDatabase() {
+  if (pool) { const current = pool; pool = null; ready = false; await current.end(); }
+}
+
 function isReady() {
   return ready;
 }
@@ -188,6 +192,7 @@ function isReady() {
 module.exports = {
   query,
   transaction,
+  closeDatabase,
   initializeDatabase,
   databaseStatus,
   configured,
