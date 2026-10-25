@@ -10,7 +10,7 @@ function createLifecycle({ tenantId, brief, strategy, creatives }) {
 }
 
 function approveStage(flow, stage, actorId, expectedHash) {
-  if (!actorId || expectedHash !== flow.planHash || hash(flow.plan) !== flow.planHash) throw Error('Missing actor or stale plan');
+  if (!actorId || expectedHash !== flow.planHash || hash({ brief: flow.plan.brief, strategy: flow.plan.strategy, creatives: flow.plan.creatives }) !== flow.planHash) throw Error('Missing actor or stale plan');
   const required = stage === 'CREATE_PAUSED' ? 'AWAITING_DRAFT_APPROVAL' : stage === 'ACTIVATE' ? 'AWAITING_ACTIVATION_APPROVAL' : null;
   if (!required || flow.status !== required) throw Error('Invalid approval stage');
   const approval = { stage, actorId, planHash: flow.planHash, at: new Date().toISOString(), expiresAt: new Date(Date.now() + Math.max(1, Math.min(60, Number(process.env.APPROVAL_TTL_MINUTES || 10))) * 60000).toISOString(), id: crypto.randomUUID() };
