@@ -59,9 +59,9 @@ test('WhatsApp inbound events are deduplicated, durably claimed, and never auto-
     assert.equal(run.status, 'IDLE');
 
     await query(
-      \`UPDATE whatsapp_inbound_events
+      `UPDATE whatsapp_inbound_events
        SET status = 'PENDING', locked_until = NULL
-       WHERE event_id = $1\`,
+       WHERE event_id = $1`,
       [eventId]
     );
     const processed = await runOne({ handler: async message => seen.push(message.id) });
@@ -79,8 +79,8 @@ test('WhatsApp inbound events are deduplicated, durably claimed, and never auto-
     assert.equal(failed.status, 'MANUAL_REVIEW');
 
     const rows = await query(
-      \`SELECT event_id, status, payload, last_error
-       FROM whatsapp_inbound_events WHERE event_id = ANY($1::text[])\`,
+      `SELECT event_id, status, payload, last_error
+       FROM whatsapp_inbound_events WHERE event_id = ANY($1::text[])`,
       [[eventId, failedId]]
     );
     const byId = new Map(rows.rows.map(row => [row.event_id, row]));

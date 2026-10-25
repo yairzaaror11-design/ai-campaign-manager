@@ -40,10 +40,10 @@ async function enqueueInboundEvents(events) {
     let inserted = 0;
     for (const event of events) {
       const result = await tx(
-        \`INSERT INTO whatsapp_inbound_events (event_id, payload)
+        `INSERT INTO whatsapp_inbound_events (event_id, payload)
          VALUES ($1, $2::jsonb)
          ON CONFLICT (event_id) DO NOTHING
-         RETURNING event_id\`,
+         RETURNING event_id`,
         [event.eventId, JSON.stringify(event.payload)]
       );
       inserted += result.rowCount;
@@ -55,21 +55,21 @@ async function enqueueInboundEvents(events) {
 async function claimNextInboundEvent() {
   return transaction(async tx => {
     const selected = await tx(
-      \`SELECT event_id, payload
+      `SELECT event_id, payload
        FROM whatsapp_inbound_events
        WHERE status = 'PENDING' AND available_at <= NOW()
        ORDER BY created_at, event_id
        FOR UPDATE SKIP LOCKED
-       LIMIT 1\`
+       LIMIT 1`
     );
     if (!selected.rows.length) return null;
     const eventId = selected.rows[0].event_id;
     const claimed = await tx(
-      \`UPDATE whatsapp_inbound_events
+      `UPDATE whatsapp_inbound_events
        SET status = 'PROCESSING', attempts = attempts + 1,
            locked_until = NOW() + INTERVAL '5 minutes', updated_at = NOW()
        WHERE event_id = $1 AND status = 'PENDING'
-       RETURNING event_id, payload\`,
+       RETURNING event_id, payload`,
       [eventId]
     );
     return claimed.rows[0] || null;
@@ -78,31 +78,31 @@ async function claimNextInboundEvent() {
 
 async function markInboundDone(eventId) {
   await query(
-    \`UPDATE whatsapp_inbound_events
+    `UPDATE whatsapp_inbound_events
      SET status = 'DONE', payload = '{}'::jsonb, last_error = NULL,
          locked_until = NULL, updated_at = NOW()
-     WHERE event_id = $1 AND status = 'PROCESSING'\`,
+     WHERE event_id = $1 AND status = 'PROCESSING'`,
     [eventId]
   );
 }
 
 async function markInboundForReview(eventId, reason = 'HANDLER_FAILED') {
   await query(
-    \`UPDATE whatsapp_inbound_events
+    `UPDATE whatsapp_inbound_events
      SET status = 'MANUAL_REVIEW', payload = '{}'::jsonb, last_error = $2,
          locked_until = NULL, updated_at = NOW()
-     WHERE event_id = $1 AND status = 'PROCESSING'\`,
+     WHERE event_id = $1 AND status = 'PROCESSING'`,
     [eventId, String(reason).slice(0, 80)]
   );
 }
 
 async function markExpiredInboundForReview() {
   const result = await query(
-    \`UPDATE whatsapp_inbound_events
+    `UPDATE whatsapp_inbound_events
      SET status = 'MANUAL_REVIEW', payload = '{}'::jsonb,
          last_error = 'PROCESSING_OUTCOME_UNKNOWN', locked_until = NULL,
          updated_at = NOW()
-     WHERE status = 'PROCESSING' AND locked_until <= NOW()\`
+     WHERE status = 'PROCESSING' AND locked_until <= NOW()`
   );
   return result.rowCount;
 }
