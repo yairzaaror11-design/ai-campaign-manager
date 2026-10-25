@@ -30,7 +30,7 @@ const QUESTIONS = Object.freeze({
 });
 
 function newBrief({ tenantId, adAccountId, type, dailyBudget }) {
-  if (!tenantId || !/^act_\d+$/.test(String(adAccountId))) throw Error('Invalid tenant or ad account');
+  if (!tenantId || !/^act_[0-9]+$/.test(String(adAccountId)) || /[\r\n]/.test(String(adAccountId))) throw Error('Invalid tenant or ad account');
   if (!WORKFLOWS[type]) throw Error('Unsupported campaign workflow');
   const brief = { id: crypto.randomUUID(), tenantId, adAccountId, type, status: 'COLLECTING', revision: 1, fields: {} };
   if (dailyBudget !== undefined) return updateBrief(brief, { dailyBudget });
