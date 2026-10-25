@@ -33,3 +33,19 @@ test('failed or uncertain verification stops lifecycle', async () => {
 test('tenant mismatch blocks workflow', () => {
   assert.throws(() => createLifecycle({ ...plan, tenantId: 't2' }), /Tenant mismatch/);
 });
+
+
+test('integrated mock adapter creates paused objects and verifies activation', async () => {
+  const { createMockMetaAdapter } = require('../mockMetaAdapter');
+  const adapter = createMockMetaAdapter();
+  let flow = createLifecycle(plan);
+  flow = approveStage(flow, 'CREATE_PAUSED', 'tenant-owner', flow.planHash);
+  flow = await createPaused(flow, adapter);
+  assert.equal(flow.status, 'AWAITING_ACTIVATION_APPROVAL');
+  assert.equal(flow.objects.creativeIds.length, 1);
+  assert.equal(await adapter.verifyPaused(flow.objects), true);
+  flow = approveStage(flow, 'ACTIVATE', 'tenant-owner', flow.planHash);
+  flow = await activate(flow, adapter);
+  assert.equal(flow.status, 'ACTIVE_VERIFIED');
+  assert.equal(await adapter.verifyActive(flow.objects), true);
+});
