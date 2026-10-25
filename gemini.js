@@ -175,7 +175,7 @@ async function processWithGemini(text, history = [], options = {}) {
 
   const ai = options.ai || new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const chat = ai.chats.create({
-    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
+    model: process.env.GEMINI_MODEL || 'gemini-3.5-flash',
     history: toGeminiHistory(history),
     config: {
       systemInstruction: SYSTEM,

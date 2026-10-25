@@ -177,10 +177,19 @@ async function routeText(from, text, prefix = '') {
     try {const client=await getOrCreateClient(from);await safeSend(from,await require('./reportService').campaignReport(client.id,text.split(' ')[1] || 'last_7d'));}
     catch {await safeSend(from,'לא ניתן להפיק דוח כרגע. בדוק שחיבור Meta והחשבון הנבחר בתוקף.');}return;
   }
+  const graphicBrief=require('./graphicService').graphicPrompt(text);
+  if(graphicBrief!==null) {
+    try {
+      const client=await getOrCreateClient(from);
+      const media=await require('./graphicService').createGraphic(client.id,graphicBrief);
+      await require('./whatsappDelivery').enqueue(from,{type:'image',image:{id:media.whatsapp_media_id,caption:'הגרפיקה מוכנה לבדיקה. מזהה מדיה: '+media.id+'\nלא פורסם קמפיין. העלאה לחשבון הפרסום מחייבת אישור נפרד.'}});
+    } catch {await safeSend(from,'יצירת הגרפיקה לא הושלמה. אפשר לנסות בבקשה חדשה עם תיאור העסק, המסר והסגנון הרצוי.');}
+    return;
+  }
   if (text === '/start') {
     await safeSend(
       from,
-      'היי, אני קמפיין בצ׳ט. אני תומך בטקסט, תמונות, סרטונים והודעות קוליות. מנוע Meta ומנוע האישורים מותקנים, אבל פעולות שינוי עדיין נעולות ב-READ_ONLY.'
+      'היי, אני קמפיין בצ׳ט. אפשר לבקש קמפיין, גרפיקה ודוחות בעברית. לחיבור חשבון פרסום: /meta-connect. ליצירת גרפיקה: צור לי גרפיקה ותאר את העסק והמסר. לדוח: /report. כל שינוי בקמפיין דורש אישור; פרסום זמין רק כאשר הרשאות הכתיבה מופעלות.'
     );
     return;
   }

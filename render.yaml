@@ -21,6 +21,12 @@ services:
         value: "true"
       - key: META_LEGACY_SINGLE_TENANT
         value: "false"
+      - key: GRAPHICS_ENABLED
+        value: "true"
+      - key: GRAPHICS_ATTEMPT_LIMIT
+        value: "100"
+      - key: GEMINI_IMAGE_MODEL
+        value: gemini-nano-banana-2.1
       - key: AI_PROVIDER
         value: gemini
       - key: TRUST_PROXY_HOPS
@@ -60,7 +66,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
-        value: gemini-3.8-flash
+        value: gemini-3.5-flash
       - key: GEMINI_TRANSCRIBE_MODEL
         value: gemini-3.5-transcribe
       - key: META_GRAPH_VERSION

@@ -35,7 +35,7 @@ test('production services with embedded PostgreSQL and mocked providers',async t
    await db.query('UPDATE clients SET meta_ad_account_id=$2,meta_user_id=$3 WHERE id=$1',[c.id,c.id===a.id?'act_11':'act_22','10'+c.id]);
   }
   await t.test('migration checksums and repeat initialization preserve rows',async()=>{
-   await db.initializeDatabase();assert.equal((await db.query('SELECT * FROM schema_migrations')).rows.length,3);
+   await db.initializeDatabase();assert.equal((await db.query('SELECT * FROM schema_migrations')).rows.length,4);
    assert.equal((await db.query('SELECT id FROM clients')).rows.length,2);
   });
   await t.test('cross-tenant approval codes are rejected and stored as keyed digests',async()=>{

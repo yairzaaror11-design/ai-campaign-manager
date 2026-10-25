@@ -16,7 +16,7 @@ test('Gemini mock receives Hebrew message and returns reply without network', as
   assert.deepEqual(result.actionPlans, []);
   assert.equal(captured.history.length,2);
   assert.equal(captured.history[1].role,'model');
-  assert.equal(captured.model,process.env.GEMINI_MODEL || 'gemini-2.5-flash');
+  assert.equal(captured.model,process.env.GEMINI_MODEL || 'gemini-3.5-flash');
   assert.ok(captured.config.maxOutputTokens <= 2048);
 });
 

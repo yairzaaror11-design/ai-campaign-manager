@@ -14,6 +14,7 @@ async function maintain() {
   await tx("UPDATE whatsapp_inbound_events SET status='MANUAL_REVIEW',payload='{}'::jsonb,last_error='RETENTION_EXPIRED',locked_until=NULL WHERE created_at<NOW()-($1::integer*INTERVAL '1 day') AND status IN ('PENDING','PROCESSING')",[days]);
   await tx("UPDATE whatsapp_outbox SET status='BLOCKED',payload='{}'::jsonb,error_code='RETENTION_EXPIRED' WHERE created_at<NOW()-($1::integer*INTERVAL '1 day') AND status IN ('PENDING','PROCESSING')",[days]);
   for(const table of ['conversation_messages','whatsapp_receipts','tenant_audit','deletion_receipts','performance_snapshots']) await tx(`DELETE FROM ${table} WHERE created_at<NOW()-($1::integer*INTERVAL '1 day')`,[days]);
+  await tx('DELETE FROM graphic_jobs WHERE expires_at<NOW()');
   await tx('DELETE FROM tenant_media WHERE expires_at<NOW()');
   await tx('DELETE FROM telnyx_inbound_messages WHERE expires_at<NOW()');
  });

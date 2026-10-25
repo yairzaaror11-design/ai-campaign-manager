@@ -32,7 +32,7 @@ async function runOne({transport}={}) {
    if(!r.rows.length) return null;
    const row=r.rows[0];
    const window=await tx("SELECT opted_in,last_inbound_at>NOW()-INTERVAL '24 hours' AS open FROM whatsapp_contacts WHERE phone=$1",[row.recipient]);
-   if((row.payload.type==='text'&&!window.rows[0]?.open)||(row.payload.type==='template'&&!window.rows[0]?.opted_in)) {
+   if((['text','image'].includes(row.payload.type)&&!window.rows[0]?.open)||(row.payload.type==='template'&&!window.rows[0]?.opted_in)) {
      await tx("UPDATE whatsapp_outbox SET status='BLOCKED',error_code='POLICY_WINDOW_OR_OPTIN',payload='{}'::jsonb WHERE id=$1",[row.id]);
      return {blocked:true};
    }
