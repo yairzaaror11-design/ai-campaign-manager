@@ -22,7 +22,7 @@ async function handleLifecycleMessage(phone, text) {
     flow = approveStage(flow, stage, String(client.id), match[2]);
     // Persist approval before attempting any external side effect.
     let revision = await save(client.id, flow, row.revision);
-    const result = await runOne();
+    const result = await runOne(flow.id);
     const updated = await latest(client.id);
     flow = updated?.payload || flow;
     return { handled: true, reply: 'תוצאת סביבת Mock בלבד: ' + result.status + '\n' + JSON.stringify(flow.objects || {}) + (flow.status === 'AWAITING_ACTIVATION_APPROVAL' ? '\nלהפעלה נדרש אישור נפרד: /campaign-activate ' + flow.planHash : '') };
