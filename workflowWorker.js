@@ -4,12 +4,12 @@ const { save } = require('./lifecycleStore');
 const { createPaused, activate } = require('./campaignLifecycle');
 const { createDurableMockMetaAdapter } = require('./durableMockMetaAdapter');
 
-async function runOne() {
+async function runOne(targetLifecycleId = null) {
   if (process.env.MOCK_META_ENABLED !== 'true') return { status: 'DISABLED' };
   const claimed = await transaction(async tx => {
     const r = await tx(`SELECT id,client_id,lifecycle_id,kind FROM workflow_jobs
-      WHERE status IN ('PENDING','LEASED') AND (locked_until IS NULL OR locked_until < NOW())
-      ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1`);
+      WHERE status IN ('PENDING','LEASED') AND (locked_until IS NULL OR locked_until < NOW()) AND ($1::uuid IS NULL OR lifecycle_id=$1::uuid)
+      ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1`, [targetLifecycleId]);
     if (!r.rows.length) return null;
     await tx("UPDATE workflow_jobs SET status='LEASED',attempts=attempts+1,locked_until=NOW()+INTERVAL '2 minutes',updated_at=NOW() WHERE id=$1", [r.rows[0].id]);
     return r.rows[0];
