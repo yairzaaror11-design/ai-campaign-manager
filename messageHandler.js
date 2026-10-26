@@ -146,6 +146,13 @@ async function handleTenantMessage(message, contact) {
     return;
   }
 
+  if(message.type==='interactive'){
+    const client=await getOrCreateClient(from);
+    const selected=await require('./conversationUi').consume(client.id,message);
+    if(!selected){await safeSend(from,'הבחירה הזו כבר לא עדכנית. אפשר לענות בכתיבה על השאלה האחרונה או לבקש להמשיך.');return;}
+    await routeText(from,selected);return;
+  }
+
   if (message.type !== 'text') {
     await safeSend(
       from,
@@ -167,7 +174,7 @@ async function routeText(from, text, prefix = '') {
       const client = await getOrCreateClient(from);
       if(text!=='/meta-delete-data-confirm'&&require('./marketingConversation').enabled()){
         const guided=await require('./marketingConversation').handleMarketingMessage(client.id,text,require('./whatsappDelivery').messageContext.getStore()?.eventId,{onSlow:()=>notifyProcessing(from)});
-        if(guided.handled){await safeSend(from,guided.reply);return;}
+        if(guided.handled){const ui=await require('./conversationUi').prepare(client.id,guided.reply);await safeSend(from,ui.text,ui);return;}
       }
       let reply;
       if (text === '/meta-delete-data-confirm') {
@@ -241,7 +248,7 @@ async function routeText(from, text, prefix = '') {
       if(handled?.handled){
         const reply=prefix?`${prefix}\n\n${handled.reply}`:handled.reply;
         await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:handled.historyReply||reply}]);
-        await safeSend(from,reply);return;
+        if(owner==='marketing'){const ui=await require('./conversationUi').prepare(client.id,reply);await safeSend(from,ui.text,ui);}else await safeSend(from,reply);return;
       }
     }
     await processNaturalLanguage(from, text, prefix);

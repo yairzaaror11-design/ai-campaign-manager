@@ -9,9 +9,9 @@ async function transport(to,payload) {
     {headers:{Authorization:'Bearer '+process.env.WHATSAPP_ACCESS_TOKEN},timeout:15000,maxRedirects:0})).data;
  } catch {throw Error('WHATSAPP_SEND_UNCERTAIN');}
 }
-async function sendWhatsAppMessage(to,text) {
+async function sendWhatsAppMessage(to,text,options={}) {
  const delivery=require('./whatsappDelivery');
- return delivery.enqueue(to,delivery.textPayload(text));
+ return delivery.enqueue(to,options.interactivePayload||delivery.textPayload(text));
 }
 const safeSend=sendWhatsAppMessage;
 module.exports={transport,sendWhatsAppMessage,safeSend};

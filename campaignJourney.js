@@ -41,7 +41,7 @@ function buildDraft(p){
 }
 function advance(p,{target='strategy',prefix=''}={}){
  const j=p.journey;const field=nextField(p);
- if(field){j.stage='DISCOVERY';j.pendingField=field;j.paused=false;if(!j.asked.includes(field))j.asked.push(field);return{handled:true,reply:(prefix?prefix+'\n\n':'')+QUESTIONS[field]};}
+ if(field){j.stage='DISCOVERY';j.pendingField=field;j.paused=false;if(!j.asked.includes(field))j.asked.push(field);return{handled:true,reply:(prefix?prefix+'\n\n':'')+(field==='dailyBudget'?require('./budgetGuidance').explain()+'\n\n':'')+QUESTIONS[field]};}
  return stageReply(p,target==='ad'?'CREATIVE_REVIEW':target==='plan'?'PLAN_REVIEW':'STRATEGY_REVIEW',prefix);
 }
 function parsePending(field,text){
@@ -60,12 +60,13 @@ function transition(p,text,{analysis=localAnalysis(text),now=new Date().toISOStr
  const j=init(p),n=norm(text);const oldPending=j.pendingField;
  const result=(reply,extra={})=>({handled:true,reply,...extra});
  if(analysis.analysisUnavailable&&j.stage==='DISCOVERY'&&oldPending)return result('לא הצלחתי לפרש בביטחון את כל הפרטים בהודעה. נשמור על מה שכבר ידוע.\n'+QUESTIONS[oldPending]);
+ if(oldPending==='dailyBudget'&&/כמה.*(?:נותן|ייתן|פניות|לידים|מכירות|חשיפות)|מה.*תקציב.*נותן|מה מקבלים|עזרה.*תקציב/.test(text))return result(require('./budgetGuidance').explain()+'\n\n'+QUESTIONS.dailyBudget);
  if(analysis.intent==='pause'){j.paused=true;return result('עצרנו כאן. הפרטים נשמרו, ואפשר לחזור כשנוח.');}
  if(analysis.intent==='capabilities')return result('אפשר להכין אסטרטגיה ומודעות, לבנות טיוטת קמפיין, לבדוק פרסום קיים ולנתח נתונים מחשבון מחובר. במה נרצה להתחיל?');
  if(analysis.intent==='greeting'){
   if(j.draft&&!j.draft.stale&&['STRATEGY_REVIEW','CREATIVE_REVIEW','PLAN_REVIEW'].includes(j.stage))return stageReply(p,j.stage,'היי, הפרטים מהשיחה הקודמת שמורים. נמשיך מהמקום שבו עצרנו.');
   if(j.stage!=='IDLE'&&j.stage!=='COMPLETE')return advance(p,{target:j.requestedOutput||'strategy',prefix:'היי, הפרטים מהשיחה הקודמת שמורים. נמשיך מהמקום שבו עצרנו.'});
-  return result('היי! אני קמפיין בצ׳ט. אפשר לבנות קמפיין, לשפר פרסום קיים ולנתח תוצאות. מה נרצה לעשות היום?');
+  return result('היי! אני קמפיין בצ׳ט. נכיר בקצרה את העסק, נכין כיוון ומודעות, ואז נציג תוכנית לבדיקה שלך. נחבר חשבון פרסום כשצריך; פרסום ידרוש אישור נפרד. אפשר לבחור בלחיצה, לכתוב או לשלוח הודעה קולית. מה נרצה לעשות היום?');
  }
  if(analysis.intent==='clarify')return result(oldPending?(EXPLANATIONS[oldPending]||'כדי לבחור כיוון שמתאים לעסק, חסר הפרט הזה.')+'\n'+QUESTIONS[oldPending]:'אפשר לציין איזה פרט כדאי להסביר?');
  if(analysis.intent==='summary')return result(facts.summary(p)||'עדיין לא נמסרו פרטי עסק. אפשר לספר במה העסק עוסק.');
