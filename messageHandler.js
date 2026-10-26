@@ -20,6 +20,7 @@ const {
   resetSession
 } = require('./sessionStore');
 const { getOrCreateClient } = require('./clientStore');
+const { notifyProcessing } = require('./processingNotice');
 
 function approvalInstruction(approval) {
   const minutes = Math.max(
@@ -40,6 +41,7 @@ function approvalInstruction(approval) {
 }
 
 async function handleApproval(from, code) {
+  await notifyProcessing(from,'קיבלתי את בקשת האישור, בודק אותה.');
   const consumed = await consumeApproval(from, code);
 
   if (!consumed.ok) {
@@ -57,6 +59,7 @@ async function handleApproval(from, code) {
 }
 
 async function handleMedia(from, message) {
+  await notifyProcessing(from,'קיבלתי את הקובץ, בודק אותו.');
   try {
     const media = await receiveWhatsAppMedia(message);
     const client = await getOrCreateClient(from);
@@ -82,6 +85,7 @@ async function handleMedia(from, message) {
 
 
 async function processNaturalLanguage(from, text, prefix = '') {
+  await notifyProcessing(from);
   const history = await getHistory(from);
   let marketingContext=null;
   if (configured() && require('./marketingConversation').enabled()) {
@@ -108,6 +112,7 @@ async function processNaturalLanguage(from, text, prefix = '') {
 }
 
 async function handleVoice(from, message) {
+  await notifyProcessing(from,'קיבלתי את ההודעה הקולית, מקשיב ומכין לך תשובה.');
   try {
     const transcript = await transcribeVoiceMessage(message);
     await routeText(from, transcript, `שמעתי: "${transcript}"`);
@@ -157,6 +162,7 @@ async function handleTenantMessage(message, contact) {
 async function routeText(from, text, prefix = '') {
   const meta = require('./metaConnection');
   if (text.startsWith('/meta-')) {
+    if(text!=='/meta-delete-data-confirm') await notifyProcessing(from,'קיבלתי, בודק את חיבור חשבון הפרסום.');
     try {
       const client = await getOrCreateClient(from);
       let reply;
@@ -179,11 +185,13 @@ async function routeText(from, text, prefix = '') {
     await safeSend(from,text==='/notifications-on'?'הסכמת לקבלת עדכונים נרשמה. ניתן לבטל עם /notifications-off.':'הסכמת העדכונים בוטלה.');return;
   }
   if (/^\/report(?: (today|yesterday|last_7d|last_14d|last_30d|this_month|last_month))?$/.test(text)) {
+    await notifyProcessing(from,'קיבלתי, מכין לך את דוח הביצועים.');
     try {const client=await getOrCreateClient(from);await safeSend(from,await require('./reportService').campaignReport(client.id,text.split(' ')[1] || 'last_7d'));}
     catch {await safeSend(from,'לא ניתן להפיק דוח כרגע. בדוק שחיבור Meta והחשבון הנבחר בתוקף.');}return;
   }
   const graphicBrief=require('./graphicService').graphicPrompt(text);
   if(graphicBrief!==null) {
+    await notifyProcessing(from,'קיבלתי, מכין לך את הגרפיקה. אשלח אותה כאן כשהיא תהיה מוכנה.');
     try {
       const client=await getOrCreateClient(from);
       const media=await require('./graphicService').createGraphic(client.id,graphicBrief);

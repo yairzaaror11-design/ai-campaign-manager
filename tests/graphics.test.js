@@ -31,6 +31,7 @@ test('generated graphics are tenant-scoped, attempt-once, reusable as media and 
 });
 test('Hebrew and explicit graphic requests route without turning campaign requests into images',()=>{
  assert.match(graphics.graphicPrompt('צור לי גרפיקה לבית קפה'),/בית קפה/);
+ assert.match(graphics.graphicPrompt('תצור גרפיקה לבית קפה'),/בית קפה/);
  assert.equal(graphics.graphicPrompt('/graphic blue square banner'),'blue square banner');
  assert.equal(graphics.graphicPrompt('בנה קמפיין לידים'),null);
 });
