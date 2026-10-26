@@ -3,7 +3,7 @@ on:
   push:
     branches: [audit-security-hardening-20261025]
   pull_request:
-    branches: [render-safe-deploy]
+    branches: [render-safe-deploy, audit-security-hardening-20261025]
 permissions:
   contents: write
 jobs:
@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: audit-security-hardening-20261025
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '22'

@@ -26,6 +26,10 @@ async function handleBriefMessage(phone, text) {
       return { handled: true, reply: 'קיים תהליך קמפיין ממתין. שלח /campaign-status להמשך.' };
     }
     brief = newBrief({ tenantId: String(client.id), adAccountId: client.meta_ad_account_id, type, dailyBudget: start[2] ? Number(start[2]) : undefined });
+    if (require('./marketingConversation').enabled()) {
+      const seeds = await require('./marketingStore').briefSeeds(client.id);
+      if (Object.keys(seeds).length) brief = updateBrief(brief,seeds);
+    }
     await saveBrief(client.id, brief, null);
     return { handled: true, reply: nextQuestion(brief)?.question || 'הבריף מוכן לבדיקה.' };
   }
