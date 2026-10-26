@@ -54,15 +54,18 @@ async function handleIncomingMessage(message, contact, metadata) {
 
   // Build conversation context
   const session = getSession(from);
-  session.messages.push({ role: 'user', content: userText });
+  // processWithClaude appends the current user message to the history once.
 
   // Process with Claude AI
   try {
     const response = await processWithClaude(userText, session, from, pendingApprovals);
 
+    session.messages.push({ role: 'user', content: userText });
+
     // If response includes a budget change request, hold for approval
     if (response.requiresApproval) {
       await handleApprovalRequest(response, from, name);
+      session.messages.push({ role: 'assistant', content: response.text });
     } else {
       await sendWhatsAppMessage(from, response.text);
       session.messages.push({ role: 'assistant', content: response.text });
@@ -112,6 +115,11 @@ async function handleInteractiveReply(message, from, name) {
 
     pendingApprovals.delete(realId);
 
+    if (pending.expiresAt <= Date.now()) {
+      await sendWhatsAppMessage(from, '⚠️ This approval has expired. No changes were made.');
+      return;
+    }
+
     if (isApprove) {
       await sendWhatsAppMessage(from, '✅ Approved! Executing the budget change...');
       const { executeApprovedAction } = require('./metaAds');
@@ -130,6 +138,11 @@ async function handleInteractiveReply(message, from, name) {
 async function handleApprovalRequest(response, from, name) {
   const { v4: uuidv4 } = require('uuid');
   const approvalId = uuidv4().replace(/-/g, '').slice(0, 16); // shorter for button IDs
+
+  if (!response.approvalData || response.approvalData.action !== 'update_budget' || !response.approvalData.campaignId || !Number.isFinite(Number(response.approvalData.newBudget)) || Number(response.approvalData.newBudget) <= 0) {
+    await sendWhatsAppMessage(from, '⚠️ I could not verify the proposed budget change. No action was taken. Please specify the campaign and budget again.');
+    return;
+  }
 
   pendingApprovals.set(approvalId, {
     ...response.approvalData,
