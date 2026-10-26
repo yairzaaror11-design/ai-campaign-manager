@@ -2,7 +2,7 @@
 
 ## Verified baseline
 
-The implementation branches from `audit-security-hardening-20261025` at `b79a70f` on local branch `feature/dashboard-rtl`. PR #1 targets `render-safe-deploy`; neither that branch nor main is changed. The initial remote inspection observed the earlier PR head b9283a3; the clone included subsequent planning fixes, which are preserved.
+The implementation branches from `audit-security-hardening-20261025` at `b79a70f` on local branch `feature/dashboard-rtl`. PR #1 targets `render-safe-deploy`; neither that branch nor main is changed. The initial remote inspection observed the earlier PR head b9283a3; the clone included subsequent planning fixes, which are preserved. The subsequent WhatsApp decision-key and conversation-repair changes through 97a9c27 were merged before final verification. Their migration 008 is preserved; dashboard tables use migration 009.
 
 The active runtime is root index.js, Node >=22, Express, PostgreSQL, versioned transactional migrations, Node test runner and PGlite for isolated database tests. `src/` is legacy. No frontend build system or web login existed. Existing phone authorization is not browser authentication.
 
@@ -27,7 +27,7 @@ Render was checked through the connector in the owner-confirmed workspace `tea-d
 
 ## Decisions and risks
 
-Reuse clients.id as the tenant key. Do not introduce a parallel business hierarchy or duplicate conversation engine. Additive migration 008 contains only dashboard sessions, leads and tasks, all with client foreign keys and indexes. Existing deletion cascades remove new data. Do not infer a CRM lead automatically from a conversation with the business owner.
+Reuse clients.id as the tenant key. Do not introduce a parallel business hierarchy or duplicate conversation engine. Additive migration 009 contains only dashboard sessions, leads and tasks, all with client foreign keys and indexes. Existing deletion cascades remove new data. Do not infer a CRM lead automatically from a conversation with the business owner.
 
 Use server-configured SHA-256 access token hashes instead of accepting a phone number/client ID from the browser as identity. Tokens must contain at least 32 random bytes before hashing; configuration is an initial administrator-provisioned login, not a complete SaaS account system. Production uses Secure, HttpOnly, SameSite=Strict cookies, bounded sessions, database-backed login throttling, exact Origin and a custom request header for mutations. Revoking a configured token invalidates its sessions on the next request. Role changes apply immediately.
 

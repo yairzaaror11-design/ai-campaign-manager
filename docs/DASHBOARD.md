@@ -14,7 +14,7 @@ Open http://127.0.0.1:4173/app/demo. This preview starts only the dashboard rout
 ## Real data setup (isolated environment first)
 
 1. Use an isolated copy of the existing PostgreSQL schema and an existing clients.id. Never treat a browser-supplied phone/client ID as identity.
-2. The existing startup migration runner applies migration 008 transactionally. Review it before any release; do not apply it to production during development.
+2. The existing startup migration runner applies migration 009 transactionally. Review it before any release; do not apply it to production during development.
 3. Configure DASHBOARD_ORIGIN as the exact browser origin, for example http://localhost:3000 for local development. Production must use HTTPS. APP_PUBLIC_URL is a fallback when both surfaces use the same origin.
 4. Generate a random access token with at least 32 random bytes using an approved secret manager. Compute its SHA-256 hex digest. Keep the original token private and deliver it only to the verified owner of that existing client.
 5. Set DASHBOARD_ACCOUNTS to a JSON array of `{ "clientId": "<existing ID>", "role": "owner", "tokenHash": "<64-character SHA-256 digest>" }`. Allowed roles: owner and viewer. Do not commit actual tokens or account configuration. With no configured accounts, real-data access is denied.
@@ -71,3 +71,5 @@ Browser checks: demo overview and campaign spend bars; navigate to CRM, add a sa
 ## Remaining release work
 
 Run external PostgreSQL integration/restore checks in a disposable environment, verify actual owner/client provisioning and role policy, review migration/privacy/retention, test live reads with authorized test credentials, and approve a release separately. Browser chat sending, browser campaign editing/approvals, live campaign status, daily analytics, team management, creative UI and real billing are outside this change. Keep these limitations visible in the product and review description.
+
+Final local verification after integrating bot changes through 97a9c27: 144 tests, 142 passed, 0 failed, 2 external PostgreSQL checks skipped. The shared test fixture now routes cached store imports to the active PGlite instance, fixing use of a closed database when the newly added bot repair tests open a second fixture in the same process. Dashboard schema uses migration 009 to follow the bot repair migration 008.

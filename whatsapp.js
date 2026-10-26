@@ -11,7 +11,9 @@ async function transport(to,payload) {
 }
 async function sendWhatsAppMessage(to,text,options={}) {
  const delivery=require('./whatsappDelivery');
+ if(options.leadingText)await delivery.enqueue(to,delivery.textPayload(options.leadingText));
  return delivery.enqueue(to,options.interactivePayload||delivery.textPayload(text));
 }
 const safeSend=sendWhatsAppMessage;
 module.exports={transport,sendWhatsAppMessage,safeSend};
+

@@ -17,12 +17,12 @@ function offerMissing(p){if(!/14\s*(?:יום|ימים)/.test(facts.value(p,'offe
 function nextField(p){return [...missing(p),...offerMissing(p)][0]||null;}
 function stageReply(p,stage,prefix=''){
  const j=p.journey;j.stage=stage;j.pendingField=null;j.paused=false;
- const d=buildDraft(p);j.draft=d;
+ const d=j.draft&&!j.draft.stale&&j.draft.revision===j.revision?j.draft:buildDraft(p);j.draft=d;
  let reply;
  if(stage==='STRATEGY_REVIEW')reply=`הכיוון המוצע:\nמטרה עסקית: ${d.businessGoal}.\n${d.strategy}\nקהל: ${d.audience}.\nאזור: ${d.geography}.\n${d.budgetText}\n\nלהתקדם לניסוח המודעות?`;
  else if(stage==='CREATIVE_REVIEW')reply=d.creatives.map((a,i)=>`מודעה ${i+1}\n${a.headline}\n${a.body}\n${a.cta}`).join('\n\n')+'\n\nלהכין תוכנית קמפיין עם המודעות האלה?';
  else reply=`טיוטת תוכנית הקמפיין:\n${d.strategy}\nשירות: ${d.product}\nקהל: ${d.audience}\nאזור: ${d.geography}\n${d.budgetText}\nיעד פנייה: ${d.destination}\nמדד עסקי: ${d.businessGoal}\n${d.missing.length?'פרטים שעדיין חסרים: '+d.missing.join(', ')+'.\n':''}הטיוטה נשמרה מקומית. לא נוצר ולא הופעל קמפיין ב-Meta. אפשר לתקן פרטים או לבקש לחבר חשבון פרסום.`;
- return {handled:true,reply:(prefix?prefix+'\n\n':'')+reply};
+ return {handled:true,reply:(prefix?prefix+'\n\n':'')+reply,decisionKey:stage==='STRATEGY_REVIEW'?'strategy_review':stage==='CREATIVE_REVIEW'?'creative_review':null};
 }
 function buildDraft(p){
  const f=facts.all(p),knownBudget=facts.read(p,'dailyBudget')?.status==='known'?f.dailyBudget:null;
@@ -41,11 +41,12 @@ function buildDraft(p){
 }
 function advance(p,{target='strategy',prefix=''}={}){
  const j=p.journey;const field=nextField(p);
- if(field){j.stage='DISCOVERY';j.pendingField=field;j.paused=false;if(!j.asked.includes(field))j.asked.push(field);return{handled:true,reply:(prefix?prefix+'\n\n':'')+(field==='dailyBudget'?require('./budgetGuidance').explain()+'\n\n':'')+QUESTIONS[field]};}
+ if(field){j.stage='DISCOVERY';j.pendingField=field;j.paused=false;if(!j.asked.includes(field))j.asked.push(field);return{handled:true,reply:(prefix?prefix+'\n\n':'')+(field==='dailyBudget'?require('./budgetGuidance').explain()+'\n\n':'')+QUESTIONS[field],decisionKey:['businessGoal','dailyBudget','leadDestination','offerMediaSeparate'].includes(field)?field:null};}
  return stageReply(p,target==='ad'?'CREATIVE_REVIEW':target==='plan'?'PLAN_REVIEW':'STRATEGY_REVIEW',prefix);
 }
 function parsePending(field,text){
  const n=norm(text);
+ if(require('./conversationControl').hasControlContamination(text))return{error:'כדי להתחיל שיחה חדשה אפשר לכתוב ״נתחיל מחדש״. מה נרצה לעשות?'};
  if(/^(לא יודע(?:ת)?|לא ידוע|אין לי נתון|דלג|לא בטוח(?:ה)?)$/.test(n))return{status:'unknown',value:null};
  if(/^(לא רלוונטי|לא חל)$/.test(n))return{status:'not_applicable',value:null};
  if(field==='dailyBudget'){
@@ -59,15 +60,16 @@ function parsePending(field,text){
 function transition(p,text,{analysis=localAnalysis(text),now=new Date().toISOString()}={}){
  const j=init(p),n=norm(text);const oldPending=j.pendingField;
  const result=(reply,extra={})=>({handled:true,reply,...extra});
+ if(require('./conversationControl').isReset(text))return{handled:false,resetRequested:true};
  if(analysis.analysisUnavailable&&j.stage==='DISCOVERY'&&oldPending)return result('לא הצלחתי לפרש בביטחון את כל הפרטים בהודעה. נשמור על מה שכבר ידוע.\n'+QUESTIONS[oldPending]);
- if(oldPending==='dailyBudget'&&/כמה.*(?:נותן|ייתן|פניות|לידים|מכירות|חשיפות)|מה.*תקציב.*נותן|מה מקבלים|עזרה.*תקציב/.test(text))return result(require('./budgetGuidance').explain()+'\n\n'+QUESTIONS.dailyBudget);
+ if(oldPending==='dailyBudget'&&/כמה.*(?:נותן|ייתן|פניות|לידים|מכירות|חשיפות)|מה.*תקציב.*נותן|מה מקבלים|עזרה.*תקציב/.test(text))return result(require('./budgetGuidance').explain()+'\n\n'+QUESTIONS.dailyBudget,{decisionKey:'dailyBudget'});
  if(analysis.intent==='pause'){j.paused=true;return result('עצרנו כאן. הפרטים נשמרו, ואפשר לחזור כשנוח.');}
  if(analysis.intent==='capabilities')return result('אני עוזר להכין קמפיין לעסק: כיוון שיווקי, תמונות ומודעות ותוכנית לפרסום. אפשר גם לבדוק תוצאות מחשבון מחובר. במה נרצה להתחיל?');
  if(text==='נוסח לסרטון ששלחתי'){j.requestedOutput='ad';return advance(p,{target:'ad',prefix:'נכין נוסח שאפשר לשלב בסרטון, לפי פרטי העסק.'});}
  if(analysis.intent==='greeting'){
   if(j.draft&&!j.draft.stale&&['STRATEGY_REVIEW','CREATIVE_REVIEW','PLAN_REVIEW'].includes(j.stage))return stageReply(p,j.stage,'היי, הפרטים מהשיחה הקודמת שמורים. נמשיך מהמקום שבו עצרנו.');
   if(j.stage!=='IDLE'&&j.stage!=='COMPLETE')return advance(p,{target:j.requestedOutput||'strategy',prefix:'היי, הפרטים מהשיחה הקודמת שמורים. נמשיך מהמקום שבו עצרנו.'});
-  return result('היי! אני קמפיין בצ׳ט. נכיר בקצרה את העסק, נכין כיוון ומודעות, ואז נציג תוכנית לבדיקה שלך. נחבר חשבון פרסום כשצריך; פרסום ידרוש אישור נפרד. אפשר לבחור בלחיצה, לכתוב או לשלוח הודעה קולית. מה נרצה לעשות היום?');
+  return result('היי! אני קמפיין בצ׳ט. נכיר בקצרה את העסק, נכין כיוון ומודעות, ואז נציג תוכנית לבדיקה שלך. נחבר חשבון פרסום כשצריך; פרסום ידרוש אישור נפרד. אפשר לבחור בלחיצה, לכתוב או לשלוח הודעה קולית. מה נרצה לעשות היום?',{decisionKey:'welcome'});
  }
  if(analysis.intent==='clarify')return result(oldPending?(EXPLANATIONS[oldPending]||'כדי לבחור כיוון שמתאים לעסק, חסר הפרט הזה.')+'\n'+QUESTIONS[oldPending]:'אפשר לציין איזה פרט כדאי להסביר?');
  if(analysis.intent==='summary')return result(facts.summary(p)||'עדיין לא נמסרו פרטי עסק. אפשר לספר במה העסק עוסק.');
@@ -84,13 +86,10 @@ function transition(p,text,{analysis=localAnalysis(text),now=new Date().toISOStr
  }
  if(changed.length)facts.correctionsInvalidate(p,changed);
  if(analysis.intent==='ad'&&/לא אהבתי|שפר|שנה|שני|לתקן/.test(text)&&j.draft){j.pendingField='creativeFeedback';return result(QUESTIONS.creativeFeedback);}
- if(oldPending==='creativeFeedback'&&analysis.intent==='other'&&!changed.length){
-  j.creativeFeedback=text.slice(0,1000);j.pendingField=null;
-  const r=stageReply(p,'CREATIVE_REVIEW','שמרתי את הבקשה לתיקון. הנה נוסח חלופי לבדיקה.');
-  if(/קצר/.test(text)){p.journey.draft.creatives.forEach(a=>{a.body=`${p.journey.draft.product}. ${facts.value(p,'advantage')||''}`;});r.reply=p.journey.draft.creatives.map(a=>a.headline+'\n'+a.body+'\n'+a.cta).join('\n\n')+'\n\nלהכין תוכנית קמפיין?';}
-  else if(/אישי|אנושי|פשוט/.test(text)){p.journey.draft.creatives.forEach(a=>{a.body=`נעים להכיר, ${facts.value(p,'businessName')||'אנחנו הצוות'} כאן כדי להבין מה נדרש. מציעים ${p.journey.draft.product}. ${facts.value(p,'advantage')||''}`;});r.reply=p.journey.draft.creatives.map(a=>a.headline+'\n'+a.body+'\n'+a.cta).join('\n\n')+'\n\nלהכין תוכנית קמפיין?';}
-  return r;
+ if(oldPending==='creativeFeedback'&&!changed.length&&!['pause','greeting','summary','clarify'].includes(analysis.intent)){
+  return require('./creativeRevision').revise(p,text);
  }
+
  if(analysis.intent==='yes'){
   if(j.pendingAction==='prepare_local_draft'){j.pendingAction=null;return advance(p);}
   if(j.stage==='STRATEGY_REVIEW'){j.strategyApproved=true;return stageReply(p,'CREATIVE_REVIEW');}
@@ -126,3 +125,4 @@ function transition(p,text,{analysis=localAnalysis(text),now=new Date().toISOStr
  return{handled:false};
 }
 module.exports={CORE,QUESTIONS,EXPLANATIONS,init,missing,offerMissing,nextField,advance,buildDraft,parsePending,transition};
+

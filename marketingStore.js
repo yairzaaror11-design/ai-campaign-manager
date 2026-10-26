@@ -23,7 +23,7 @@ async function update(clientId,eventId,work) {
     const response=await work(profile);
     if(!response.handled&&!response.changed) return response;
     profile.version=(profile.version||0)+1;
-    if(eventId) profile.events=[...profile.events,{id:eventId,result:{handled:response.handled,reply:response.historyReply||response.reply}}].slice(-24);
+    if(eventId) profile.events=[...profile.events,{id:eventId,result:{handled:response.handled,reply:response.historyReply||response.reply,decisionKey:response.decisionKey}}].slice(-24);
     if(Buffer.byteLength(JSON.stringify(profile))>128000) throw Error('MARKETING_PROFILE_TOO_LARGE');
     await tx(`INSERT INTO marketing_profiles(client_id,payload) VALUES($1,$2::jsonb)
       ON CONFLICT(client_id) DO UPDATE SET payload=EXCLUDED.payload,revision=marketing_profiles.revision+1,updated_at=NOW()`,[clientId,JSON.stringify(profile)]);
@@ -31,6 +31,13 @@ async function update(clientId,eventId,work) {
     return response;
   });
 }
+async function restart(clientId){return update(clientId,null,p=>{
+ const connection=p.connection,version=p.version||0;
+ for(const key of Object.keys(p))delete p[key];
+ Object.assign(p,emptyProfile(),{version,connection});
+ const j=require('./campaignJourney').init(p);j.historyImported=true;j.stage='DISCOVERY';j.pendingField='businessType';
+ return{handled:false,changed:true,audit:'CONVERSATION_RESET'};
+});}
 async function pause(clientId) {return update(clientId,null,p=>{p.session=null;if(p.journey){p.journey.pendingField=null;p.journey.paused=true;p.journey.stage='IDLE';if(p.journey.draft)p.journey.draft.stale=true;}return {handled:false,changed:true};});}
 async function briefSeeds(clientId) {
   const profile=await load(clientId);
@@ -72,4 +79,5 @@ async function businessFacts(clientId,fields){
  if(!Array.isArray(fields)||fields.length<1||fields.length>5||fields.some(f=>!defs.FIELDS[f]))throw Error('INVALID_BUSINESS_FIELDS');
  const p=await load(clientId);return Object.fromEntries(fields.map(f=>{const a=p?defs.read(p,f):null;return[f,a?{value:a.value,status:a.status,scope:a.scope,source:a.source}:null];}));
 }
-module.exports={load,update,pause,briefSeeds,context,answers,emptyProfile,businessFacts};
+module.exports={load,update,restart,pause,briefSeeds,context,answers,emptyProfile,businessFacts};
+

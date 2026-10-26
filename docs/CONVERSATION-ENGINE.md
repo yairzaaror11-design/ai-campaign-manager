@@ -39,3 +39,12 @@ Migration 007 adds monotonic ingest_order/delivery_order, avoiding lexical Whats
 ## Verification and release boundaries
 
 Tests use mocked AI/Meta/voice/WhatsApp transports, embedded PostgreSQL and external PostgreSQL in CI. No new live OAuth, real message or campaign is used as test evidence. New migrations must run before workers start (existing initializeDatabase does this). Runtime imports require the complete commit, including both migrations and knowledge seed.
+
+
+## Conversation-control and creative repair
+
+Direct Hebrew requests to restart the conversation are handled before routing or extraction, just like `/reset`. They clear chat history, collected facts, the local draft and interactive/media context for that client, cancel pending action approvals, preserve the Meta connection and mark history import complete. This resets local conversation state, not external Meta objects or WhatsApp chat history on the device.
+
+Migration 008 removes only stored fact values containing explicit chat-reset instructions from the reported incident. Other facts and connections remain untouched; affected cached menus/results and drafts are invalidated. New fact validation rejects such control text.
+
+Creative feedback for message/all/style/short/personal now produces changed copy using existing facts and offer terms, invalidates review flags and persists the edited creatives when progressing to a plan. Unsupported feedback asks for clarification without claiming a rewrite. No new model call or external campaign operation is required.
