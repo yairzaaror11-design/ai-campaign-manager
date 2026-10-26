@@ -83,7 +83,12 @@ async function handleMedia(from, message) {
 
 async function processNaturalLanguage(from, text, prefix = '') {
   const history = await getHistory(from);
-  const result = await processWithGemini(text, history);
+  let marketingContext=null;
+  if (configured() && require('./marketingConversation').enabled()) {
+    const client=await getOrCreateClient(from);
+    marketingContext=await require('./marketingStore').context(client.id);
+  }
+  const result = await processWithGemini(text, history, {marketingContext});
   let reply = prefix ? `${prefix}\n\n${result.text}` : result.text;
 
   for (const plan of result.actionPlans || []) {
@@ -186,7 +191,7 @@ async function routeText(from, text, prefix = '') {
     } catch {await safeSend(from,'יצירת הגרפיקה לא הושלמה. אפשר לנסות בבקשה חדשה עם תיאור העסק, המסר והסגנון הרצוי.');}
     return;
   }
-  if (text === '/start') {
+  if (text === '/start' && (!configured() || !require('./marketingConversation').enabled())) {
     await safeSend(
       from,
       'היי, אני קמפיין בצ׳ט. אפשר לבקש קמפיין, גרפיקה ודוחות בעברית. לחיבור חשבון פרסום: /meta-connect. ליצירת גרפיקה: צור לי גרפיקה ותאר את העסק והמסר. לדוח: /report. כל שינוי בקמפיין דורש אישור; פרסום זמין רק כאשר הרשאות הכתיבה מופעלות.'
@@ -197,6 +202,10 @@ async function routeText(from, text, prefix = '') {
   if (text === '/reset') {
     await resetSession(from);
     await cancelPendingApprovals(from);
+    if(configured() && require('./marketingConversation').enabled()) {
+      const client=await getOrCreateClient(from);
+      await require('./marketingStore').pause(client.id);
+    }
     await safeSend(from, 'איפסתי את הקשר השיחה וביטלתי אישורים ממתינים.');
     return;
   }
@@ -217,6 +226,14 @@ async function routeText(from, text, prefix = '') {
       const briefResult = await handleBriefMessage(from, text);
       if (briefResult.handled) {
         await safeSend(from, briefResult.reply);
+        return;
+      }
+      const client=await getOrCreateClient(from);
+      const discovery=await require('./marketingConversation').handleMarketingMessage(client.id,text,require('./whatsappDelivery').messageContext.getStore()?.eventId);
+      if(discovery.handled) {
+        const reply=prefix?`${prefix}\n\n${discovery.reply}`:discovery.reply;
+        await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:reply}]);
+        await safeSend(from,reply);
         return;
       }
     }

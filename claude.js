@@ -16,7 +16,7 @@ async function processWithClaude(text,history=[],options={}) {
  const messages=[...history.slice(-12).map(m=>({role:m.role==='assistant'?'assistant':'user',content:String(m.content).slice(0,12000)})),{role:'user',content:text}];
  const plans=[];
  for(let round=0;round<6;round++) {
-   const response=await client.create({model:process.env.CLAUDE_MODEL,max_tokens:2048,system:gemini.SYSTEM,messages,
+   const response=await client.create({model:process.env.CLAUDE_MODEL,max_tokens:2048,system:require('./marketingPrompt').withMarketingContext(gemini.SYSTEM,options.marketingContext),messages,
      tools:gemini.functionDeclarations.map(f=>({name:f.name,description:f.description,input_schema:lowerSchema(f.parameters)}))});
    const calls=(response.content || []).filter(p=>p.type==='tool_use');
    if(!calls.length) return {text:(response.content||[]).filter(p=>p.type==='text').map(p=>p.text).join('\n'),actionPlans:plans};
