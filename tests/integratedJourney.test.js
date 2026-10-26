@@ -77,3 +77,12 @@ test('WhatsApp → confirmed business → preview → registration → CRM retai
   });
  }finally{for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);await h.close();}
 });
+test('a legacy manual brief cannot consume business import and portal commands',()=>{
+ const old=process.env.BUSINESS_LINK_ONBOARDING_ENABLED;process.env.BUSINESS_LINK_ONBOARDING_ENABLED='true';
+ try{const owner=require('../conversationOwner').owner;
+  assert.equal(owner({text:'https://example.com',hasOpenBrief:true,profile:null}),'marketing');
+  assert.equal(owner({text:'תצוגה מקדימה',hasOpenBrief:true,profile:null}),'marketing');
+  assert.equal(owner({text:'כן',hasOpenBrief:true,profile:{businessEntry:{awaitingConfirmation:true}}}),'marketing');
+  assert.equal(owner({text:'/brief TRAFFIC',hasOpenBrief:true,profile:null}),'brief');
+ }finally{if(old===undefined)delete process.env.BUSINESS_LINK_ONBOARDING_ENABLED;else process.env.BUSINESS_LINK_ONBOARDING_ENABLED=old;}
+});
