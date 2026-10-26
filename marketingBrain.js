@@ -1,15 +1,27 @@
 'use strict';
-// Pure marketing decision helpers. No external effects.
-function nextAction(profile) {
-  const answers=Object.values(profile.answers||{});
-  const find=(field)=>answers.find(a=>a.field===field&&a.status==='known')?.value;
-  const audience=String(find('target_audience')||find('audience')||'');
-  const budget=answers.find(a=>/budget/i.test(a.field)&&typeof a.value==='number');
-  const offer=answers.find(a=>/offer/i.test(a.field)&&a.status==='known');
-  const suggestions=[];
-  if(/כל (?:התחומים|בעלי העסקים)|כולם/.test(audience)) suggestions.push('קהל היעד רחב. כדאי לבדוק באילו ענפים כבר היו תוצאות טובות לפני שבוחרים מיקוד.');
-  if(budget) suggestions.push('נרשם תקציב. כדי להעריך כדאיות יש לבדוק שווי לקוח ושיעור סגירה, ללא הבטחת תוצאות.');
-  if(offer&&/14/.test(String(offer.value))) suggestions.push('יש לברר אם תקציב המדיה משולם בנפרד ומה קורה בתום 14 הימים.');
-  return suggestions;
+const qs=require('./marketingQuestions');
+function fact(p,id) {const a=qs.answerFor(p,id);return a?.status==='known'?a.value:null;}
+function nextAction(p) {
+ const audience=String(fact(p,'AUD-001')||'');
+ const offer=String(fact(p,'GOAL-002')||'');
+ const goal=String(fact(p,'GOAL-001')||'');
+ const suggestions=[];
+ if(/כל (?:התחומים|בעלי העסקים)|כולם|מכל התחומים|לכל בעל עסק/.test(audience))
+   suggestions.push('קהל היעד רחב. אפשר להתחיל בבדיקת ענף שבו כבר יש ניסיון מוכח, אם קיים, במקום להניח שכל הענפים יגיבו באופן דומה.');
+ if(/14\s*(?:יום|ימים)/.test(offer))
+   suggestions.push('אם מציעים 14 ימי ניהול ללא עלות, צריך לוודא בנפרד מי משלם את המדיה ומה המחיר לאחר ההתנסות.');
+ if(/מכירות/.test(goal))
+   suggestions.push('המטרה העסקית היא מכירות. יעד הקמפיין בפלטפורמה ייבחר רק לאחר בירור מסלול ההמרה והמדידה.');
+ return suggestions;
 }
-module.exports={nextAction};
+function draft(p) {
+ const name=fact(p,'BUS-001'),service=fact(p,'BUS-002'),audience=fact(p,'AUD-001');
+ const offer=fact(p,'GOAL-002'),region=fact(p,'BUS-005'),goal=fact(p,'GOAL-001');
+ const known=[['עסק',name],['מוצר או שירות',service],['מטרה עסקית',goal],['קהל מדווח',audience],['אזור שירות',region],['הצעה לקידום',offer]].filter(x=>x[1]!=null);
+ const lines=['טיוטת אסטרטגיה לבדיקה (לא קמפיין שנוצר ב-Meta):',...known.map(([k,v])=>k+': '+String(v))];
+ lines.push('כיוון מומלץ לבדיקה: מסר שמציג את השירות והיתרון המרכזי, מול מסר שמדגיש את ההצעה. אלו השערות לניסוי, לא הבטחה לתוצאה.');
+ const insights=nextAction(p);if(insights.length)lines.push('שיקולים מקצועיים:',...insights);
+ lines.push('לפני יצירה ב-Meta יש לאמת תקציב, יעד המרה, נכסי מודעה, חשבון מחובר והרשאות. כל יצירה תתחיל במצב PAUSED ותדרוש אישור מפורש; הפעלה דורשת אישור נפרד.');
+ return lines.join('\n');
+}
+module.exports={fact,nextAction,draft};
