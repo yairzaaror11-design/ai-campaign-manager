@@ -21,7 +21,7 @@ function deliverNext(p,prefix='') {
   const q=qs.nextQuestion(p);
   if(!q) {
     p.session.pendingId=null;p.session.complete=true;
-    return {handled:true,reply:`${prefix}${prefix?'\n\n':''}סיימנו את האפיון הזה.\n${qs.summary(p)}\n\nאפשר עכשיו לבקש המלצה, לבדוק קהל יעד, רווחיות או מדידה.`};
+    return {handled:true,reply:`${prefix}${prefix?'\n\n':''}סיימנו את האפיון הזה.\n${qs.summary(p)}\n\n${require('./marketingBrain').nextAction(p).join('\n')}\n\nאפשר עכשיו לבקש המלצה או להכין טיוטת קמפיין.`};
   }
   p.session.pendingId=q.id;
   return {handled:true,reply:(prefix?prefix+'\n\n':'')+q.whatsapp_text};
@@ -67,7 +67,7 @@ function transition(p,text,{now=new Date().toISOString()}={}) {
   const a=qs.parseAnswer(q,text);
   if(a.error) return {handled:true,reply:a.error};
   record(p,q,a,now);p.session.pendingId=null;p.session.answersSinceSummary++;
-  if(p.session.answersSinceSummary>=3&&qs.nextQuestion(p)) {
+  if(false && p.session.answersSinceSummary>=3&&qs.nextQuestion(p)) {
     p.session.awaitingContinue=true;
     return {handled:true,reply:'זה מה ששמרתי עד עכשיו:\n'+qs.summary(p)+'\n\nלהמשיך? אפשר לכתוב ״נמשיך״ או לעצור כאן.'};
   }
