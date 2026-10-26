@@ -7,7 +7,7 @@ function localAnalysis(text){
  if(require('./conversationControl').isReset(raw))return{intent:'reset',updates:[],correction:false};
  const add=(field,value,evidence=raw)=>{const index=updates.findIndex(u=>u.field===field);const item={field,value,evidence};if(index<0)updates.push(item);else updates[index]=item;};
  let intent='other';
- if(/^(היי|הי|שלום|שלום לך|שלום בוט|\/start)$/.test(n))intent='greeting';
+ if(require('./conversationGreeting').isGreeting(raw))intent='greeting';
  else if(/מה (?:אתה|את|הבוט) (?:יודע|יודעת|יכול|יכולה)|מה אפשר לעשות|מה היכולות|למה (?:אתה|את) (?:בנוי|בנויה)|מה התפקיד שלך/.test(n))intent='capabilities';
  else if(/^(מה הכוונה|מה זאת אומרת|לא הבנתי|תסביר|אפשר הסבר)/.test(n))intent='clarify';
  else if(/^(מה הבנת|מה כבר ידוע|סיכום אפיון|סכם|אמרתי לך כבר|כבר אמרתי)/.test(n))intent='summary';

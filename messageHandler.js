@@ -162,6 +162,22 @@ async function handleTenantMessage(message, contact) {
 }
 
 async function routeText(from, text, prefix = '') {
+  if(require('./conversationGreeting').isGreeting(text)){
+    const welcome=require('./conversationGreeting').WELCOME;
+    const reply=prefix?`${prefix}\n\n${welcome}`:welcome;
+    let options;
+    if(configured()){
+      const client=await getOrCreateClient(from),store=require('./marketingStore');
+      if(require('./marketingConversation').enabled()){
+        await store.update(client.id,null,p=>{if(p.journey)return{handled:false};require('./campaignJourney').init(p);return{handled:false,changed:true};});
+        const profile=await store.load(client.id);
+        if(profile?.journey?.stage==='IDLE')options=await require('./conversationUi').prepare(client.id,reply,'welcome');
+      }
+      await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:reply}]);
+    }
+    await safeSend(from,reply,options);
+    return;
+  }
   if(require('./conversationControl').isReset(text)){
     await resetSession(from);
     await cancelPendingApprovals(from);
@@ -268,15 +284,6 @@ async function routeText(from, text, prefix = '') {
     }
     return;
   }
-  if (text === '/start' && (!configured() || !require('./marketingConversation').enabled())) {
-    await safeSend(
-      from,
-      'היי, אני קמפיין בצ׳ט. אפשר לבקש קמפיין, גרפיקה ודוחות בעברית. לחיבור חשבון פרסום: /meta-connect. ליצירת גרפיקה: צור לי גרפיקה ותאר את העסק והמסר. לדוח: /report. כל שינוי בקמפיין דורש אישור; פרסום זמין רק כאשר הרשאות הכתיבה מופעלות.'
-    );
-    return;
-  }
-
-
   const approvalMatch = text.match(/^אשר\s+(\d{6})$/);
   if (approvalMatch) {
     await handleApproval(from, approvalMatch[1]);
