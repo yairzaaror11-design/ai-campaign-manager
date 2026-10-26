@@ -34,6 +34,8 @@ app.use('/telnyx', telnyx);
 app.use('/health', health);
 app.use('/auth/meta', require('./metaOAuth'));
 app.use('/meta', require('./metaDeletion').router);
+app.use(require('./portalRoutes'));
+app.use(require('./landingRoutes'));
 app.use(require('./privacyPages'));
 
 

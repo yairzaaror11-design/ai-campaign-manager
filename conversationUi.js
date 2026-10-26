@@ -1,13 +1,18 @@
 'use strict';
 const crypto=require('node:crypto'),store=require('./marketingStore');
 const FOOTER='אפשר גם לכתוב או לשלוח הודעה קולית';
-function context(p){return JSON.stringify([p.planId,p.journey?.stage,p.journey?.pendingField,p.journey?.revision,p.journey?.inputMode,p.connection?.status,p.connection?.pendingQuestion,p.mediaContext?.assetId,p.mediaBudgetQuestion?.amount]);}
+function context(p){return JSON.stringify([p.planId,p.journey?.stage,p.journey?.pendingField,p.journey?.revision,p.journey?.inputMode,p.connection?.status,p.connection?.pendingQuestion,p.mediaContext?.assetId,p.mediaBudgetQuestion?.amount,p.businessImport?.foundAt,p.businessEntry?.awaitingConfirmation,p.crmFocus?.id,p.crmFocus?.version,JSON.stringify(p.crmMenu||[])]);}
 const choice=(title,text,description)=>({title,text,...(description?{description}:{})});
-const DECISIONS=["media_variant", "budget_period", "media_action", "has_ad_account", "connected", "connection_offer", "account_selection", "businessGoal", "dailyBudget", "leadDestination", "offerMediaSeparate", "strategy_review", "creative_review", "welcome"];
+const DECISIONS=["crm_leads","crm_status","business_entry","business_import","plan_review","media_variant", "budget_period", "media_action", "has_ad_account", "connected", "connection_offer", "account_selection", "businessGoal", "dailyBudget", "leadDestination", "offerMediaSeparate", "strategy_review", "creative_review", "welcome"];
 function choices(p,decisionKey){
  if(decisionKey==null)return [];
  if(!DECISIONS.includes(decisionKey))throw Error('INVALID_DECISION_KEY');
  const j=p.journey||{},pending=j.pendingField,connection=p.connection;
+ if(decisionKey==='crm_leads'&&p.crmMenu?.length)return p.crmMenu.map((x,i)=>choice(`${i+1}. ${x.name.slice(0,16)}`,`פתח פנייה ${i+1}`));
+ if(decisionKey==='crm_status'&&p.crmFocus)return[choice('חדשה','סמן כפנייה חדשה'),choice('בטיפול','סמן פנייה בטיפול'),choice('נקבעה פגישה','סמן שנקבעה פגישה'),choice('נסגרה עסקה','סמן שנסגרה עסקה'),choice('לא הבשילה','סמן שהפנייה לא הבשילה')];
+ if(decisionKey==='business_entry')return[choice('אין לי קישור','אין לי קישור')];
+ if(decisionKey==='business_import'&&p.businessEntry?.awaitingConfirmation)return[choice('הפרטים נכונים','הפרטים נכונים'),choice('לתקן פרטים','לתקן פרטים')];
+ if(decisionKey==='plan_review'&&j.stage==='PLAN_REVIEW')return[choice('תצוגה והרשמה','תצוגה מקדימה'),choice('חיבור חשבון Meta','חבר חשבון מטא'),choice('לשנות פרטים','לא')];
  if(decisionKey==='media_variant'&&p.mediaVariants?.length)return p.mediaVariants.map((_,i)=>choice(`גרסה ${i+1}`,`בחרתי גרסה ${i+1}`));
  if(decisionKey==='budget_period'&&p.mediaBudgetQuestion)return[choice('תקציב יומי','זה תקציב יומי'),choice('לכל הקמפיין','זה לכל הקמפיין'),choice('מחיר המוצר','זה מחיר המוצר')];
  if(decisionKey==='media_action'&&p.mediaContext)return[
@@ -20,6 +25,7 @@ function choices(p,decisionKey){
  if(decisionKey==='account_selection'&&connection?.status==='ACCOUNT_SELECTION_REQUIRED')return(connection.accounts||[]).slice(0,9).map((a,i)=>choice(`${i+1}. ${String(a.name).slice(0,17)}`,String(i+1),a.id));
  if(pending&&decisionKey===pending){
   if(pending==='dailyBudget'&&j.inputMode!=='budget_custom')return[...require('./budgetGuidance').OPTIONS.map(o=>choice(o.title,`${o.amount} שקל ביום`,o.description)),{...choice('סכום אחר','מה הכוונה?','אפשר להקליד סכום יומי ומטבע'),kind:'budget_custom'}];
+  if(pending==='businessGoal'&&require('./businessEntry').enabled()&&p.businessEntry?.linkAsked)return[choice('יותר פניות','פניות מתאימות'),choice('מכירות','מכירות'),choice('תורים ופגישות','תורים ופגישות'),choice('מטרה אחרת','מה הכוונה?')];
   if(pending==='businessGoal')return[choice('יותר מכירות','מכירות'),choice('לקוחות חדשים','לקוחות חדשים'),choice('יותר חשיפה לעסק','חשיפה למותג')];
   if(pending==='leadDestination')return[choice('WhatsApp','פניות בוואטסאפ'),choice('טלפון','שיחות טלפון'),choice('אתר העסק','אתר העסק'),choice('טופס פניות','טופס פניות'),choice('עוד לא החלטתי','לא יודע')];
   if(pending==='offerMediaSeparate')return[choice('המדיה בנפרד','כן'),choice('המדיה כלולה','לא'),choice('עוד לא ידוע','לא יודע')];

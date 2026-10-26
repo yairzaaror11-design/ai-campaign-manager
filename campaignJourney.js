@@ -14,15 +14,15 @@ function init(p){
 }
 function missing(p){return CORE.filter(field=>!facts.read(p,field));}
 function offerMissing(p){if(!/14\s*(?:יום|ימים)/.test(facts.value(p,'offer')||''))return[];return ['offerMediaSeparate','offerScope','offerCommitment'].filter(f=>!facts.read(p,f));}
-function nextField(p){return [...missing(p),...offerMissing(p)][0]||null;}
+function nextField(p){const fields=require('./businessEntry').enabled()&&p.businessEntry?.linkAsked?['businessType','businessGoal','product','dailyBudget']:CORE;return [...fields.filter(field=>!facts.read(p,field)),...offerMissing(p)][0]||null;}
 function stageReply(p,stage,prefix=''){
  const j=p.journey;j.stage=stage;j.pendingField=null;j.paused=false;
  const d=j.draft&&!j.draft.stale&&j.draft.revision===j.revision?j.draft:buildDraft(p);j.draft=d;
  let reply;
  if(stage==='STRATEGY_REVIEW')reply=`הכיוון המוצע:\nמטרה עסקית: ${d.businessGoal}.\n${d.strategy}\nקהל: ${d.audience}.\nאזור: ${d.geography}.\n${d.budgetText}\n\nלהתקדם לניסוח המודעות?`;
  else if(stage==='CREATIVE_REVIEW')reply=d.creatives.map((a,i)=>`מודעה ${i+1}\n${a.headline}\n${a.body}\n${a.cta}`).join('\n\n')+'\n\nלהכין תוכנית קמפיין עם המודעות האלה?';
- else reply=`טיוטת תוכנית הקמפיין:\n${d.strategy}\nשירות: ${d.product}\nקהל: ${d.audience}\nאזור: ${d.geography}\n${d.budgetText}\nיעד פנייה: ${d.destination}\nמדד עסקי: ${d.businessGoal}\n${d.missing.length?'פרטים שעדיין חסרים: '+d.missing.join(', ')+'.\n':''}הטיוטה נשמרה מקומית. לא נוצר ולא הופעל קמפיין ב-Meta. אפשר לתקן פרטים או לבקש לחבר חשבון פרסום.`;
- return {handled:true,reply:(prefix?prefix+'\n\n':'')+reply,decisionKey:stage==='STRATEGY_REVIEW'?'strategy_review':stage==='CREATIVE_REVIEW'?'creative_review':null};
+ else reply=`טיוטת תוכנית הקמפיין:\n${d.strategy}\nשירות: ${d.product}\nקהל: ${d.audience}\nאזור: ${d.geography}\n${d.budgetText}\nיעד פנייה: ${d.destination}\nמדד עסקי: ${d.businessGoal}\n${d.missing.length?'פרטים שעדיין חסרים: '+d.missing.join(', ')+'.\n':''}${require('./businessEntry').enabled()?'התוכנית מוכנה לבדיקה. אפשר לראות תצוגה מקדימה ולשמור בחשבון, או לתקן פרט.':'הטיוטה נשמרה מקומית. לא נוצר ולא הופעל קמפיין ב-Meta. אפשר לתקן פרטים או לבקש לחבר חשבון פרסום.'}`;
+ return {handled:true,reply:(prefix?prefix+'\n\n':'')+reply,decisionKey:stage==='STRATEGY_REVIEW'?'strategy_review':stage==='CREATIVE_REVIEW'?'creative_review':require('./businessEntry').enabled()?'plan_review':null};
 }
 function buildDraft(p){
  const f=facts.all(p),knownBudget=facts.read(p,'dailyBudget')?.status==='known'?f.dailyBudget:null;
@@ -37,7 +37,7 @@ function buildDraft(p){
   {headline:promotion||`${product} עם ${f.businessName||'הצוות שלנו'}`,body:[f.audience?`עבור ${f.audience}.`:'',`מציעים ${product}.`,f.advantage?`הדגש שלנו: ${f.advantage}.`:'',promotion,terms].filter(Boolean).join(' '),cta:'לפרטים ובדיקת התאמה, אפשר לפנות אלינו.'},
   {headline:`מחפשים ${product}?`,body:[`${f.businessName||'העסק'} מציע ${product}.`,f.geography?`שירות באזור ${f.geography}.`:'',f.advantage,promotion,terms].filter(Boolean).join(' '),cta:'נדבר על הצורך ונבדוק התאמה.'}
  ];
- return{schemaVersion:1,id:crypto.randomUUID(),revision:p.journey.revision,status:'LOCAL_DRAFT',mediaAssetId:p.mediaContext?.assetId||null,totalBudgetPlan:p.mediaBudgetPlan?.planId===p.planId?p.mediaBudgetPlan:null,businessGoal:f.businessGoal||'לא הוגדרה',strategy,product,audience:f.audience||'טרם הוגדר',geography:f.geography||f.serviceArea||'טרם הוגדר',destination,dailyBudget:knownBudget||null,budgetText:knownBudget?`תקציב מדיה מוצע: ${facts.display(knownBudget)}. זהו סכום לתכנון, ללא אישור להוצאה.`:'תקציב מדיה מאושר טרם הוגדר.',budgetAllocation:knownBudget?[{purpose:'בדיקת הצעה וקהל אחד תחילה, בלי לפצל תקציב לפני למידה',share:1,dailyBudget:knownBudget,status:'PROPOSED'}]:[],measurement:{businessOutcome:f.businessGoal||null,intermediateMetric:'פניות מתאימות כאשר מסלול הקנייה מבוסס פניות',successThreshold:null,reviewRule:'יש להגדיר תקופה ומדגם לפי מחזור המכירה והנתונים הזמינים'},creatives,missing:[...CORE.filter(k=>!facts.value(p,k)),...(!termsKnown?offerFields.filter(field=>facts.read(p,field)?.status!=='known'):[])].map(k=>facts.FIELDS[k].label),requiresApproval:true,createdAt:new Date().toISOString(),stale:false};
+ return{schemaVersion:1,id:crypto.randomUUID(),revision:p.journey.revision,status:'LOCAL_DRAFT',mediaAssetId:p.mediaContext?.assetId||null,totalBudgetPlan:p.mediaBudgetPlan?.planId===p.planId?p.mediaBudgetPlan:null,businessGoal:f.businessGoal||'לא הוגדרה',strategy,product,audience:f.audience||`הצעה לאישור: אנשים שמתעניינים ב-${product}`,geography:f.geography|| (f.serviceArea?'הצעה לאישור: סביב '+f.serviceArea:'נבחר אזור לפני פרסום'),destination,dailyBudget:knownBudget||null,budgetText:knownBudget?`תקציב מדיה מוצע: ${facts.display(knownBudget)}. זהו סכום לתכנון, ללא אישור להוצאה.`:'תקציב מדיה מאושר טרם הוגדר.',budgetAllocation:knownBudget?[{purpose:'בדיקת הצעה וקהל אחד תחילה, בלי לפצל תקציב לפני למידה',share:1,dailyBudget:knownBudget,status:'PROPOSED'}]:[],measurement:{businessOutcome:f.businessGoal||null,intermediateMetric:'פניות מתאימות כאשר מסלול הקנייה מבוסס פניות',successThreshold:null,reviewRule:'יש להגדיר תקופה ומדגם לפי מחזור המכירה והנתונים הזמינים'},creatives,missing:[...CORE.filter(k=>!facts.value(p,k)),...(!termsKnown?offerFields.filter(field=>facts.read(p,field)?.status!=='known'):[])].map(k=>facts.FIELDS[k].label),requiresApproval:true,createdAt:new Date().toISOString(),stale:false};
 }
 function advance(p,{target='strategy',prefix=''}={}){
  const j=p.journey;const field=nextField(p);

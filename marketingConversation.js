@@ -95,6 +95,7 @@ async function hydrateLegacy(clientId,p){
 }
 async function handleMarketingMessage(clientId,text,eventId,options={}) {
   if(!enabled()) return {handled:false};
+  const entry=await require('./businessEntry').handle(clientId,text,eventId,options);if(entry)return entry;
   for(let attempt=0;attempt<2;attempt++){
     const existing=await store.load(clientId);
     const previous=eventId&&existing?.events.find(e=>e.id===eventId);if(previous)return previous.result;

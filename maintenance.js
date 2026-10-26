@@ -9,6 +9,8 @@ async function maintain() {
  return db.transaction(async tx=>{
   const days=retentionDays();
   await tx("DELETE FROM worker_heartbeats WHERE last_success_at<NOW()-INTERVAL '1 day'");
+  await tx('DELETE FROM portal_login_tickets WHERE expires_at<NOW()');
+  await tx('DELETE FROM portal_sessions WHERE expires_at<NOW()');
   await tx('DELETE FROM meta_login_secrets WHERE expires_at<NOW()');
   await tx('DELETE FROM api_rate_limits WHERE expires_at<NOW()');
   await tx("UPDATE whatsapp_inbound_events SET status='MANUAL_REVIEW',payload='{}'::jsonb,last_error='RETENTION_EXPIRED',locked_until=NULL WHERE created_at<NOW()-($1::integer*INTERVAL '1 day') AND status IN ('PENDING','PROCESSING')",[days]);

@@ -15,6 +15,7 @@ async function campaignReport(clientId,preset='last_7d') {
  const payload={account:{id:account.id,name:account.name,currency:account.currency},preset,totals,campaigns:rows};
  const id=require('crypto').randomUUID();
  await db.query('INSERT INTO performance_snapshots(id,client_id,account_id,date_preset,payload) VALUES($1,$2,$3,$4,$5::jsonb)',[id,clientId,c.meta_ad_account_id,preset,JSON.stringify(payload)]);
- return 'דוח '+preset+' — '+account.name+' ('+c.meta_ad_account_id+')\nהוצאה: '+totals.spend.toFixed(2)+' '+account.currency+'\nחשיפות: '+totals.impressions+'\nקליקים: '+totals.clicks+'\nקמפיינים בדוח: '+rows.length+'\nמזהה דוח: '+id+'\nנתונים כפי שהתקבלו מ־Meta; ייתכנו עיכובי דיווח.';
+ const analysis=require('./marketingBrain').analyze(payload);
+ return 'דוח '+preset+' — '+account.name+'\n'+require('./marketingBrain').format(analysis);
 }
 module.exports={campaignReport};

@@ -1,0 +1,24 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');
+const {openDatabase}=require('./helpers/database');
+test('customer portal HTTP boundary enforces authentication, CSRF and tenant isolation across signup and leads',async()=>{
+ const h=await openDatabase(),env={...process.env};Object.assign(process.env,{APP_PUBLIC_URL:'https://campaign.example',BUSINESS_LINK_ONBOARDING_ENABLED:'true'});
+ const app=require('../index');const server=await new Promise((resolve,reject)=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));s.once('error',reject);});
+ const root='http://127.0.0.1:'+server.address().port;const call=(path,body,cookie='',csrf='',method=body?'POST':'GET')=>fetch(root+path,{method,headers:{...(cookie?{Cookie:cookie}:{}),...(body?{Origin:'https://campaign.example','Content-Type':'application/json','X-CSRF-Token':csrf}:{})},body:body?JSON.stringify(body):undefined});
+ try{
+  const client=await require('../clientStore').getOrCreateClient('972501004111'),other=await require('../clientStore').getOrCreateClient('972501004222'),portal=require('../portalStore');
+  const publicPage=await call('/app');assert.equal(publicPage.status,200);assert.match(publicPage.headers.get('content-security-policy'),/frame-ancestors 'none'/);
+  assert.equal((await call('/app/api/dashboard')).status,401);
+  const token=(await portal.createTicket(client.id)).split('#login=')[1];const login=await call('/app/api/login',{token});assert.equal(login.status,200);
+  const cookies=login.headers.getSetCookie();assert.ok(cookies[0].includes('HttpOnly'));assert.ok(cookies[0].includes('Secure'));assert.ok(cookies[0].includes('SameSite=Strict'));
+  const cookie=cookies.map(s=>s.split(';')[0]).join('; '),csrf=cookies.find(s=>s.startsWith('cb_csrf=')).split(';')[0].split('=')[1];
+  const before=await call('/app/api/dashboard',null,cookie);assert.equal(before.status,200);assert.equal((await before.json()).account,null);
+  assert.equal((await call('/app/api/register',{name:'דנה',acceptPrivacy:true},cookie,'wrong')).status,403);
+  const signup=await call('/app/api/register',{name:'דנה',acceptPrivacy:true,clientId:other.id},cookie,csrf);assert.equal(signup.status,200);
+  assert.equal((await h.db.query('SELECT client_id FROM customer_accounts WHERE client_id=$1',[other.id])).rows.length,0);
+  assert.equal((await call('/app/api/leads',{name:'לקוח',phone:'0501234567',clientId:other.id},cookie,csrf)).status,200);
+  assert.equal((await require('../crmService').list(other.id)).length,0);assert.equal((await require('../crmService').list(client.id)).length,1);
+  const d=await(await call('/app/api/dashboard',null,cookie)).json();assert.equal(d.subscription.checkoutAvailable,false);assert.equal(d.crm.counts.NEW,1);
+  assert.equal((await call('/app/api/logout',{},cookie,csrf)).status,200);assert.equal((await call('/app/api/dashboard',null,cookie)).status,401);
+ }finally{await new Promise(resolve=>server.close(resolve));await h.close();for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);}
+});

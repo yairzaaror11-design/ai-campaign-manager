@@ -13,8 +13,10 @@
   "dependencies": {
     "@google/genai": "^1.30.0",
     "axios": "^1.7.9",
+    "cheerio": "^1.1.2",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "ipaddr.js": "^2.2.0",
     "pg": "^8.13.1",
     "winston": "^3.17.0"
   },

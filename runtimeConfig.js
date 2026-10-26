@@ -1,9 +1,10 @@
 'use strict';
 function validateRuntime() {
- for(const flag of ['READ_ONLY','META_WRITES_ENABLED','WHATSAPP_SEND_ENABLED','WHATSAPP_WORKER_IN_WEB','REQUIRE_WORKER_HEARTBEAT','GRAPHICS_ENABLED']) if(process.env[flag]!==undefined&&!['true','false'].includes(process.env[flag])) throw Error('INVALID_BOOLEAN_'+flag);
+ for(const flag of ['READ_ONLY','META_WRITES_ENABLED','WHATSAPP_SEND_ENABLED','WHATSAPP_WORKER_IN_WEB','REQUIRE_WORKER_HEARTBEAT','GRAPHICS_ENABLED','BUSINESS_LINK_ONBOARDING_ENABLED','PUBLIC_ONBOARDING_ENABLED','BILLING_ENABLED']) if(process.env[flag]!==undefined&&!['true','false'].includes(process.env[flag])) throw Error('INVALID_BOOLEAN_'+flag);
  require('./maintenance').retentionDays();
  if(process.env.NODE_ENV!=='production') return;
  for(const key of ['DATABASE_URL','META_TOKEN_ENCRYPTION_KEY','APPROVAL_HMAC_KEY','DELETION_HMAC_KEY','META_APP_ID','META_APP_SECRET','META_LOGIN_CONFIG_ID','APP_PUBLIC_URL','WHATSAPP_VERIFY_TOKEN','WHATSAPP_ACCESS_TOKEN','WHATSAPP_PHONE_NUMBER_ID','AUTHORIZED_PHONE_NUMBERS']) if(!process.env[key]) throw Error('MISSING_CONFIGURATION_'+key);
+ if(process.env.PUBLIC_ONBOARDING_ENABLED==='true')for(const key of ['PRIVACY_OPERATOR_NAME','PRIVACY_CONTACT_EMAIL','PRIVACY_HOSTING_PROVIDER','PRIVACY_BACKUP_RETENTION'])if(!process.env[key])throw Error('PUBLIC_ONBOARDING_PRIVACY_REQUIRED');
  require('./metaConnection').config();
  if(process.env.META_LEGACY_SINGLE_TENANT==='true'||process.env.MOCK_META_ENABLED==='true') throw Error('UNSAFE_PRODUCTION_MODE');
  if(process.env.DB_SSL==='false'&&process.env.ALLOW_PRIVATE_DB_PLAINTEXT!=='true') throw Error('DATABASE_TLS_REQUIRED');

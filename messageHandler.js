@@ -308,6 +308,10 @@ async function routeText(from, text, prefix = '') {
 
 async function handleIncomingMessage(message, contact) {
   if (!isAuthorized(message.from)) return handleTenantMessage(message, contact);
+  if(process.env.PUBLIC_ONBOARDING_ENABLED==='true'){
+    const known=await require('./db').query('SELECT id FROM clients WHERE phone=$1',[require('./auth').normalizePhone(message.from)]);
+    if(!known.rows.length&&!await require('./rateLimit').take('public-new-clients',50,86400))return;
+  }
   const client = await getOrCreateClient(message.from,contact?.profile?.name);
   const delivery=require('./whatsappDelivery');
   await delivery.recordInbound(message);
