@@ -230,7 +230,7 @@ async function routeText(from, text, prefix = '') {
       const pending=p.mediaBudgetQuestion;
       if(!pending?.awaitingDuration||pending.planId!==p.planId)return{handled:false};
       const days=Number(text.match(/\d+/)[0]);if(days<1)return{handled:false};
-      p.mediaBudgetPlan={total:pending.amount,currency:'ILS',days,status:'PROPOSED',dailyAverage:pending.amount/days};delete p.mediaBudgetQuestion;
+      p.mediaBudgetPlan={planId:p.planId,total:pending.amount,currency:'ILS',days,status:'PROPOSED',dailyAverage:pending.amount/days};delete p.mediaBudgetQuestion;
       reply=`זה תכנון של ${pending.amount} ₪ ל-${days} ימים, בממוצע ${(pending.amount/days).toFixed(2)} ₪ ביום. איזו גרסה נרצה להכין למודעה?`;
       return{handled:false,changed:true};
     });if(reply){const ui=await require('./conversationUi').prepare(client.id,reply);await safeSend(from,ui.text,ui);return;}
