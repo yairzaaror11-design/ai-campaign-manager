@@ -35,6 +35,7 @@ app.use('/health', health);
 app.use('/auth/meta', require('./metaOAuth'));
 app.use('/meta', require('./metaDeletion').router);
 app.use(require('./privacyPages'));
+app.use('/app', require('./dashboard').router);
 
 
 app.get('/', (req, res) =>

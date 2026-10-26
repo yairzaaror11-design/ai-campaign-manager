@@ -19,3 +19,9 @@ npm test
 Copy `.env.example` into a private environment file for development. Production startup validates required configuration. `npm run preflight` performs read-only checks against a configured target database. `npm run worker:messages` starts a separate message worker when the embedded worker is disabled.
 
 No production deploy, Meta app publication, real campaign mutation, budget change or WhatsApp message is authorized by this branch alone.
+
+## Dashboard
+
+The Hebrew RTL workspace is available at `/app`, with an explicitly labeled demo at `/app/demo`. It shares existing client-scoped WhatsApp history, memory, campaign drafts and saved Meta reports. See [dashboard setup, API and release limits](docs/DASHBOARD.md) and [implementation gap analysis](docs/implementation-gap-analysis.md).
+
+For a local preview without database initialization, workers or external providers, run `node scripts/preview-dashboard.js` and open `http://127.0.0.1:4173/app/demo`. Real-data access requires explicit administrator provisioning; see the setup guide. No payment or campaign write routes are added.
