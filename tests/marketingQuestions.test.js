@@ -25,7 +25,7 @@ test('search is bounded, validates filters and returns relevant Hebrew questions
 });
 test('interview asks one necessary question and never pauses merely after three answers',()=>{
   const p=emptyProfile();
-  assert.match(transition(p,'שלום').reply,/מה נרצה לעשות היום/);
+  assert.equal(transition(p,'שלום').reply,require('../conversationGreeting').WELCOME);
   assert.equal(p.journey.stage,'IDLE');
   transition(p,'אני רוצה קמפיין');transition(p,'שירות תיקונים');
   transition(p,'מכירות');const third=transition(p,'תיקון מזגנים');

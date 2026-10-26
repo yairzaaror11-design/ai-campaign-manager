@@ -22,7 +22,7 @@ async function authenticate(req,res,next) {
  const r=await db.query('SELECT client_id,account_hash FROM dashboard_sessions WHERE token_hash=$1 AND expires_at>NOW()',[hash(raw)]);
  const s=r.rows[0], account=s&&accounts().find(a=>String(a.clientId)===String(s.client_id)&&a.tokenHash===s.account_hash);
  if(!account)return res.status(401).json({code:'LOGIN_REQUIRED'});
- req.dashboard={clientId:String(account.clientId),role:account.role};next();
+ req.dashboard={clientId:String(account.clientId),role:account.role,actorHash:account.tokenHash,email:typeof account.email==='string'&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(account.email)?account.email:null};next();
  }catch{res.status(503).json({code:'DASHBOARD_UNAVAILABLE'});}
 }
 async function login(req,res) {

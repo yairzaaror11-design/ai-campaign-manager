@@ -70,6 +70,7 @@ function diagnosticTransition(p,text,{now=new Date().toISOString()}={}) {
   return deliverNext(p,a.status==='unknown'?'סימנתי שלא ידוע; לא נשלים את הנתון בניחוש.':a.status==='not_applicable'?'סימנתי שלא רלוונטי לאפיון הנוכחי.':'');
 }
 function transition(p,text,options={}) {
+ if(require('./conversationGreeting').isGreeting(text))return require('./campaignJourney').transition(p,text,{...options,analysis:{intent:'greeting',updates:[],correction:false}});
  if(/^(?:עדכן|תקן)\s+[A-Z]+-\d{3}\s+/i.test(text)){
   const r=diagnosticTransition(p,text,options);
   if(r.handled&&r.reply.startsWith('התשובה עודכנה')){require('./conversationFacts').correctionsInvalidate(p,['explicit_correction']);r.reply='התשובה עודכנה.\n'+require('./conversationFacts').summary(p);}

@@ -79,7 +79,8 @@ router.get('/api/conversation',route(async(req,res)=>{
  const p=profile.rows[0]?.payload;
  res.json({messages:messages.rows,profile:p?{answers:p.answers||{},stage:p.journey?.stage||null,updated_at:profile.rows[0].updated_at}:null});
 }));
-router.get(['/', '/demo', '/campaigns','/crm','/tasks','/chat','/activity','/integrations','/billing'],(req,res)=>res.sendFile(path.join(__dirname,'dashboard-public','index.html')));
+router.use('/api',require('./dashboardSettings').router);
+router.get(['/', '/settings', '/demo', '/campaigns','/crm','/tasks','/chat','/activity','/integrations','/billing'],(req,res)=>res.sendFile(path.join(__dirname,'dashboard-public','index.html')));
 router.use('/api',(req,res)=>res.status(404).json({code:'NOT_FOUND'}));
 router.use((err,req,res,next)=>{if(res.headersSent)return next(err);res.status(err.status||503).json({code:err.status?err.message:'DASHBOARD_UNAVAILABLE'});});
 module.exports={router,overview,statuses,period};

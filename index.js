@@ -36,6 +36,8 @@ app.use('/auth/meta', require('./metaOAuth'));
 app.use('/meta', require('./metaDeletion').router);
 app.use(require('./privacyPages'));
 app.use('/app', require('./dashboard').router);
+app.use('/api/v1',require('./dashboardPublicApi'));
+app.use('/auth/social',require('./socialConnections').router);
 
 
 app.get('/', (req, res) =>

@@ -67,9 +67,7 @@ function transition(p,text,{analysis=localAnalysis(text),now=new Date().toISOStr
  if(analysis.intent==='capabilities')return result('אני עוזר להכין קמפיין לעסק: כיוון שיווקי, תמונות ומודעות ותוכנית לפרסום. אפשר גם לבדוק תוצאות מחשבון מחובר. במה נרצה להתחיל?');
  if(text==='נוסח לסרטון ששלחתי'){j.requestedOutput='ad';return advance(p,{target:'ad',prefix:'נכין נוסח שאפשר לשלב בסרטון, לפי פרטי העסק.'});}
  if(analysis.intent==='greeting'){
-  if(j.draft&&!j.draft.stale&&['STRATEGY_REVIEW','CREATIVE_REVIEW','PLAN_REVIEW'].includes(j.stage))return stageReply(p,j.stage,'היי, הפרטים מהשיחה הקודמת שמורים. נמשיך מהמקום שבו עצרנו.');
-  if(j.stage!=='IDLE'&&j.stage!=='COMPLETE')return advance(p,{target:j.requestedOutput||'strategy',prefix:'היי, הפרטים מהשיחה הקודמת שמורים. נמשיך מהמקום שבו עצרנו.'});
-  return result('היי! אני קמפיין בצ׳ט. נכיר בקצרה את העסק, נכין כיוון ומודעות, ואז נציג תוכנית לבדיקה שלך. נחבר חשבון פרסום כשצריך; פרסום ידרוש אישור נפרד. אפשר לבחור בלחיצה, לכתוב או לשלוח הודעה קולית. מה נרצה לעשות היום?',{decisionKey:'welcome'});
+  return result(require('./conversationGreeting').WELCOME,{decisionKey:'welcome'});
  }
  if(analysis.intent==='clarify')return result(oldPending?(EXPLANATIONS[oldPending]||'כדי לבחור כיוון שמתאים לעסק, חסר הפרט הזה.')+'\n'+QUESTIONS[oldPending]:'אפשר לציין איזה פרט כדאי להסביר?');
  if(analysis.intent==='summary')return result(facts.summary(p)||'עדיין לא נמסרו פרטי עסק. אפשר לספר במה העסק עוסק.');

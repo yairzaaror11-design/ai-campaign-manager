@@ -5,7 +5,7 @@ const journey=require('../campaignJourney'),analysis=require('../conversationAna
 const {transition}=require('../marketingConversation');
 function complete(){const p=store.emptyProfile();const values={businessName:'יאיר דיגיטל',businessType:'שירותי פרסום לעסקים',businessGoal:'מכירות',product:'ניהול קמפיינים ב-Meta',audience:'בעלי עסקים מכל התחומים',geography:'כל הארץ',advantage:'שירות אישי ומחיר נגיש',dailyBudget:{amount:100,currency:'ILS',period:'day'},leadDestination:'שיחה או הודעה'};for(const [f,v]of Object.entries(values))facts.write(p,f,v);return p;}
 test('greeting and a capabilities question never start an unwanted questionnaire',()=>{
- const p=store.emptyProfile();assert.match(transition(p,'היי').reply,/מה נרצה לעשות היום/);
+ const p=store.emptyProfile();assert.equal(transition(p,'היי').reply,require('../conversationGreeting').WELCOME);
  assert.equal(p.journey.stage,'IDLE');assert.equal(p.journey.pendingField,null);
  assert.match(transition(p,'מה אתה יודע לעשות?').reply,/תמונות ומודעות/);assert.equal(p.journey.stage,'IDLE');
 });

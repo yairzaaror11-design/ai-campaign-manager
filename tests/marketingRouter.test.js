@@ -17,7 +17,7 @@ test('full WhatsApp route starts discovery and accepts answers without requiring
   try {
     const {handleIncomingMessage}=require('../messageHandler');
     await handleIncomingMessage({id:'wa-1',from:'972501000333',timestamp:String(Math.floor(Date.now()/1000)),type:'text',text:{body:'/start'}});
-    assert.match(sent.at(-1),/מה נרצה לעשות היום/);
+    assert.equal(sent.at(-1),require('../conversationGreeting').WELCOME);
     await handleIncomingMessage({id:'wa-2',from:'972501000333',timestamp:String(Math.floor(Date.now()/1000)),type:'text',text:{body:'אני רוצה קמפיין, המטרה מכירות'}});
     assert.match(sent.at(-1),/מה העסק עושה/);
     const client=await require('../clientStore').getOrCreateClient('972501000333');
