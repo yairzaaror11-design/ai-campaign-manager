@@ -39,7 +39,9 @@ function transition(p,text,{now=new Date().toISOString()}={}) {
     p.session.paused=true;return {handled:true,reply:'עצרנו כאן. התשובות נשמרו. אפשר לכתוב ״נמשיך״ כשנוח לך.'};
   }
   if(/^(סיכום אפיון|מה כבר ידוע|\/discovery-status)$/.test(n)) return {handled:true,reply:qs.summary(p)||'עדיין לא נשמרו תשובות. אפשר לכתוב ״נתחיל״.'};
-  if(/^(מה הכוונה|לא הבנתי|תסביר|אפשר הסבר)$/.test(n) && p.session?.pendingId) { const q=qs.question(p.session.pendingId); return {handled:true,reply:'המטרה: '+q.purpose+'\n'+q.whatsapp_text}; }\n  if(/^(טיוטת קמפיין|הכן טיוטה|תוכנית קמפיין|אסטרטגיה)$/.test(n)) return {handled:true,reply:brain.draft(p)};\n  const change=text.match(/^(?:עדכן|תקן)\s+([A-Z]+-\d{3})\s+([\s\S]+)$/i);
+  if(/^(מה הכוונה|לא הבנתי|תסביר|אפשר הסבר)$/.test(n) && p.session?.pendingId) { const q=qs.question(p.session.pendingId); return {handled:true,reply:'המטרה: '+q.purpose+'\n'+q.whatsapp_text}; }
+  if(/^(טיוטת קמפיין|הכן טיוטה|תוכנית קמפיין|אסטרטגיה)$/.test(n)) return {handled:true,reply:brain.draft(p)};
+  const change=text.match(/^(?:עדכן|תקן)\s+([A-Z]+-\d{3})\s+([\s\S]+)$/i);
   if(change) {
     const q=qs.question(change[1].toUpperCase());
     if(!q||!qs.answerFor(p,q.id)) return {handled:true,reply:'לא מצאתי תשובה שמורה לשאלה הזו באפיון הנוכחי.'};
