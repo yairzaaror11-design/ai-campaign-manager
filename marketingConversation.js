@@ -22,7 +22,7 @@ function deliverNext(p,prefix='') {
   const q=qs.nextQuestion(p);
   if(!q) {
     p.session.pendingId=null;p.session.complete=true;
-    return {handled:true,reply:`${prefix}${prefix?'\n\n':''}סיימנו את האפיון הזה.\n${qs.summary(p)}\n\n${require('./marketingBrain').nextAction(p).join('\n')}\n\nאפשר עכשיו לבקש טיוטת קמפיין.`};
+    return {handled:true,reply:`${prefix}${prefix?'\n\n':''}סיימנו את האפיון הזה.\n${qs.summary(p)}\n\n${require('./marketingBrain').nextAction(p).join('\n')}\n\n\${brain.draft(p)}`};
   }
   p.session.pendingId=q.id;
   return {handled:true,reply:(prefix?prefix+'\n\n':'')+q.whatsapp_text};
@@ -70,7 +70,8 @@ function transition(p,text,{now=new Date().toISOString()}={}) {
   const a=qs.parseAnswer(q,text);
   if(a.error) return {handled:true,reply:a.error};
   record(p,q,a,now);p.session.pendingId=null;p.session.answersSinceSummary++;
-  return deliverNext(p,a.status==='unknown'?'סימנתי שלא ידוע; לא נשלים את הנתון בניחוש.':a.status==='not_applicable'?'סימנתי שלא רלוונטי לאפיון הנוכחי.':'');
+  const insight=q.id==='AUD-001'&&a.status==='known'?brain.nextAction(p).find(x=>x.includes('קהל היעד רחב')):null;
+  return deliverNext(p,insight|| (a.status==='unknown'?'סימנתי שלא ידוע; לא נשלים את הנתון בניחוש.':a.status==='not_applicable'?'סימנתי שלא רלוונטי לאפיון הנוכחי.':''));
 }
 async function handleMarketingMessage(clientId,text,eventId) {
   if(!enabled()) return {handled:false};
