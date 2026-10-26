@@ -4,10 +4,10 @@ const norm=s=>String(s||'').normalize('NFKC').replace(/[״׳"']/g,'').replace(/[
 const INTENTS=['greeting','capabilities','build','ad','strategy','plan','clarify','summary','correct','continue','yes','no','pause','report','connect','connection_status','select_account','disconnect','renew','knowledge','other'];
 function localAnalysis(text){
  const raw=String(text).trim(),n=norm(raw);const updates=[];
- const add=(field,value,evidence=raw)=>updates.push({field,value,evidence});
+ const add=(field,value,evidence=raw)=>{const index=updates.findIndex(u=>u.field===field);const item={field,value,evidence};if(index<0)updates.push(item);else updates[index]=item;};
  let intent='other';
  if(/^(היי|הי|שלום|שלום לך|שלום בוט|\/start)$/.test(n))intent='greeting';
- else if(/מה (?:אתה|את|הבוט) (?:יודע|יודעת|יכול|יכולה)|מה אפשר לעשות|מה היכולות/.test(n))intent='capabilities';
+ else if(/מה (?:אתה|את|הבוט) (?:יודע|יודעת|יכול|יכולה)|מה אפשר לעשות|מה היכולות|למה (?:אתה|את) (?:בנוי|בנויה)|מה התפקיד שלך/.test(n))intent='capabilities';
  else if(/^(מה הכוונה|מה זאת אומרת|לא הבנתי|תסביר|אפשר הסבר)/.test(n))intent='clarify';
  else if(/^(מה הבנת|מה כבר ידוע|סיכום אפיון|סכם|אמרתי לך כבר|כבר אמרתי)/.test(n))intent='summary';
  else if(/^(כן|כן בבקשה|מאשר|מאשרת)$/.test(n))intent='yes';
@@ -27,15 +27,18 @@ function localAnalysis(text){
  else if(/קמפיין|לפרסם|פרסום/.test(n)&&/רוצה|רוצים|תכין|תכיני|להתחיל|בנה|לבנות|הכן|נתחיל/.test(n))intent='build';
  // Questions about facts do not assert those facts.
  if(!['clarify','summary','knowledge','capabilities','report','connection_status','disconnect','connect','renew'].includes(intent)){
-  let m=raw.match(/(?:שם העסק(?: הוא)?|לעסק קוראים|העסק שלי(?: נקרא)?)\s*[:：]?\s*(.+?)(?=\s*(?:,|\n|והוא|בתחום|אנחנו|ואני)|$)/);if(m)add('businessName',m[1].trim(),m[0]);
+  let m=raw.match(/(?:שם העסק(?: הוא)?|לעסק קוראים|העסק שלי נקרא)\s*[:：]?\s*(.+?)(?=\s*(?:,|\n|והוא|בתחום|אנחנו|ואני)|$)/);if(m)add('businessName',m[1].trim(),m[0]);
   m=raw.match(/(?:יש לי עסק (?:ל|של\s*)?|אני (?:מתקין|מתקינה|עוסק|עוסקת ב))\s*(.+?)(?=\s*(?:באזור|בנתניה|בתל אביב|בחיפה|ורוצה|ואני|בתקציב|,|\n)|$)/);if(m){add('businessType',m[1].trim(),m[0]);add('product',m[1].trim(),m[0]);}
+  m=raw.match(/(?:העסק(?: שלי)?|אנחנו|אני)\s+(?:מוכר|מוכרת|מוכרים|מוכרות)\s+([^.!?\n]+)/);if(m){add('businessType',m[1].trim(),m[0]);add('product',m[1].trim(),m[0]);}
   m=raw.match(/באזור\s+(.+?)(?=\s*(?:ורוצה|ואני|בתקציב|,|\n)|$)|(?:בנתניה|בתל אביב|בחיפה|בירושלים)|כל הארץ/);if(m){const area=m[1]||m[0].replace(/^ב(?=נתניה|תל אביב|חיפה|ירושלים)/,'');add('geography',area,m[0]);add('serviceArea',area,m[0]);}
   if(!/לכל בעל עסק/.test(raw)&&/מכירות|להגדיל(?: את)? (?:ההכנסות|הכנסות)|עוד לקוחות/.test(raw))add('businessGoal',/עוד לקוחות/.test(raw)&&!/מכירות|הכנסות/.test(raw)?'לקוחות חדשים':'מכירות',raw.match(/מכירות|להגדיל(?: את)? (?:ההכנסות|הכנסות)|עוד לקוחות/)[0]);
   else if(/יותר לידים|יותר פניות/.test(raw))add('businessGoal','פניות מתאימות',raw.match(/יותר לידים|יותר פניות/)[0]);
   m=raw.match(/(\d[\d,]*(?:\.\d+)?)\s*(₪|ש[״"']?ח|שקל(?:ים)?|ILS|USD|דולר|\$|אירו|EUR|€)\s*(?:ליום|ביום|יומי)/i);
+  if(!m)m=raw.match(/תקציב(?: הפרסום)? היומי(?: שלי)?(?: הוא)?\s+(\d[\d,]*(?:\.\d+)?)\s*(₪|ש[״\"']?ח|שקל(?:ים)?|ILS|USD|דולר|\$|אירו|EUR|€)/i);
   if(m&&!(raw[m.index-1]==='-'&&!/[א-ת]/.test(raw[m.index-2]||'')))add('dailyBudget',{amount:Number(m[1].replace(/,/g,'')),currency:/₪|ש|ILS/i.test(m[2])?'ILS':/דולר|USD|\$/.test(m[2])?'USD':'EUR',period:'day'},m[0]);
   m=raw.match(/(?:ניהול\s+(?:קמפיינים\s+)?ב[\s-]*(?:מטא|Meta)|ניהול קמפיינים ב-Meta)/i);if(m)add('product','ניהול קמפיינים ב-Meta',m[0]);
   m=raw.match(/(?:קהל(?: היעד)?(?: שלי| שלנו)?(?: הוא)?|לקוחות(?: היעד)?(?: הם)?)\s*[:：]\s*(.+?)(?=\n|$)/);if(m)add('audience',m[1],m[0]);
+  m=raw.match(/קהל היעד(?: שלי| שלנו)?\s+(?:הוא|הם)\s+([^.!?\n]+)/);if(m)add('audience',m[1].trim(),m[0]);
   if(/בעלי עסקים מכל התחומים/.test(raw))add('audience','בעלי עסקים מכל התחומים','בעלי עסקים מכל התחומים');
   if(/לכל בעל עסק שרוצה להגדיל (?:את )?ההכנסות/.test(raw))add('audience','בעלי עסקים שרוצים להגדיל הכנסות',raw);
   if(/שירות אישי ומחיר נגיש/.test(raw))add('advantage','שירות אישי ומחיר נגיש','שירות אישי ומחיר נגיש');

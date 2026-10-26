@@ -7,7 +7,7 @@ function complete(){const p=store.emptyProfile();const values={businessName:'י�
 test('greeting and a capabilities question never start an unwanted questionnaire',()=>{
  const p=store.emptyProfile();assert.match(transition(p,'היי').reply,/מה נרצה לעשות היום/);
  assert.equal(p.journey.stage,'IDLE');assert.equal(p.journey.pendingField,null);
- assert.match(transition(p,'מה אתה יודע לעשות?').reply,/אסטרטגיה ומודעות/);assert.equal(p.journey.stage,'IDLE');
+ assert.match(transition(p,'מה אתה יודע לעשות?').reply,/תמונות ומודעות/);assert.equal(p.journey.stage,'IDLE');
 });
 test('one free-form message fills business, product, region, goal and daily budget',()=>{
  const p=store.emptyProfile();transition(p,'אני מתקין פרגולות באזור נתניה ורוצה עוד לקוחות בתקציב של 100 שקל ביום');

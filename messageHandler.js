@@ -59,27 +59,22 @@ async function handleApproval(from, code) {
 }
 
 async function handleMedia(from, message) {
-  await notifyProcessing(from,'קיבלתי את הקובץ, בודק אותו.');
+  const kind=message.type==='image'?'תמונה':'סרטון';
+  await notifyProcessing(from,`קיבלתי את ה${kind}.`);
   try {
-    const media = await receiveWhatsAppMedia(message);
-    const client = await getOrCreateClient(from);
+    const media=await receiveWhatsAppMedia(message);
+    const client=await getOrCreateClient(from);
     const assetId=await require('./mediaStore').saveMedia(client.id,media);
-    const kind = media.type === 'image' ? 'תמונה' : 'סרטון';
-
-    const captionText = media.caption
-      ? `\nהכיתוב שקיבלתי: "${media.caption}"`
-      : '';
-
-    await safeSend(
-      from,
-      `קיבלתי את ה${kind} בהצלחה.${captionText}\nהקובץ עבר בדיקת סוג וגודל. מזהה מדיה: ${assetId}. הפניה זמינה ליום אחד. העלאת תמונה ל־Meta תדרוש אישור נפרד. וידאו מתקבל לעיון בלבד. כרגע לא פורסם ולא שונה שום קמפיין.`
-    );
-  } catch (error) {
-    logger.error('Media handling failed', { error: error.message });
-    await safeSend(
-      from,
-      'לא הצלחתי לעבד את קובץ המדיה. כרגע נתמכים JPG, PNG, WebP, MP4 ו-MOV בגודל סביר.'
-    );
+    await require('./marketingStore').update(client.id,null,p=>{
+      p.mediaContext={assetId,type:media.type,caption:media.caption.slice(0,2000),receivedAt:new Date().toISOString()};delete p.mediaVariants;
+      return{handled:false,changed:true,audit:'MEDIA_RECEIVED'};
+    });
+    const reply=`מה נעשה עם ה${kind}?`+(media.type==='image'?'\nהעלאה ל-Meta תדרוש אישור נפרד.':'');
+    const ui=await require('./conversationUi').prepare(client.id,reply);
+    await safeSend(from,ui.text,ui);
+  }catch(error){
+    logger.error('Media handling failed',{errorType:error?.name||'Error'});
+    await safeSend(from,'לא הצלחתי לפתוח את הקובץ. אפשר לשלוח אותו שוב?');
   }
 }
 
@@ -200,14 +195,67 @@ async function routeText(from, text, prefix = '') {
     try {const client=await getOrCreateClient(from);await safeSend(from,await require('./reportService').campaignReport(client.id,text.split(' ')[1] || 'last_7d'));}
     catch {await safeSend(from,'לא ניתן להפיק דוח כרגע. בדוק שחיבור Meta והחשבון הנבחר בתוקף.');}return;
   }
-  const graphicBrief=require('./graphicService').graphicPrompt(text);
-  if(graphicBrief!==null) {
+  if(configured()&&/^בחרתי גרסה [1-3]$/.test(text)){
+    const client=await getOrCreateClient(from);let selected=false;
+    await require('./marketingStore').update(client.id,null,async p=>{
+      const item=p.mediaVariants?.[Number(text.at(-1))-1];if(!item)return{handled:false};
+      let asset;try{asset=await require('./mediaStore').loadMedia(client.id,item.id);}catch{selected='expired';delete p.mediaVariants;return{handled:false,changed:true};}
+      p.mediaContext={assetId:asset.id,type:'image',caption:'',receivedAt:new Date().toISOString()};delete p.mediaVariants;selected=true;
+      return{handled:false,changed:true,audit:'MEDIA_SELECTED'};
+    });
+    if(selected==='expired'){await safeSend(from,'התמונה כבר לא זמינה. אפשר לשלוח אותה שוב?');return;}
+    if(selected){await routeText(from,'תכין לי מודעה עם הקובץ ששלחתי');return;}
+  }
+  if(configured()&&['זה תקציב יומי','זה לכל הקמפיין','זה מחיר המוצר'].includes(text)){
+    const client=await getOrCreateClient(from);let reply=null;
+    await require('./marketingStore').update(client.id,null,p=>{
+      const pending=p.mediaBudgetQuestion;if(!pending||pending.planId!==p.planId)return{handled:false};
+      if(text==='זה תקציב יומי'){
+        require('./conversationFacts').write(p,'dailyBudget',{amount:pending.amount,currency:'ILS',period:'day'},{evidence:text,source:'user_confirmed_context'});
+        require('./conversationFacts').correctionsInvalidate(p,['dailyBudget']);
+        reply=`שמרתי ${pending.amount} ₪ ביום לתכנון. איזו גרסה נרצה להכין למודעה?`;
+      }else if(text==='זה לכל הקמפיין'){
+        require('./conversationFacts').write(p,'dailyBudget',null,{status:'unknown',evidence:text,source:'user_confirmed_context'});
+        require('./conversationFacts').correctionsInvalidate(p,['dailyBudget']);
+        p.mediaBudgetQuestion={...pending,period:'total',awaitingDuration:true};
+        reply='הבנתי שזה הסכום לכל הקמפיין. לכמה ימים נרצה לפרוס אותו?';return{handled:false,changed:true};
+      }else reply='הבנתי שזה מחיר המוצר. איזו גרסה נרצה להכין למודעה?';
+      delete p.mediaBudgetQuestion;return{handled:false,changed:true};
+    });
+    if(reply){const ui=await require('./conversationUi').prepare(client.id,reply);await safeSend(from,ui.text,ui);return;}
+  }
+  if(configured()&&/^(?:ל)?\d{1,3}\s*(?:ימים|יום)$/.test(text)){
+    const client=await getOrCreateClient(from);let reply=null;
+    await require('./marketingStore').update(client.id,null,p=>{
+      const pending=p.mediaBudgetQuestion;
+      if(!pending?.awaitingDuration||pending.planId!==p.planId)return{handled:false};
+      const days=Number(text.match(/\d+/)[0]);if(days<1)return{handled:false};
+      p.mediaBudgetPlan={total:pending.amount,currency:'ILS',days,status:'PROPOSED',dailyAverage:pending.amount/days};delete p.mediaBudgetQuestion;
+      reply=`זה תכנון של ${pending.amount} ₪ ל-${days} ימים, בממוצע ${(pending.amount/days).toFixed(2)} ₪ ביום. איזו גרסה נרצה להכין למודעה?`;
+      return{handled:false,changed:true};
+    });if(reply){const ui=await require('./conversationUi').prepare(client.id,reply);await safeSend(from,ui.text,ui);return;}
+  }
+  const graphicRequest=require('./graphicService').graphicRequest(text);
+  if(graphicRequest!==null) {
+    if(graphicRequest.count>3){await safeSend(from,'אפשר להכין עד 3 גרסאות בבקשה אחת. כמה להכין?');return;}
     await notifyProcessing(from,'קיבלתי, מכין לך את הגרפיקה. אשלח אותה כאן כשהיא תהיה מוכנה.');
+    const ready=[];
     try {
       const client=await getOrCreateClient(from);
-      const media=await require('./graphicService').createGraphic(client.id,graphicBrief);
-      await require('./whatsappDelivery').enqueue(from,{type:'image',image:{id:media.whatsapp_media_id,caption:'הגרפיקה מוכנה לבדיקה. מזהה מדיה: '+media.id+'\nלא פורסם קמפיין. העלאה לחשבון הפרסום מחייבת אישור נפרד.'}});
-    } catch {await safeSend(from,'יצירת הגרפיקה לא הושלמה. אפשר לנסות בבקשה חדשה עם תיאור העסק, המסר והסגנון הרצוי.');}
+      await require('./graphicService').createVariants(client.id,graphicRequest,async(media,index,count)=>{
+        ready.push({id:media.id,index});
+        await require('./whatsappDelivery').enqueue(from,{type:'image',image:{id:media.whatsapp_media_id,caption:count===1?'הגרפיקה מוכנה. מה דעתך על הכיוון?':`גרסה ${index+1} מתוך ${count}.`}});
+      });
+      if(graphicRequest.count>1)await require('./marketingStore').update(client.id,null,p=>{p.mediaVariants=ready;return{handled:false,changed:true};});
+      if(graphicRequest.ambiguousBudget){
+        await require('./marketingStore').update(client.id,null,p=>{p.mediaBudgetQuestion={amount:graphicRequest.ambiguousBudget,planId:p.planId};return{handled:false,changed:true};});
+        const reply=`הסכום של ${graphicRequest.ambiguousBudget} ₪ הוא תקציב ליום, לכל הקמפיין או מחיר המוצר?`;
+        const ui=await require('./conversationUi').prepare(client.id,reply);await safeSend(from,ui.text,ui);
+      }else if(graphicRequest.count>1){const ui=await require('./conversationUi').prepare(client.id,'איזו גרסה נרצה להכין למודעה?');await safeSend(from,ui.text,ui);}
+    } catch(error){
+      const reply=['REFERENCE_IMAGE_REQUIRED','MEDIA_EXPIRED_OR_NOT_OWNED'].includes(error.message)?'כדי לשמור על מראה המוצר, אפשר לשלוח שוב את התמונה שלו?':error.completed?`הכנתי ${error.completed} גרסאות. השאר לא הושלמו כרגע. אפשר לבחור מהן או לנסות את השאר בהמשך.`:'יצירת הגרפיקה לא הושלמה כרגע. אפשר לנסות שוב עם תיאור קצר של הכיוון הרצוי.';
+      await safeSend(from,reply);
+    }
     return;
   }
   if (text === '/start' && (!configured() || !require('./marketingConversation').enabled())) {

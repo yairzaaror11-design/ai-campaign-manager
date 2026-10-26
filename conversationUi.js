@@ -1,10 +1,16 @@
 'use strict';
 const crypto=require('node:crypto'),store=require('./marketingStore');
 const FOOTER='אפשר גם לכתוב או לשלוח הודעה קולית';
-function context(p){return JSON.stringify([p.planId,p.journey?.stage,p.journey?.pendingField,p.journey?.revision,p.journey?.inputMode,p.connection?.status,p.connection?.pendingQuestion]);}
+function context(p){return JSON.stringify([p.planId,p.journey?.stage,p.journey?.pendingField,p.journey?.revision,p.journey?.inputMode,p.connection?.status,p.connection?.pendingQuestion,p.mediaContext?.assetId,p.mediaBudgetQuestion?.amount]);}
 const choice=(title,text,description)=>({title,text,...(description?{description}:{})});
 function choices(p,reply){
  const j=p.journey||{},pending=j.pendingField,connection=p.connection;
+ if(p.mediaVariants?.length&&reply.includes('איזו גרסה נרצה להכין למודעה?'))return p.mediaVariants.map((_,i)=>choice(`גרסה ${i+1}`,`בחרתי גרסה ${i+1}`));
+ if(p.mediaBudgetQuestion&&reply.startsWith('הסכום של '))return[choice('תקציב יומי','זה תקציב יומי'),choice('לכל הקמפיין','זה לכל הקמפיין'),choice('מחיר המוצר','זה מחיר המוצר')];
+ if(p.mediaContext&&reply.startsWith('מה נעשה עם ה'))return[
+ choice('נוסח למודעה','תכין לי מודעה עם הקובץ ששלחתי'),
+ choice('תוכנית קמפיין','תכין תוכנית קמפיין עם הקובץ ששלחתי'),
+ p.mediaContext.type==='image'?choice('גרסאות לתמונה','תיצור לי 3 תמונות מהתמונה ששלחתי'):choice('טקסט לסרטון','נוסח לסרטון ששלחתי')];
  if(connection?.pendingQuestion==='hasAdAccount'&&reply.includes('יש כבר חשבון'))return [choice('יש לי חשבון','כן'),choice('זו הפעם הראשונה','לא')];
  if(connection?.status==='CONNECTED'&&reply.includes('אומת וחובר'))return[choice('קמפיין חדש','אני רוצה קמפיין'),choice('בדיקת ביצועים','תוצאות השבוע')];
  if(connection?.status==='CONNECTION_OFFERED'&&reply.includes('לשלוח קישור'))return[choice('שלחו קישור','כן'),choice('לא עכשיו','לא')];
