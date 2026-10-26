@@ -101,7 +101,7 @@ const tools = [
  */
 async function processWithClaude(userMessage, session, from, pendingApprovals) {
   const messages = [
-    ...session.messages.slice(-10), // Last 10 messages for context
+    ...session.messages.slice(-10), // Prior messages only; current message is appended below
     { role: 'user', content: userMessage }
   ];
 
