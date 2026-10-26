@@ -70,7 +70,7 @@ async function handleMedia(from, message) {
       return{handled:false,changed:true,audit:'MEDIA_RECEIVED'};
     });
     const reply=`מה נעשה עם ה${kind}?`+(media.type==='image'?'\nהעלאה ל-Meta תדרוש אישור נפרד.':'');
-    const ui=await require('./conversationUi').prepare(client.id,reply);
+    const ui=await require('./conversationUi').prepare(client.id,reply,'media_action');
     await safeSend(from,ui.text,ui);
   }catch(error){
     logger.error('Media handling failed',{errorType:error?.name||'Error'});
@@ -144,7 +144,7 @@ async function handleTenantMessage(message, contact) {
   if(message.type==='interactive'){
     const client=await getOrCreateClient(from);
     const selected=await require('./conversationUi').consume(client.id,message);
-    if(!selected){await safeSend(from,'הבחירה הזו כבר לא עדכנית. אפשר לענות בכתיבה על השאלה האחרונה או לבקש להמשיך.');return;}
+    if(!selected){await safeSend(from,'הבחירה הזו כבר לא עדכנית. אפשר לענות בכתיבה על השאלה האחרונה או לכתוב ״להמשיך״.');return;}
     await routeText(from,selected);return;
   }
 
@@ -169,7 +169,7 @@ async function routeText(from, text, prefix = '') {
       const client = await getOrCreateClient(from);
       if(text!=='/meta-delete-data-confirm'&&require('./marketingConversation').enabled()){
         const guided=await require('./marketingConversation').handleMarketingMessage(client.id,text,require('./whatsappDelivery').messageContext.getStore()?.eventId,{onSlow:()=>notifyProcessing(from)});
-        if(guided.handled){const ui=await require('./conversationUi').prepare(client.id,guided.reply);await safeSend(from,ui.text,ui);return;}
+        if(guided.handled){const ui=await require('./conversationUi').prepare(client.id,guided.reply,guided.decisionKey);await safeSend(from,ui.text,ui);return;}
       }
       let reply;
       if (text === '/meta-delete-data-confirm') {
@@ -222,7 +222,7 @@ async function routeText(from, text, prefix = '') {
       }else reply='הבנתי שזה מחיר המוצר. איזו גרסה נרצה להכין למודעה?';
       delete p.mediaBudgetQuestion;return{handled:false,changed:true};
     });
-    if(reply){const ui=await require('./conversationUi').prepare(client.id,reply);await safeSend(from,ui.text,ui);return;}
+    if(reply){const ui=await require('./conversationUi').prepare(client.id,reply,'media_variant');await safeSend(from,ui.text,ui);return;}
   }
   if(configured()&&/^(?:ל)?\d{1,3}\s*(?:ימים|יום)$/.test(text)){
     const client=await getOrCreateClient(from);let reply=null;
@@ -233,7 +233,7 @@ async function routeText(from, text, prefix = '') {
       p.mediaBudgetPlan={planId:p.planId,total:pending.amount,currency:'ILS',days,status:'PROPOSED',dailyAverage:pending.amount/days};delete p.mediaBudgetQuestion;
       reply=`זה תכנון של ${pending.amount} ₪ ל-${days} ימים, בממוצע ${(pending.amount/days).toFixed(2)} ₪ ביום. איזו גרסה נרצה להכין למודעה?`;
       return{handled:false,changed:true};
-    });if(reply){const ui=await require('./conversationUi').prepare(client.id,reply);await safeSend(from,ui.text,ui);return;}
+    });if(reply){const ui=await require('./conversationUi').prepare(client.id,reply,'media_variant');await safeSend(from,ui.text,ui);return;}
   }
   const graphicRequest=require('./graphicService').graphicRequest(text);
   if(graphicRequest!==null) {
@@ -250,8 +250,8 @@ async function routeText(from, text, prefix = '') {
       if(graphicRequest.ambiguousBudget){
         await require('./marketingStore').update(client.id,null,p=>{p.mediaBudgetQuestion={amount:graphicRequest.ambiguousBudget,planId:p.planId};return{handled:false,changed:true};});
         const reply=`הסכום של ${graphicRequest.ambiguousBudget} ₪ הוא תקציב ליום, לכל הקמפיין או מחיר המוצר?`;
-        const ui=await require('./conversationUi').prepare(client.id,reply);await safeSend(from,ui.text,ui);
-      }else if(graphicRequest.count>1){const ui=await require('./conversationUi').prepare(client.id,'איזו גרסה נרצה להכין למודעה?');await safeSend(from,ui.text,ui);}
+        const ui=await require('./conversationUi').prepare(client.id,reply,'budget_period');await safeSend(from,ui.text,ui);
+      }else if(graphicRequest.count>1){const ui=await require('./conversationUi').prepare(client.id,'איזו גרסה נרצה להכין למודעה?','media_variant');await safeSend(from,ui.text,ui);}
     } catch(error){
       const reply=['REFERENCE_IMAGE_REQUIRED','MEDIA_EXPIRED_OR_NOT_OWNED'].includes(error.message)?'כדי לשמור על מראה המוצר, אפשר לשלוח שוב את התמונה שלו?':error.completed?`הכנתי ${error.completed} גרסאות. השאר לא הושלמו כרגע. אפשר לבחור מהן או לנסות את השאר בהמשך.`:'יצירת הגרפיקה לא הושלמה כרגע. אפשר לנסות שוב עם תיאור קצר של הכיוון הרצוי.';
       await safeSend(from,reply);
@@ -296,7 +296,7 @@ async function routeText(from, text, prefix = '') {
       if(handled?.handled){
         const reply=prefix?`${prefix}\n\n${handled.reply}`:handled.reply;
         await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:handled.historyReply||reply}]);
-        if(owner==='marketing'){const ui=await require('./conversationUi').prepare(client.id,reply);await safeSend(from,ui.text,ui);}else await safeSend(from,reply);return;
+        if(owner==='marketing'){const ui=await require('./conversationUi').prepare(client.id,reply,handled.decisionKey);await safeSend(from,ui.text,ui);}else await safeSend(from,reply);return;
       }
     }
     await processNaturalLanguage(from, text, prefix);
@@ -316,3 +316,4 @@ async function handleIncomingMessage(message, contact) {
     require('./metaConnection').context.run(String(client.id),()=>handleTenantMessage(message, contact)));
 }
 module.exports = { handleIncomingMessage };
+

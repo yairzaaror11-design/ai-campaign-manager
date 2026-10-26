@@ -72,6 +72,8 @@ async function verify(clientId){
   return{status,accounts:[],permissions:[],canRead:false,canManage:false,error:safeError(error)};
  }
 }
+function statusDecision(v){return v.status==='CONNECTED'?'connected':v.status==='ACCOUNT_SELECTION_REQUIRED'&&v.accounts?.length?'account_selection':null;}
+function statusResult(v){return{handled:true,reply:statusReply(v),decisionKey:statusDecision(v)};}
 function statusReply(v){
  if(v.status==='CONNECTED')return`החשבון ״${v.account.name}״ אומת וחובר. ${v.canManage?'כל שינוי ידרוש אישור נפרד.':'אפשר לקרוא נתונים; שינוי קמפיינים אינו זמין כרגע.'} אפשר לבדוק קמפיינים קיימים או להכין טיוטה חדשה.`;
  if(v.status==='ACCOUNT_SELECTION_REQUIRED')return v.accounts.length?'אלה חשבונות הפרסום הזמינים:\n'+v.accounts.map((a,i)=>`${i+1}. ${a.name} (${a.id})`).join('\n')+'\nבאיזה חשבון נרצה לעבוד?':'ההרשאה נקלטה, אך לא נמצא חשבון מודעות פעיל שאפשר לבחור. אפשר לבדוק גישה במנהל המודעות או להכין טיוטה מקומית.';
@@ -82,10 +84,10 @@ function statusReply(v){
 }
 async function offer(clientId,eventId){
  const v=await verify(clientId);
- if(['CONNECTED','ACCOUNT_SELECTION_REQUIRED'].includes(v.status))return{handled:true,reply:statusReply(v)};
+ if(['CONNECTED','ACCOUNT_SELECTION_REQUIRED'].includes(v.status))return statusResult(v);
  return store.update(clientId,eventId,p=>{
   p.connection=move(p.connection,'CONNECTION_OFFERED');
-  return{handled:true,reply:'כדי לבדוק נתוני פרסום נחבר את החשבון דרך Meta, בלי לשלוח סיסמה בצ׳אט. לשלוח קישור אישי לחיבור?',audit:'META_CONNECTION_OFFERED'};
+  return{handled:true,reply:'כדי לבדוק נתוני פרסום נחבר את החשבון דרך Meta, בלי לשלוח סיסמה בצ׳אט. לשלוח קישור אישי לחיבור?',decisionKey:'connection_offer',audit:'META_CONNECTION_OFFERED'};
  });
 }
 async function invite(clientId,eventId){
@@ -102,8 +104,8 @@ async function invite(clientId,eventId){
 async function handle(clientId,text,analysis,eventId){
  const p=await store.load(clientId);const n=norm(text);
  if(/להתחיל לפרסם (?:בפייסבוק|במטא)/.test(text)){
-  const v=await verify(clientId);if(v.status==='CONNECTED')return{handled:true,reply:statusReply(v)};
-  return store.update(clientId,eventId,profile=>{profile.connection={...(profile.connection||{}),status:profile.connection?.status||'NOT_CONNECTED',pendingQuestion:'hasAdAccount'};return{handled:true,reply:'יש כבר חשבון מודעות ב-Meta, או שזו הפעם הראשונה של העסק בפרסום?'};});
+  const v=await verify(clientId);if(v.status==='CONNECTED')return statusResult(v);
+  return store.update(clientId,eventId,profile=>{profile.connection={...(profile.connection||{}),status:profile.connection?.status||'NOT_CONNECTED',pendingQuestion:'hasAdAccount'};return{handled:true,reply:'יש כבר חשבון מודעות ב-Meta, או שזו הפעם הראשונה של העסק בפרסום?',decisionKey:'has_ad_account'};});
  }
  if(p?.connection?.pendingQuestion==='hasAdAccount'&&['yes','no'].includes(analysis.intent)){
   await store.update(clientId,null,profile=>{profile.connection.pendingQuestion=null;profile.connection.hasAdAccount=analysis.intent==='yes';return{handled:false,changed:true};});
@@ -119,25 +121,25 @@ async function handle(clientId,text,analysis,eventId){
   const fresh=await verify(clientId);
   const id=explicit?.[1]||fresh.accounts?.[(analysis.intent==='yes'?1:Number(n))-1]?.id;
   if(!id||!fresh.accounts?.some(a=>a.id===id))return{handled:true,reply:'החשבון הזה אינו ברשימת החשבונות שאומתו עבורך.\n'+statusReply(fresh)};
-  try {await meta.selectAccount(clientId,id);return{handled:true,reply:statusReply(await verify(clientId))};}
+  try {await meta.selectAccount(clientId,id);return statusResult(await verify(clientId));}
   catch{return{handled:true,reply:'לא ניתן לבחור את החשבון הזה בלי גישה תקפה. אפשר לבדוק שוב את רשימת החשבונות.'};}
  }
  if(analysis.intent==='yes'&&p?.connection?.status==='CONNECTION_OFFERED')return invite(clientId,eventId);
  if(text==='/meta-connect'||/^(?:שלח|שלחי) (?:לי )?קישור (?:חדש )?(?:לחיבור|למטא|Meta)/i.test(n)){
   if(text==='/meta-connect'){
-    const v=await verify(clientId);if(['CONNECTED','ACCOUNT_SELECTION_REQUIRED'].includes(v.status))return{handled:true,reply:statusReply(v)};
+    const v=await verify(clientId);if(['CONNECTED','ACCOUNT_SELECTION_REQUIRED'].includes(v.status))return statusResult(v);
   }
   if(p?.connection?.status==='AWAITING_OAUTH'&&/חדש/.test(n))await recordStatus(clientId,'CONNECTION_OFFERED');
   return invite(clientId,eventId);
  }
  if(analysis.intent==='connect')return offer(clientId,eventId);
- if(analysis.intent==='connection_status'||text==='/meta-accounts')return{handled:true,reply:statusReply(await verify(clientId))};
+ if(analysis.intent==='connection_status'||text==='/meta-accounts')return statusResult(await verify(clientId));
  if(analysis.intent==='disconnect'||text==='/meta-disconnect'){
   await meta.disconnect(clientId);await recordStatus(clientId,'DISCONNECTED',{account:null,accounts:[],permissions:[],lastError:null});
   return{handled:true,reply:'החיבור המקומי נותק והאישורים הממתינים בוטלו. נתוני העסק והטיוטה נשמרו.'};
  }
  if(analysis.intent==='renew'||text==='/meta-renew'){
-  try{await meta.renew(clientId);return{handled:true,reply:statusReply(await verify(clientId))};}
+  try{await meta.renew(clientId);return statusResult(await verify(clientId));}
   catch{await recordStatus(clientId,'VERIFYING_ACCESS');await recordStatus(clientId,'RECONNECT_REQUIRED',{lastError:'TOKEN_RECONNECT_REQUIRED'});return{handled:true,reply:'נדרש חיבור מחדש דרך Meta. אפשר לבקש קישור אישי; אין לשלוח סיסמה בצ׳אט.'};}
  }
  if(analysis.intent==='knowledge'){
@@ -147,3 +149,4 @@ async function handle(clientId,text,analysis,eventId){
  return{handled:false};
 }
 module.exports={STATES,TRANSITIONS,move,recordStatus,verify,statusReply,offer,invite,handle};
+
