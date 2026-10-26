@@ -1,5 +1,7 @@
 # PostgreSQL backup, isolated restore and release readiness (2026-10-26)
 
+**Execution update:** The operator authorized backup, rehearsal, production migrations, deployment, and publication of the new Meta app. These steps were subsequently executed. See `RELEASE-VALIDATION-20261026.md` for verified results. Sections below describe the earlier plan and must not be treated as current execution status.
+
 ## Verified read-only infrastructure
 - Render web service: `srv-dbe9q03rjlhs73evfii0`, auto-deploy off, branch `audit-security-hardening-20261025`; currently deployed commit `0475317`.
 - Render PostgreSQL 18: `dpg-dberhl8ae00c73e437j0-a`, free plan, expires 2026-11-24. Public network allowlist is `0.0.0.0/0`. No allowlist was changed.
