@@ -57,7 +57,7 @@ test('the screenshots business message saves facts without asking for technical 
 });
 test('plural image requests are recognized, bounded and distinguish reference edits',()=>{
  const g=require('../graphicService');const r=g.graphicRequest('תיצור לי 3 תמונות של הצמיד ששלחתי ותכין אותם לפרסום בעלות של 220 שח');
- assert.equal(r.count,3);assert.equal(r.usesReference,true);assert.equal(r.ambiguousBudget,220);assert.equal(g.graphicRequest('תיצור לי שלוש תמונות לפרסום').count,3);
+ assert.equal(r.count,3);assert.equal(r.usesReference,true);assert.equal(r.ambiguousBudget,220);assert.doesNotMatch(r.prompt,/220/);assert.equal(g.graphicRequest('תיצור לי שלוש תמונות לפרסום').count,3);
  assert.equal(g.graphicRequest('תיצור לי 20 תמונות').count,20);assert.equal(g.graphicRequest('אני רוצה לפרסם'),null);
 });
 test('image generation sends the actual reference image in the provider request',async()=>{

@@ -13,7 +13,7 @@ function graphicRequest(text){
  const count=m?({'שלוש':3,'שלושה':3,'שתי':2,'שני':2}[m[1]]||Number(m[1])):1;
  const budget=prompt.match(/(?:בעלות|בתקציב)(?: של)?\s+(\d+(?:\.\d+)?)\s*(?:ש[״\"']?ח|₪|שקל)/);
  const ambiguousBudget=budget&&!/ביום|ליום|יומי|לכל הקמפיין|לכל התקופה/.test(prompt)?Number(budget[1]):null;
- return{prompt,count,ambiguousBudget,usesReference:/ששלחתי|מהתמונה|בתמונה|על בסיס התמונה|גרסאות לתמונה/.test(prompt)};
+ return{prompt:ambiguousBudget?prompt.replace(budget[0],'').trim():prompt,count,ambiguousBudget,usesReference:/ששלחתי|מהתמונה|בתמונה|על בסיס התמונה|גרסאות לתמונה/.test(prompt)};
 }
 async function generate(prompt,{referenceImage}={}) {
  if(!process.env.GEMINI_API_KEY||!/^gemini-[a-z0-9.-]+$/.test(process.env.GEMINI_IMAGE_MODEL || '')) throw Error('GRAPHICS_CONFIGURATION_REQUIRED');
