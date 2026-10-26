@@ -1,6 +1,14 @@
 'use strict';
 const qs=require('./marketingQuestions');
 function fact(p,id) {const a=qs.answerFor(p,id);return a?.status==='known'?a.value:null;}
+function performanceInsight({spend,leads,sales,priorSpend,priorLeads}={}) {
+ if(![spend,leads].every(x=>Number.isFinite(x)&&x>=0)) return {status:'insufficient_data',message:'נדרשים נתוני הוצאה ופניות מאומתים לאותה תקופה.'};
+ const cpl=leads>0?spend/leads:null;
+ const previous=Number.isFinite(priorSpend)&&Number.isFinite(priorLeads)&&priorLeads>0&&priorSpend>=0?priorSpend/priorLeads:null;
+ const change=cpl!==null&&previous!==null&&previous>0?(cpl/previous-1):null;
+ const salesCount=Number.isInteger(sales)&&sales>=0?sales:null;
+ return {status:'observed',cpl,sales:salesCount,change,insight:leads===0?'לא נמדדו פניות בתקופה. יש לבדוק קודם את תקינות המדידה והחשיפה.':change!==null&&change>0.2?'עלות הפנייה עלתה ביותר מ-20% ביחס לתקופה הקודמת. מומלץ לבדוק קהל, מסר ומדידה לפני שינוי תקציב.':'הנתונים תיאוריים בלבד; יש לבדוק איכות פניות והמרה למכירה לפני החלטה.'};
+}
 function nextAction(p) {
  const audience=String(fact(p,'AUD-001')||'');
  const offer=String(fact(p,'GOAL-002')||'');
@@ -24,4 +32,4 @@ function draft(p) {
  lines.push('לפני יצירה ב-Meta יש לאמת תקציב, יעד המרה, נכסי מודעה, חשבון מחובר והרשאות. כל יצירה תתחיל במצב PAUSED ותדרוש אישור מפורש; הפעלה דורשת אישור נפרד.');
  return lines.join('\n');
 }
-module.exports={fact,nextAction,draft};
+module.exports={fact,nextAction,draft,performanceInsight};

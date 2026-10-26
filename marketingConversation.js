@@ -22,7 +22,7 @@ function deliverNext(p,prefix='') {
   const q=qs.nextQuestion(p);
   if(!q) {
     p.session.pendingId=null;p.session.complete=true;
-    return {handled:true,reply:`${prefix}${prefix?'\n\n':''}סיימנו את האפיון הזה.\n${qs.summary(p)}\n\n${require('./marketingBrain').nextAction(p).join('\n')}\n\n\${brain.draft(p)}`};
+    return {handled:true,reply:`${prefix}${prefix?'\n\n':''}סיימנו את האפיון הזה.\n${qs.summary(p)}\n\n${require('./marketingBrain').nextAction(p).join('\n')}\n\n${brain.draft(p)}`};
   }
   p.session.pendingId=q.id;
   return {handled:true,reply:(prefix?prefix+'\n\n':'')+q.whatsapp_text};
