@@ -4,7 +4,7 @@ const axios=require('axios');
 const db=require('./db');
 function graphicPrompt(text) {
  if(/^\/graphic\s+/i.test(text)) return text.replace(/^\/graphic\s+/i,'').trim();
- if(/^(?:צור|צרי|תיצור|תיצרי|תכין|תכיני|תייצר|תייצרי)(?:\s+לי)?\s+(?:גרפיקה|תמונה|באנר)/.test(text)) return text;
+ if(/^(?:צור|צרי|תצור|תצורי|תיצור|תיצרי|תכין|תכיני|תייצר|תייצרי)(?:\s+לי)?\s+(?:גרפיקה|תמונה|באנר)/.test(text)) return text;
  return null;
 }
 async function generate(prompt) {
