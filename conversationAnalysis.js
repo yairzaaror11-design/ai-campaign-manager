@@ -1,9 +1,10 @@
 'use strict';
 const {FIELDS,validate}=require('./conversationFacts');
 const norm=s=>String(s||'').normalize('NFKC').replace(/[״׳"']/g,'').replace(/[?!.,]+$/g,'').trim();
-const INTENTS=['greeting','capabilities','build','ad','strategy','plan','clarify','summary','correct','continue','yes','no','pause','report','connect','connection_status','select_account','disconnect','renew','knowledge','other'];
+const INTENTS=['reset','greeting','capabilities','build','ad','strategy','plan','clarify','summary','correct','continue','yes','no','pause','report','connect','connection_status','select_account','disconnect','renew','knowledge','other'];
 function localAnalysis(text){
  const raw=String(text).trim(),n=norm(raw);const updates=[];
+ if(require('./conversationControl').isReset(raw))return{intent:'reset',updates:[],correction:false};
  const add=(field,value,evidence=raw)=>{const index=updates.findIndex(u=>u.field===field);const item={field,value,evidence};if(index<0)updates.push(item);else updates[index]=item;};
  let intent='other';
  if(/^(היי|הי|שלום|שלום לך|שלום בוט|\/start)$/.test(n))intent='greeting';
@@ -78,3 +79,4 @@ async function analyze(text,profile,{interpreter,onSlow}={}){
  } catch {return {...local,analysisUnavailable:true};}
 }
 module.exports={norm,INTENTS,localAnalysis,validateAnalysis,ANALYSIS_SYSTEM,analyze};
+

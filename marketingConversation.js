@@ -75,6 +75,7 @@ function transition(p,text,options={}) {
   if(r.handled&&r.reply.startsWith('התשובה עודכנה')){require('./conversationFacts').correctionsInvalidate(p,['explicit_correction']);r.reply='התשובה עודכנה.\n'+require('./conversationFacts').summary(p);}
   return r;
  }
+ if(require('./conversationControl').isReset(text))return{handled:false,resetRequested:true};
  const requested=routeRequested(text);
  const analysis=options.analysis||require('./conversationAnalysis').localAnalysis(text);
  if(requested&&requested!=='onboarding'){
@@ -119,3 +120,4 @@ async function handleMarketingMessage(clientId,text,eventId,options={}) {
   }
 }
 module.exports={enabled,routeRequested,transition,diagnosticTransition,handleMarketingMessage,asksOrChangesTask};
+

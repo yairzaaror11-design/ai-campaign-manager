@@ -29,7 +29,7 @@ function validate(field,input){
   return {amount:input.amount,currency:input.currency,period:'day'};
  }
  if(field==='offerMediaSeparate'){if(typeof input!=='boolean')throw Error('INVALID_OFFER_TERMS');return input;}
- if(typeof input!=='string'||!input.trim()||input.length>1000)throw Error('INVALID_BUSINESS_FACT');
+ if(typeof input!=='string'||!input.trim()||input.length>1000||require('./conversationControl').hasControlContamination(input))throw Error('INVALID_BUSINESS_FACT');
  return input.trim();
 }
 function write(p,field,input,{status='known',source='user_explicit',evidence='',now=new Date().toISOString()}={}){
@@ -50,3 +50,4 @@ function correctionsInvalidate(p,fields){
  p.journey.strategyApproved=false;p.journey.creativeApproved=false;p.journey.planApproved=false;
 }
 module.exports={FIELDS,descriptor,read,value,write,all,summary,display,validate,correctionsInvalidate};
+

@@ -162,6 +162,16 @@ async function handleTenantMessage(message, contact) {
 }
 
 async function routeText(from, text, prefix = '') {
+  if(require('./conversationControl').isReset(text)){
+    await resetSession(from);
+    await cancelPendingApprovals(from);
+    if(configured()){
+      const client=await getOrCreateClient(from);
+      await require('./marketingStore').restart(client.id);
+    }
+    await safeSend(from,'איפסתי את פרטי השיחה והטיוטה וביטלתי אישורי פעולה ממתינים. חיבור Meta נשמר. מה העסק עושה, ובאיזה שם הוא פועל?');
+    return;
+  }
   const meta = require('./metaConnection');
   if (text.startsWith('/meta-')) {
     if(text!=='/meta-delete-data-confirm') await notifyProcessing(from,'קיבלתי, בודק את חיבור חשבון הפרסום.');
@@ -266,16 +276,6 @@ async function routeText(from, text, prefix = '') {
     return;
   }
 
-  if (text === '/reset') {
-    await resetSession(from);
-    await cancelPendingApprovals(from);
-    if(configured() && require('./marketingConversation').enabled()) {
-      const client=await getOrCreateClient(from);
-      await require('./marketingStore').pause(client.id);
-    }
-    await safeSend(from, 'איפסתי את הקשר השיחה וביטלתי אישורים ממתינים.');
-    return;
-  }
 
   const approvalMatch = text.match(/^אשר\s+(\d{6})$/);
   if (approvalMatch) {

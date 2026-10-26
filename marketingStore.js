@@ -31,6 +31,13 @@ async function update(clientId,eventId,work) {
     return response;
   });
 }
+async function restart(clientId){return update(clientId,null,p=>{
+ const connection=p.connection,version=p.version||0;
+ for(const key of Object.keys(p))delete p[key];
+ Object.assign(p,emptyProfile(),{version,connection});
+ const j=require('./campaignJourney').init(p);j.historyImported=true;j.stage='DISCOVERY';j.pendingField='businessType';
+ return{handled:false,changed:true,audit:'CONVERSATION_RESET'};
+});}
 async function pause(clientId) {return update(clientId,null,p=>{p.session=null;if(p.journey){p.journey.pendingField=null;p.journey.paused=true;p.journey.stage='IDLE';if(p.journey.draft)p.journey.draft.stale=true;}return {handled:false,changed:true};});}
 async function briefSeeds(clientId) {
   const profile=await load(clientId);
@@ -72,5 +79,5 @@ async function businessFacts(clientId,fields){
  if(!Array.isArray(fields)||fields.length<1||fields.length>5||fields.some(f=>!defs.FIELDS[f]))throw Error('INVALID_BUSINESS_FIELDS');
  const p=await load(clientId);return Object.fromEntries(fields.map(f=>{const a=p?defs.read(p,f):null;return[f,a?{value:a.value,status:a.status,scope:a.scope,source:a.source}:null];}));
 }
-module.exports={load,update,pause,briefSeeds,context,answers,emptyProfile,businessFacts};
+module.exports={load,update,restart,pause,briefSeeds,context,answers,emptyProfile,businessFacts};
 
