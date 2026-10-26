@@ -31,4 +31,12 @@ async function processWithClaude(text,history=[],options={}) {
  }
  throw Error('AI_TOOL_LIMIT');
 }
-module.exports={processWithClaude};
+async function analyzeConversation(text,context={},options={}){
+ if(!process.env.CLAUDE_MODEL||(!options.client&&!process.env.ANTHROPIC_API_KEY))throw Error('CLAUDE_CONFIGURATION_REQUIRED');
+ const body={model:process.env.CLAUDE_MODEL,max_tokens:1800,system:require('./conversationAnalysis').ANALYSIS_SYSTEM,messages:[{role:'user',content:JSON.stringify({context,currentUserMessage:text})}]};
+ let response;
+ if(options.client)response=await options.client.create(body);
+ else try{response=(await axios.post('https://api.anthropic.com/v1/messages',body,{headers:{'x-api-key':process.env.ANTHROPIC_API_KEY,'anthropic-version':'2023-06-01'},timeout:12000,maxRedirects:0})).data;}catch{throw Error('AI_REQUEST_FAILED');}
+ return JSON.parse((response.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('\n').replace(/^```(?:json)?\s*|\s*```$/g,''));
+}
+module.exports={processWithClaude,analyzeConversation};

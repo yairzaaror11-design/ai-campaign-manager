@@ -34,6 +34,11 @@ async function handleBriefMessage(phone, text) {
     return { handled: true, reply: nextQuestion(brief)?.question || 'הבריף מוכן לבדיקה.' };
   }
   if (!brief) return { handled: false };
+  if(!text.startsWith('/')&&require('./marketingConversation').asksOrChangesTask(text)){
+    const q=nextQuestion(brief);
+    if(/^(מה הכוונה|מה זאת אומרת|לא הבנתי)/.test(text))return{handled:true,reply:q?'כדי להכין טיוטה חסר הפרט הבא:\n'+q.question:'הפרטים כבר התקבלו. אפשר לבקש סיכום בריף.'};
+    return{handled:false};
+  }
   if (text === '/brief-cancel') {
     await saveBrief(client.id, cancelBrief(brief), previousRevision);
     return { handled: true, reply: 'הבריף בוטל.' };

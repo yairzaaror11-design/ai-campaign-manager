@@ -28,9 +28,17 @@ async function runOne({transport}={}) {
  const claimed=await db.transaction(async tx=>{
    // Interrupted sends never automatically replay: the provider may have accepted them.
    await tx("UPDATE whatsapp_outbox SET status='UNKNOWN',payload='{}'::jsonb WHERE status='PROCESSING' AND lease_until<NOW()");
-   const r=await tx("SELECT * FROM whatsapp_outbox WHERE status='PENDING' ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1");
-   if(!r.rows.length) return null;
-   const row=r.rows[0];
+   const r=await tx(`SELECT o.* FROM whatsapp_outbox o WHERE o.status='PENDING'
+    AND NOT EXISTS(SELECT 1 FROM whatsapp_outbox earlier WHERE earlier.recipient=o.recipient AND earlier.status IN ('PENDING','PROCESSING') AND earlier.delivery_order<o.delivery_order)
+    ORDER BY o.delivery_order FOR UPDATE SKIP LOCKED LIMIT 20`);
+   let row=null;
+   for(const candidate of r.rows){
+    const lock=await tx('SELECT pg_try_advisory_xact_lock(hashtextextended($1,874223008)) AS locked',[candidate.recipient]);
+    if(!lock.rows[0]?.locked)continue;
+    const busy=await tx("SELECT id FROM whatsapp_outbox WHERE recipient=$1 AND status='PROCESSING' LIMIT 1",[candidate.recipient]);
+    if(!busy.rows.length){row=candidate;break;}
+   }
+   if(!row)return null;
    const window=await tx("SELECT opted_in,last_inbound_at>NOW()-INTERVAL '24 hours' AS open FROM whatsapp_contacts WHERE phone=$1",[row.recipient]);
    if((['text','image'].includes(row.payload.type)&&!window.rows[0]?.open)||(row.payload.type==='template'&&!window.rows[0]?.opted_in)) {
      await tx("UPDATE whatsapp_outbox SET status='BLOCKED',error_code='POLICY_WINDOW_OR_OPTIN',payload='{}'::jsonb WHERE id=$1",[row.id]);

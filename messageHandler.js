@@ -165,6 +165,10 @@ async function routeText(from, text, prefix = '') {
     if(text!=='/meta-delete-data-confirm') await notifyProcessing(from,'קיבלתי, בודק את חיבור חשבון הפרסום.');
     try {
       const client = await getOrCreateClient(from);
+      if(text!=='/meta-delete-data-confirm'&&require('./marketingConversation').enabled()){
+        const guided=await require('./marketingConversation').handleMarketingMessage(client.id,text,require('./whatsappDelivery').messageContext.getStore()?.eventId,{onSlow:()=>notifyProcessing(from)});
+        if(guided.handled){await safeSend(from,guided.reply);return;}
+      }
       let reply;
       if (text === '/meta-delete-data-confirm') {
         await require('./db').transaction(tx=>require('./metaDeletion').deleteClient(client.id,tx));
@@ -226,23 +230,18 @@ async function routeText(from, text, prefix = '') {
 
   try {
     if (configured()) {
-      const lifecycleResult = await handleLifecycleMessage(from, text);
-      if (lifecycleResult.handled) {
-        await safeSend(from, lifecycleResult.reply);
-        return;
-      }
-      const briefResult = await handleBriefMessage(from, text);
-      if (briefResult.handled) {
-        await safeSend(from, briefResult.reply);
-        return;
-      }
       const client=await getOrCreateClient(from);
-      const discovery=await require('./marketingConversation').handleMarketingMessage(client.id,text,require('./whatsappDelivery').messageContext.getStore()?.eventId);
-      if(discovery.handled) {
-        const reply=prefix?`${prefix}\n\n${discovery.reply}`:discovery.reply;
-        await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:reply}]);
-        await safeSend(from,reply);
-        return;
+      const profile=await require('./marketingStore').load(client.id);
+      const openBrief=await require('./briefStore').loadBrief(client.id);
+      const owner=require('./conversationOwner').owner({text,profile,hasOpenBrief:!!openBrief});
+      let handled;
+      if(owner==='lifecycle')handled=await handleLifecycleMessage(from,text);
+      else if(owner==='brief')handled=await handleBriefMessage(from,text);
+      else if(owner==='marketing'&&require('./marketingConversation').enabled())handled=await require('./marketingConversation').handleMarketingMessage(client.id,text,require('./whatsappDelivery').messageContext.getStore()?.eventId,{onSlow:()=>notifyProcessing(from)});
+      if(handled?.handled){
+        const reply=prefix?`${prefix}\n\n${handled.reply}`:handled.reply;
+        await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:handled.historyReply||reply}]);
+        await safeSend(from,reply);return;
       }
     }
     await processNaturalLanguage(from, text, prefix);

@@ -45,7 +45,10 @@ async function graph(path, token, params = {}) {
     return (await axios.get('https://graph.facebook.com/' + config().version + path, {
       headers: { Authorization: 'Bearer ' + token }, params: {...params, appsecret_proof: proof}, timeout:15000, maxRedirects:0
     })).data;
-  } catch { throw Error('META_REQUEST_FAILED'); }
+  } catch(error) {
+    const code=Number(error?.response?.data?.error?.code);
+    throw Error(code===190?'META_TOKEN_EXPIRED':[10,200].includes(code)?'META_PERMISSION_REQUIRED':'META_REQUEST_FAILED');
+  }
 }
 async function createInvite(clientId) {
   config();
@@ -71,6 +74,7 @@ async function begin(invite) {
 async function callback(state, browser, code) {
   if (!browser) throw Error('INVALID_LOGIN');
   const {client_id:clientId,generation} = await consume(state,'STATE',browser);
+  try {
   if (typeof code !== 'string' || !code || code.length>4096) throw Error('INVALID_CODE');
   let data;
   try {
@@ -88,6 +92,19 @@ async function callback(state, browser, code) {
     await tx('UPDATE clients SET meta_ad_account_id=NULL,meta_user_id=$2,meta_generation=meta_generation+1 WHERE id=$1',[clientId,user.id]);
   });
   return clientId;
+  }catch(error){
+    // Record only sanitized lifecycle information. Never persist the OAuth code/token here.
+    if(require('./marketingConversation').enabled()&&error.message!=='CONNECTION_REVOKED'){
+      try{
+        const profile=await require('./marketingStore').load(clientId);
+        if(profile?.connection?.status!=='DISCONNECTED'){
+          await require('./metaConversation').recordStatus(clientId,'VERIFYING_ACCESS');
+          await require('./metaConversation').recordStatus(clientId,error.message==='ADS_READ_REQUIRED'?'MISSING_PERMISSIONS':'CONNECTION_FAILED',{lastError:error.message==='ADS_READ_REQUIRED'?'ADS_READ_REQUIRED':'OAUTH_CALLBACK_FAILED',lastCheckAt:new Date().toISOString()});
+        }
+      }catch{/* The original failed login remains failed even if diagnostic persistence fails. */}
+    }
+    throw error;
+  }
 }
 async function credentials(clientId) {
   const r = await db.query('SELECT m.*,c.meta_ad_account_id,c.meta_generation FROM meta_connections m JOIN clients c ON c.id=m.client_id WHERE m.client_id=$1 AND m.app_id=$2 AND m.expires_at>NOW()',[clientId,process.env.META_APP_ID]);

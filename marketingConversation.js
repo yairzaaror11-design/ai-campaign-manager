@@ -31,7 +31,7 @@ function record(p,q,answer,now) {
   const history=prior?[...(prior.history||[]),{value:prior.value,status:prior.status,verified_at:prior.verified_at}].slice(-8):[];
   p.answers[key]={questionId:q.id,field:q.storage_field,scope,value:answer.value,status:answer.status,unit:answer.unit||q.answer_type,source:'user_explicit',verified_at:now,period:null,confidence:answer.status==='estimated'?'low':'user_reported',history};
 }
-function transition(p,text,{now=new Date().toISOString()}={}) {
+function diagnosticTransition(p,text,{now=new Date().toISOString()}={}) {
   const n=qs.normalized(text);
   if(/^(עצור|עצירה|נעצור|אחר כך|הפסק|מספיק|לא עכשיו)$/.test(n)) {
     if(!p.session) return {handled:false};
@@ -57,7 +57,7 @@ function transition(p,text,{now=new Date().toISOString()}={}) {
     p.session={route:requested,pendingId:null,answersSinceSummary:0,paused:false,awaitingContinue:false,complete:false};
     return deliverNext(p,requested==='onboarding'?'היי, אני קמפיין בצ׳ט. נכיר את העסק ונבנה כיוון לפרסום, שאלה אחת בכל פעם. אפשר לכתוב ״לא ידוע״ או ״עצור״.':'נבדוק את זה יחד, שאלה אחת בכל פעם. אפשר לכתוב ״לא ידוע״ או ״עצור״.');
   }
-  if(/^(נמשיך|המשך|ממשיכים|אפשר להמשיך)$/.test(n)||(n==='כן'&&p.session?.awaitingContinue)) {
+  if(/^(להמשיך|נמשיך|המשך|ממשיכים|אפשר להמשיך)$/.test(n)||(n==='כן'&&p.session?.awaitingContinue)) {
     if(!p.session) return {handled:false};
     p.session.paused=false;p.session.awaitingContinue=false;p.session.answersSinceSummary=0;
     return deliverNext(p);
@@ -67,14 +67,55 @@ function transition(p,text,{now=new Date().toISOString()}={}) {
   const a=qs.parseAnswer(q,text);
   if(a.error) return {handled:true,reply:a.error};
   record(p,q,a,now);p.session.pendingId=null;p.session.answersSinceSummary++;
-  if(p.session.answersSinceSummary>=3&&qs.nextQuestion(p)) {
-    p.session.awaitingContinue=true;
-    return {handled:true,reply:'זה מה ששמרתי עד עכשיו:\n'+qs.summary(p)+'\n\nלהמשיך? אפשר לכתוב ״נמשיך״ או לעצור כאן.'};
-  }
   return deliverNext(p,a.status==='unknown'?'סימנתי שלא ידוע; לא נשלים את הנתון בניחוש.':a.status==='not_applicable'?'סימנתי שלא רלוונטי לאפיון הנוכחי.':'');
 }
-async function handleMarketingMessage(clientId,text,eventId) {
-  if(!enabled()) return {handled:false};
-  return store.update(clientId,eventId,p=>transition(p,text));
+function transition(p,text,options={}) {
+ if(/^(?:עדכן|תקן)\s+[A-Z]+-\d{3}\s+/i.test(text)){
+  const r=diagnosticTransition(p,text,options);
+  if(r.handled&&r.reply.startsWith('התשובה עודכנה')){require('./conversationFacts').correctionsInvalidate(p,['explicit_correction']);r.reply='התשובה עודכנה.\n'+require('./conversationFacts').summary(p);}
+  return r;
+ }
+ const requested=routeRequested(text);
+ const analysis=options.analysis||require('./conversationAnalysis').localAnalysis(text);
+ if(requested&&requested!=='onboarding'){
+  p.session=null;const r=diagnosticTransition(p,text,options);p.session.controller='diagnostic';return r;
+ }
+ if(p.session?.controller==='diagnostic'&&!['build','ad','strategy','plan'].includes(analysis.intent))return diagnosticTransition(p,text,options);
+ const r=require('./campaignJourney').transition(p,text,{...options,analysis});
+ if(r.handled&&p.session?.route==='onboarding')p.session=null;
+ return r;
 }
-module.exports={enabled,routeRequested,transition,handleMarketingMessage,asksOrChangesTask};
+async function hydrateLegacy(clientId,p){
+ if(p.journey?.historyImported)return p;
+ const history=(await require('./db').query("SELECT content,created_at FROM (SELECT id,content,created_at FROM conversation_messages WHERE client_id=$1 AND role='user' ORDER BY created_at DESC,id DESC LIMIT 200) recent ORDER BY created_at ASC",[clientId])).rows;
+ const latest=new Map();for(const row of history)for(const u of require('./conversationAnalysis').localAnalysis(row.content).updates)latest.set(u.field,{...u,now:row.created_at});
+ for(const u of latest.values())if(!require('./conversationFacts').read(p,u.field))require('./conversationFacts').write(p,u.field,u.value,{evidence:u.evidence,source:'legacy_user_history',now:u.now});
+ require('./campaignJourney').init(p).historyImported=true;return p;
+}
+async function handleMarketingMessage(clientId,text,eventId,options={}) {
+  if(!enabled()) return {handled:false};
+  for(let attempt=0;attempt<2;attempt++){
+    const existing=await store.load(clientId);
+    const previous=eventId&&existing?.events.find(e=>e.id===eventId);if(previous)return previous.result;
+    const snapshot=await hydrateLegacy(clientId,existing||store.emptyProfile());
+    const analysis=await require('./conversationAnalysis').analyze(text,snapshot,options);
+    if(analysis.intent==='report'){
+      if(options.onSlow)await options.onSlow();const status=await require('./metaConversation').verify(clientId);
+      if(!status.canRead)return{handled:true,reply:require('./metaConversation').statusReply(status)};
+      try{return{handled:true,reply:await require('./reportService').campaignReport(clientId,'last_7d')};}
+      catch{return{handled:true,reply:'לא הצלחתי לקרוא את הדוח כרגע. אין לי נתונים שאפשר לדווח עליהם בביטחון.'};}
+    }
+    const metaIntent=['connect','connection_status','select_account','disconnect','renew','knowledge'].includes(analysis.intent)||text.startsWith('/meta-')||/להתחיל לפרסם (?:בפייסבוק|במטא)/.test(text)||(['yes','no'].includes(analysis.intent)&&snapshot.connection?.pendingQuestion==='hasAdAccount')||(analysis.intent==='yes'&&snapshot.connection?.status==='CONNECTION_OFFERED')||(snapshot.connection?.status==='ACCOUNT_SELECTION_REQUIRED'&&/^\d+$/.test(text));
+    if(metaIntent){if(options.onSlow&&analysis.intent!=='knowledge')await options.onSlow();return require('./metaConversation').handle(clientId,text,analysis,eventId);}
+    try{return await store.update(clientId,eventId,p=>{
+      if((p.version||0)!==(existing?.version||0))throw Error('STALE_CONVERSATION_ANALYSIS');
+      if(!existing)p.planId=snapshot.planId;
+      p.answers=snapshot.answers;if(!p.journey)p.journey=snapshot.journey;
+      const result=transition(p,text,{analysis});
+      if(result.handled)result.audit=p.journey?.stage||'DIAGNOSTIC';
+      if(!result.handled&&Object.keys(p.answers).length!==Object.keys(existing?.answers||{}).length)result.changed=true;
+      return result;
+    });}catch(error){if(error.message!=='STALE_CONVERSATION_ANALYSIS'||attempt)throw error;}
+  }
+}
+module.exports={enabled,routeRequested,transition,diagnosticTransition,handleMarketingMessage,asksOrChangesTask};

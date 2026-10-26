@@ -10,15 +10,15 @@ test('marketing answers persist per tenant, replay safely, seed only known brief
     const store=require('../marketingStore');
     const {handleMarketingMessage}=require('../marketingConversation');
     const a=await getOrCreateClient('972501000111'),b=await getOrCreateClient('972501000222');
-    const first=await handleMarketingMessage(a.id,'שלום','evt-1');
-    await handleMarketingMessage(a.id,'מכירות','evt-2');
-    const replay=await handleMarketingMessage(a.id,'מכירות','evt-2');
+    const first=await handleMarketingMessage(a.id,'אני רוצה קמפיין','evt-1');
+    await handleMarketingMessage(a.id,'שירותי פרסום','evt-2');
+    const replay=await handleMarketingMessage(a.id,'שירותי פרסום','evt-2');
     assert.equal(replay.reply,(await store.load(a.id)).events.find(e=>e.id==='evt-2').result.reply);
-    assert.equal((await store.load(a.id)).session.pendingId,'BUS-001');
-    await handleMarketingMessage(a.id,'העסק הראשון','evt-3');
+    assert.equal((await store.load(a.id)).journey.pendingField,'businessGoal');
+    await handleMarketingMessage(a.id,'שם העסק: העסק הראשון','evt-3');
     await handleMarketingMessage(b.id,'שלום','b-evt-1');
     await handleMarketingMessage(b.id,'פניות','b-evt-2');
-    await handleMarketingMessage(b.id,'העסק השני','b-evt-3');
+    await handleMarketingMessage(b.id,'שם העסק: העסק השני','b-evt-3');
     assert.equal((await store.briefSeeds(a.id)).businessName,'העסק הראשון');
     assert.equal((await store.briefSeeds(b.id)).businessName,'העסק השני');
     assert.equal((await store.answers(a.id,['BUS-001']))[0].answer.value,'העסק הראשון');
@@ -34,7 +34,7 @@ test('marketing answers persist per tenant, replay safely, seed only known brief
     assert.equal(await store.load(a.id),null);
     assert.ok(await store.load(b.id));
     await assert.rejects(handleMarketingMessage(a.id,'שלום','late'),/MARKETING_CLIENT_NOT_FOUND/);
-    assert.match(first.reply,/מה הכי חשוב/);
+    assert.match(first.reply,/מה העסק עושה/);
   } finally {await h.close();}
 });
 

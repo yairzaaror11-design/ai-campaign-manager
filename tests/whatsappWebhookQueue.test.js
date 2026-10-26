@@ -19,6 +19,7 @@ test('WhatsApp inbound events are deduplicated, durably claimed, and never auto-
 
   const eventId = 'wamid.' + randomUUID();
   const failedId = 'wamid.' + randomUUID();
+  const rapidIds = [randomUUID(),randomUUID(),randomUUID()];
   const body = {
     object: 'whatsapp_business_account',
     entry: [{
@@ -78,6 +79,14 @@ test('WhatsApp inbound events are deduplicated, durably claimed, and never auto-
     const failed = await runOne({ handler: async () => { throw new Error('private payload omitted'); } });
     assert.equal(failed.status, 'MANUAL_REVIEW');
 
+    // Independent PostgreSQL transactions race for the same sender; only its oldest event may run.
+    await enqueueInboundEvents(rapidIds.map((id,i)=>({eventId:id,payload:{message:{id,from:i<2?'972555000003':'972555000004'},contact:{}}})));
+    const racing=(await Promise.all([claimNextInboundEvent(),claimNextInboundEvent(),claimNextInboundEvent()])).filter(Boolean);
+    assert.equal(racing.filter(r=>r.payload.message.from==='972555000003').length,1);
+    assert.ok(racing.some(r=>r.event_id===rapidIds[0]));assert.ok(!racing.some(r=>r.event_id===rapidIds[1]));
+    await query("UPDATE whatsapp_inbound_events SET status='DONE' WHERE event_id=ANY($1::text[])",[racing.map(r=>r.event_id)]);
+    assert.equal((await claimNextInboundEvent()).event_id,rapidIds[1]);
+
     const rows = await query(
       `SELECT event_id, status, payload, last_error
        FROM whatsapp_inbound_events WHERE event_id = ANY($1::text[])`,
@@ -92,7 +101,7 @@ test('WhatsApp inbound events are deduplicated, durably claimed, and never auto-
   } finally {
     await query(
       'DELETE FROM whatsapp_inbound_events WHERE event_id = ANY($1::text[])',
-      [[eventId, failedId]]
+      [[eventId, failedId,...rapidIds]]
     );
     await closeDatabase();
   }

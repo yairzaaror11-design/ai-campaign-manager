@@ -59,15 +59,20 @@ async function enqueueInboundEvents(events, suppliedTx = null) {
 async function claimNextInboundEvent() {
   return transaction(async tx => {
     const selected = await tx(
-      `SELECT event_id, payload
-       FROM whatsapp_inbound_events
-       WHERE status = 'PENDING' AND available_at <= NOW()
-       ORDER BY created_at, event_id
+      `SELECT e.event_id,e.payload FROM whatsapp_inbound_events e
+       WHERE e.status='PENDING' AND e.available_at<=NOW()
+       AND NOT EXISTS(SELECT 1 FROM whatsapp_inbound_events busy WHERE busy.status='PROCESSING' AND busy.payload->'message'->>'from'=e.payload->'message'->>'from')
+       ORDER BY e.ingest_order
        FOR UPDATE SKIP LOCKED
-       LIMIT 1`
+       LIMIT 20`
     );
-    if (!selected.rows.length) return null;
-    const eventId = selected.rows[0].event_id;
+    for(const candidate of selected.rows){
+    const sender=String(candidate.payload?.message?.from||'');
+    const lock=await tx('SELECT pg_try_advisory_xact_lock(hashtextextended($1,874223007)) AS locked',[sender]);
+    if(!lock.rows[0]?.locked)continue;
+    const busy=await tx("SELECT event_id FROM whatsapp_inbound_events WHERE status='PROCESSING' AND payload->'message'->>'from'=$1 LIMIT 1",[sender]);
+    if(busy.rows.length)continue;
+    const eventId = candidate.event_id;
     const claimed = await tx(
       `UPDATE whatsapp_inbound_events
        SET status = 'PROCESSING', attempts = attempts + 1,
@@ -77,6 +82,8 @@ async function claimNextInboundEvent() {
       [eventId]
     );
     return claimed.rows[0] || null;
+    }
+    return null;
   });
 }
 
