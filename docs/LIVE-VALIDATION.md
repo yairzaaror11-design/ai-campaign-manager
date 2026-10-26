@@ -17,3 +17,8 @@ Render's environment export was used only for isolated provider probes. No secre
 ## Next gates
 
 Complete the pending SMS authentication directly in Meta, then store the generated WhatsApp token in Render and verify phone access without sending a message. Prepare and validate deployment configuration and database backup/recovery before deploying the new application. A real incoming/outgoing message test, end-to-end client OAuth, commercial Meta approval and a successful live AI generation remain outstanding.
+
+## Configuration discrepancy requiring verification (2026-10-26)
+
+- The live-validation record lists Meta Login Configuration `1893382361625002` for an approved `ads_read`-only test, but `render.yaml` currently specifies `META_LOGIN_CONFIG_ID=1547508470739287`. Do not assume these configurations are interchangeable. Verify which app/configuration is authorized for the intended OAuth flow before any deployment or live client login. No production setting was changed.
+- The isolated Gemini probe now tries the configured `GEMINI_MODEL` first and falls back to `gemini-2.5-flash` only when listed as supporting `generateContent`. This code change is not evidence of a successful live generation.
