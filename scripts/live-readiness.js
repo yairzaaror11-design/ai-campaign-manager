@@ -35,7 +35,7 @@ async function run({envFile,targets=null}) {
  if(!targets || targets.includes('GEMINI_CAMPAIGN_UNDERSTANDING')) results.push(await probe('GEMINI_CAMPAIGN_UNDERSTANDING',async()=>{
    if(!values.GEMINI_API_KEY) throw Error('missing');
    const available=(await axios.get('https://generativelanguage.googleapis.com/v1beta/models',{headers:{'x-goog-api-key':values.GEMINI_API_KEY},timeout:15000,maxRedirects:0})).data.models || [];
-   const preferred=['gemini-3.8-flash','gemini-3.5-flash','gemini-2.5-flash'];
+   const preferred=[values.GEMINI_MODEL,'gemini-2.5-flash'].filter((id,index,all)=>/^gemini-[a-z0-9.-]+$/.test(id || '')&&all.indexOf(id)===index);
    const model=preferred.find(id=>available.some(m=>m.name==='models/'+id&&m.supportedGenerationMethods?.includes('generateContent')));
    if(!model) return {status:'NO_SUPPORTED_MODEL',modelsListed:available.length};
    const response=(await axios.post('https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',{
