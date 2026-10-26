@@ -2,6 +2,7 @@
 const crypto=require('node:crypto');
 const qs=require('./marketingQuestions');
 const store=require('./marketingStore');
+const brain=require('./marketingBrain');
 function enabled() {return process.env.MARKETING_DISCOVERY_ENABLED!=='false';}
 function routeRequested(text) {
   const n=qs.normalized(text);
@@ -21,7 +22,7 @@ function deliverNext(p,prefix='') {
   const q=qs.nextQuestion(p);
   if(!q) {
     p.session.pendingId=null;p.session.complete=true;
-    return {handled:true,reply:`${prefix}${prefix?'\n\n':''}סיימנו את האפיון הזה.\n${qs.summary(p)}\n\n${require('./marketingBrain').nextAction(p).join('\n')}\n\nאפשר עכשיו לבקש המלצה או להכין טיוטת קמפיין.`};
+    return {handled:true,reply:`${prefix}${prefix?'\n\n':''}סיימנו את האפיון הזה.\n${qs.summary(p)}\n\n${require('./marketingBrain').nextAction(p).join('\n')}\n\nאפשר עכשיו לבקש טיוטת קמפיין.`};
   }
   p.session.pendingId=q.id;
   return {handled:true,reply:(prefix?prefix+'\n\n':'')+q.whatsapp_text};
@@ -38,7 +39,7 @@ function transition(p,text,{now=new Date().toISOString()}={}) {
     p.session.paused=true;return {handled:true,reply:'עצרנו כאן. התשובות נשמרו. אפשר לכתוב ״נמשיך״ כשנוח לך.'};
   }
   if(/^(סיכום אפיון|מה כבר ידוע|\/discovery-status)$/.test(n)) return {handled:true,reply:qs.summary(p)||'עדיין לא נשמרו תשובות. אפשר לכתוב ״נתחיל״.'};
-  const change=text.match(/^(?:עדכן|תקן)\s+([A-Z]+-\d{3})\s+([\s\S]+)$/i);
+  if(/^(מה הכוונה|לא הבנתי|תסביר|אפשר הסבר)$/.test(n) && p.session?.pendingId) { const q=qs.question(p.session.pendingId); return {handled:true,reply:'המטרה: '+q.purpose+'\n'+q.whatsapp_text}; }\n  if(/^(טיוטת קמפיין|הכן טיוטה|תוכנית קמפיין|אסטרטגיה)$/.test(n)) return {handled:true,reply:brain.draft(p)};\n  const change=text.match(/^(?:עדכן|תקן)\s+([A-Z]+-\d{3})\s+([\s\S]+)$/i);
   if(change) {
     const q=qs.question(change[1].toUpperCase());
     if(!q||!qs.answerFor(p,q.id)) return {handled:true,reply:'לא מצאתי תשובה שמורה לשאלה הזו באפיון הנוכחי.'};
@@ -67,10 +68,6 @@ function transition(p,text,{now=new Date().toISOString()}={}) {
   const a=qs.parseAnswer(q,text);
   if(a.error) return {handled:true,reply:a.error};
   record(p,q,a,now);p.session.pendingId=null;p.session.answersSinceSummary++;
-  if(false && p.session.answersSinceSummary>=3&&qs.nextQuestion(p)) {
-    p.session.awaitingContinue=true;
-    return {handled:true,reply:'זה מה ששמרתי עד עכשיו:\n'+qs.summary(p)+'\n\nלהמשיך? אפשר לכתוב ״נמשיך״ או לעצור כאן.'};
-  }
   return deliverNext(p,a.status==='unknown'?'סימנתי שלא ידוע; לא נשלים את הנתון בניחוש.':a.status==='not_applicable'?'סימנתי שלא רלוונטי לאפיון הנוכחי.':'');
 }
 async function handleMarketingMessage(clientId,text,eventId) {
