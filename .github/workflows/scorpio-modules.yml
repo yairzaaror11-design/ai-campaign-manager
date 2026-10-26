@@ -1,0 +1,44 @@
+name: SCORPIO module checks
+on:
+  pull_request:
+    branches: [feature/dashboard-rtl]
+    paths:
+      - 'scorpio/**'
+      - 'tests/scorpioModules.test.js'
+      - '.github/workflows/scorpio-modules.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: scorpio_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd='pg_isready -U test -d scorpio_test'
+          --health-interval=5s --health-timeout=5s --health-retries=10
+    env:
+      TEST_DATABASE_URL: postgresql://test:test@127.0.0.1:5432/scorpio_test
+      DB_SSL: 'false'
+      READ_ONLY: 'true'
+      META_WRITES_ENABLED: 'false'
+      WHATSAPP_SEND_ENABLED: 'false'
+      WHATSAPP_WORKER_IN_WEB: 'false'
+      GRAPHICS_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check
+      - run: npm test
+      - run: git diff --exit-code -- package.json package-lock.json

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SCORPIO AI · מודולים עסקיים</title>
+    <link rel="stylesheet" href="/app/assets/style.css" />
+    <link rel="stylesheet" href="/app/modules/assets/modules.css" />
+    <script defer src="/app/modules/assets/modules.js"></script>
+  </head>
+  <body class="modules">
+    <a class="skip" href="#content">דלג לתוכן</a>
+    <header class="module-header">
+      <a href="/app">SCORPIO AI</a><span>סביבת העבודה העסקית</span
+      ><button id="logout" hidden>יציאה</button>
+    </header>
+    <div id="login" class="module-login">
+      <h1>כניסה לסביבת העבודה</h1>
+      <p>
+        השתמש במפתח הגישה שקיבלת ממנהל המערכת. הנתונים מוצגים לפי העסק וההרשאות
+        שלך.
+      </p>
+      <form id="login-form">
+        <label
+          >מפתח גישה<input
+            name="token"
+            type="password"
+            required
+            autocomplete="off" /></label
+        ><button>כניסה</button>
+      </form>
+      <a href="/app">חזרה לדשבורד</a>
+    </div>
+    <div id="workspace" class="module-shell" hidden>
+      <nav id="nav" aria-label="מודולים עסקיים"></nav>
+      <main id="content" tabindex="-1">
+        <h1 id="heading"></h1>
+        <div id="toolbar" class="module-actions"></div>
+        <div id="body" aria-live="polite"></div>
+      </main>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+    <dialog id="editor" aria-labelledby="editor-title"></dialog>
+  </body>
+</html>
