@@ -1,0 +1,42 @@
+name: Task 2.1 security checks
+on:
+  push:
+    branches: [task-2/stabilization-security-20261027]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  security-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: campaign_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd=pg_isready
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      TEST_DATABASE_URL: postgresql://test:test@localhost:5432/campaign_test
+      DB_SSL: 'false'
+      READ_ONLY: 'true'
+      META_WRITES_ENABLED: 'false'
+      WHATSAPP_SEND_ENABLED: 'false'
+      GRAPHICS_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run check
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
