@@ -1,0 +1,27 @@
+[
+  {
+    "path": "/",
+    "status": 200,
+    "result": "PASS"
+  },
+  {
+    "path": "/health",
+    "status": 200,
+    "result": "PASS"
+  },
+  {
+    "path": "/health/live",
+    "status": 200,
+    "result": "PASS"
+  },
+  {
+    "path": "/app/api/dashboard",
+    "status": 401,
+    "result": "PASS unauthorized rejected"
+  },
+  {
+    "path": "/webhook",
+    "status": 401,
+    "result": "PASS unsigned webhook rejected"
+  }
+]

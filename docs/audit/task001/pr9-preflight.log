@@ -1,0 +1,5 @@
+
+> campaign-bachat@1.8.0 preflight
+> node scripts/preflight.js
+
+{"configuration":"valid","database":"connected","pendingMigrations":[],"duplicateOpenBriefTenants":0,"productionDeployAuthorized":false,"backupRestoreTestRequired":true}

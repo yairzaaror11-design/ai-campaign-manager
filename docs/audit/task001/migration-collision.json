@@ -1,0 +1,7 @@
+{
+  "reproduction": "CONFIRMED",
+  "code": "42P07",
+  "message": "relation \"social_connections\" already exists",
+  "transaction": "ROLLED BACK",
+  "conclusion": "PR10 dashboard migrations cannot be applied wholesale to PR9 schema"
+}

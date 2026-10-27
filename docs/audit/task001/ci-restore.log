@@ -1,0 +1,4 @@
+pg_dump: PASS
+pg_restore: PASS
+Restored synthetic data comparison: PASS
+Isolated synthetic pg_dump/pg_restore rehearsal: PASS

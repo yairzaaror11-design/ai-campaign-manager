@@ -1,0 +1,192 @@
+[
+  {
+    "ref": "origin/audit-security-hardening-20261025",
+    "sha": "bece3706379713d92372f302095364d3fa9c2c3f",
+    "ahead_main": 150,
+    "behind_main": 0,
+    "test_files": 41,
+    "google_files": [],
+    "media_files": [
+      "docs/MEDIA-CONVERSATION.md",
+      "mediaHandler.js",
+      "mediaStore.js",
+      "tests/mediaConversation.test.js"
+    ]
+  },
+  {
+    "ref": "origin/docs/system-audit-20261027",
+    "sha": "aed7eac3790c53a0d62ddcba759c0371755c88ec",
+    "ahead_main": 165,
+    "behind_main": 0,
+    "test_files": 41,
+    "google_files": [],
+    "media_files": [
+      "docs/MEDIA-CONVERSATION.md",
+      "mediaHandler.js",
+      "mediaStore.js",
+      "tests/mediaConversation.test.js"
+    ]
+  },
+  {
+    "ref": "origin/feature/dashboard-rtl",
+    "sha": "6f55a4d8562a2f19a7c3009607cbf763ec0eba1f",
+    "ahead_main": 149,
+    "behind_main": 0,
+    "test_files": 32,
+    "google_files": [],
+    "media_files": [
+      "docs/MEDIA-CONVERSATION.md",
+      "mediaHandler.js",
+      "mediaStore.js",
+      "tests/mediaConversation.test.js"
+    ]
+  },
+  {
+    "ref": "origin/feature/marketing-brain-v1-20261026",
+    "sha": "b6bb6b3bffee84845e8a620e5993bdb8fc8d3185",
+    "ahead_main": 147,
+    "behind_main": 0,
+    "test_files": 22,
+    "google_files": [],
+    "media_files": [
+      "mediaHandler.js",
+      "mediaStore.js"
+    ]
+  },
+  {
+    "ref": "origin/feature/marketing-question-bank-20261026",
+    "sha": "2a108789dad508ede76422c8d97bc2a34b7f35b9",
+    "ahead_main": 136,
+    "behind_main": 0,
+    "test_files": 20,
+    "google_files": [],
+    "media_files": [
+      "mediaHandler.js",
+      "mediaStore.js"
+    ]
+  },
+  {
+    "ref": "origin/feature/scorpio-frontend-agent2",
+    "sha": "57d2ee7d44f1fc313cb0a2cd17abbc343b7aeaee",
+    "ahead_main": 150,
+    "behind_main": 0,
+    "test_files": 33,
+    "google_files": [],
+    "media_files": [
+      "docs/MEDIA-CONVERSATION.md",
+      "mediaHandler.js",
+      "mediaStore.js",
+      "scorpio/media.js",
+      "tests/mediaConversation.test.js"
+    ]
+  },
+  {
+    "ref": "origin/fix/dashboard-fit-without-cramping",
+    "sha": "79e000b2bd90ed267159110a68a6d5e3e2d23ac2",
+    "ahead_main": 152,
+    "behind_main": 0,
+    "test_files": 41,
+    "google_files": [],
+    "media_files": [
+      "docs/MEDIA-CONVERSATION.md",
+      "mediaHandler.js",
+      "mediaStore.js",
+      "tests/mediaConversation.test.js"
+    ]
+  },
+  {
+    "ref": "origin/fix/dashboard-functional-completion",
+    "sha": "ee980df3a60c16782e9a42ad970fc9a01410af82",
+    "ahead_main": 164,
+    "behind_main": 0,
+    "test_files": 36,
+    "google_files": [],
+    "media_files": [
+      "docs/MEDIA-CONVERSATION.md",
+      "mediaHandler.js",
+      "mediaStore.js",
+      "scorpio/media.js",
+      "tests/mediaConversation.test.js"
+    ]
+  },
+  {
+    "ref": "origin/fix/immediate-processing-replies-20261026",
+    "sha": "866358435d6994839aff4c5e6e6ec7b2afa953e1",
+    "ahead_main": 138,
+    "behind_main": 0,
+    "test_files": 21,
+    "google_files": [],
+    "media_files": [
+      "mediaHandler.js",
+      "mediaStore.js"
+    ]
+  },
+  {
+    "ref": "origin/fix/webhook-security-render-20261025",
+    "sha": "ac766ea2d7c04d57a066cf57d8cd5f31a50d89ec",
+    "ahead_main": 9,
+    "behind_main": 0,
+    "test_files": 1,
+    "google_files": [],
+    "media_files": [
+      "mediaHandler.js"
+    ]
+  },
+  {
+    "ref": "origin/fix/whatsapp-context-and-approval-20261026",
+    "sha": "fb066c117ed7a93a899723fe7fde332cfb143c33",
+    "ahead_main": 2,
+    "behind_main": 0,
+    "test_files": 0,
+    "google_files": [],
+    "media_files": []
+  },
+  {
+    "ref": "origin/main",
+    "sha": "0694a9f89ae05f9b998bca4ef04c0e9d8de3a115",
+    "ahead_main": 0,
+    "behind_main": 0,
+    "test_files": 0,
+    "google_files": [],
+    "media_files": []
+  },
+  {
+    "ref": "origin/release/agent-flexibility-20261027",
+    "sha": "9789d0328e9bac50dc7202f3e5efe51f4e5aa855",
+    "ahead_main": 151,
+    "behind_main": 0,
+    "test_files": 41,
+    "google_files": [],
+    "media_files": [
+      "docs/MEDIA-CONVERSATION.md",
+      "mediaHandler.js",
+      "mediaStore.js",
+      "tests/mediaConversation.test.js"
+    ]
+  },
+  {
+    "ref": "origin/render-safe-deploy",
+    "sha": "833559fd95a8a87d04018cf83e97a774ccba73bb",
+    "ahead_main": 8,
+    "behind_main": 0,
+    "test_files": 0,
+    "google_files": [],
+    "media_files": [
+      "mediaHandler.js"
+    ]
+  },
+  {
+    "ref": "origin/task-2/stabilization-security-20261027",
+    "sha": "869a3226912cf4315548b55c59e10e3fb1c66f85",
+    "ahead_main": 198,
+    "behind_main": 0,
+    "test_files": 44,
+    "google_files": [],
+    "media_files": [
+      "docs/MEDIA-CONVERSATION.md",
+      "mediaHandler.js",
+      "mediaStore.js",
+      "tests/mediaConversation.test.js"
+    ]
+  }
+]

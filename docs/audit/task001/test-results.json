@@ -1,0 +1,80 @@
+{
+  "pr1": {
+    "sha": "bece3706379713d92372f302095364d3fa9c2c3f",
+    "state": "DRAFT",
+    "baseBranch": "render-safe-deploy",
+    "headBranch": "audit-security-hardening-20261025",
+    "installation": "npm ci --ignore-scripts --no-audit --no-fund; exit 0",
+    "syntax": "npm run check; exit 0",
+    "testExitCode": 0,
+    "testCommand": "node --test --test-concurrency=2 tests/*.test.js",
+    "tests": 196,
+    "pass": 196,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "productionDependencyVulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "rawLog": "/workspace/audit-task-001/pr1-tests.tap",
+    "rawLogSHA256": "d9021db09ebf1d2d7b0bf9f1f3ed9caade29d55bed036ab7c1b73ecd782d8a61"
+  },
+  "pr9": {
+    "sha": "869a3226912cf4315548b55c59e10e3fb1c66f85",
+    "state": "DRAFT",
+    "baseBranch": "audit-security-hardening-20261025",
+    "headBranch": "task-2/stabilization-security-20261027",
+    "installation": "npm ci --ignore-scripts --no-audit --no-fund; exit 0",
+    "syntax": "npm run check; exit 0",
+    "testExitCode": 0,
+    "testCommand": "node --test --test-concurrency=2 tests/*.test.js",
+    "tests": 202,
+    "pass": 202,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "productionDependencyVulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "rawLog": "/workspace/audit-task-001/pr9-tests.tap",
+    "rawLogSHA256": "ccb04411e055a9fc0be1e37210a215be7fbded0bc4f2ac64a98b997e54f51463"
+  },
+  "pr10": {
+    "sha": "ee980df3a60c16782e9a42ad970fc9a01410af82",
+    "state": "DRAFT",
+    "baseBranch": "feature/scorpio-frontend-agent2",
+    "headBranch": "fix/dashboard-functional-completion",
+    "installation": "npm ci --ignore-scripts --no-audit --no-fund; exit 0",
+    "syntax": "npm run check; exit 0",
+    "testExitCode": 0,
+    "testCommand": "node --test --test-concurrency=2 tests/*.test.js",
+    "tests": 178,
+    "pass": 178,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "todo": 0,
+    "productionDependencyVulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "rawLog": "/workspace/audit-task-001/pr10-tests.tap",
+    "rawLogSHA256": "f040b13b90cca1e0305d1bee0e383aa372ccc74b4f857d6633b0915416b606fe"
+  }
+}

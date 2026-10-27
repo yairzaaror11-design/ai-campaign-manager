@@ -1,0 +1,31 @@
+d425801d7dce99a4bdca8bbd0334ab0d3bbf08c9
+100644 c3492fa1033ab70fffd887a831d6a7cd73e79457 1	.env.example
+100644 7ccaaf65960a8e41b5bfce27f9da1354e2d85d17 2	.env.example
+100644 a70c77a358b530185d185d3eb65e3f3b7eca60ba 3	.env.example
+100644 3d4ff3b25464d05555246096c296ca6ea8fbf9b6 1	campaignJourney.js
+100644 b64468fe880863edd23ef5b09afaf3ead213abd8 2	campaignJourney.js
+100644 50afdcddf54f552c2582258dbb6502e096db9178 3	campaignJourney.js
+100644 ad46ce1bf5a617e861512a8d10b0b0d2354ad720 1	messageHandler.js
+100644 8e028960fea06e4ed7d1a045064ce6302c184492 2	messageHandler.js
+100644 3e5d47adc6526144f25e8149fe23d876d430d2d5 3	messageHandler.js
+100644 4a04ff337c052be0433b4a94471b656dbc0b9394 1	package-lock.json
+100644 a9b6f7947d1a363b30aafaf811cd85388f12d564 2	package-lock.json
+100644 b7f5a90150d5746ba9fbe1b1f5d6922412978807 3	package-lock.json
+100644 8a2e611f432a56011e86e816a3f20d7f5d9800c2 2	socialConnections.js
+100644 e986d9b71d5ac24d1d5a9ce80eacf7f8724801f2 3	socialConnections.js
+
+Auto-merging .env.example
+CONFLICT (content): Merge conflict in .env.example
+Auto-merging README.md
+Auto-merging campaignJourney.js
+CONFLICT (content): Merge conflict in campaignJourney.js
+Auto-merging conversationAnalysis.js
+Auto-merging index.js
+Auto-merging marketingConversation.js
+Auto-merging messageHandler.js
+CONFLICT (content): Merge conflict in messageHandler.js
+Auto-merging package-lock.json
+CONFLICT (content): Merge conflict in package-lock.json
+Auto-merging package.json
+Auto-merging socialConnections.js
+CONFLICT (add/add): Merge conflict in socialConnections.js

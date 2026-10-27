@@ -1,0 +1,45 @@
+{
+  "merge_base": "97a9c27a5db932204359a8b1967a5b1d7eada2e4",
+  "files": {
+    ".env.example": {
+      "pr9": "9\t0\t.env.example",
+      "pr10": "23\t0\t.env.example"
+    },
+    "README.md": {
+      "pr9": "1\t1\tREADME.md",
+      "pr10": "8\t0\tREADME.md"
+    },
+    "campaignJourney.js": {
+      "pr9": "28\t12\tcampaignJourney.js",
+      "pr10": "1\t3\tcampaignJourney.js"
+    },
+    "conversationAnalysis.js": {
+      "pr9": "19\t11\tconversationAnalysis.js",
+      "pr10": "1\t1\tconversationAnalysis.js"
+    },
+    "index.js": {
+      "pr9": "5\t2\tindex.js",
+      "pr10": "3\t0\tindex.js"
+    },
+    "marketingConversation.js": {
+      "pr9": "12\t5\tmarketingConversation.js",
+      "pr10": "1\t0\tmarketingConversation.js"
+    },
+    "messageHandler.js": {
+      "pr9": "7\t3\tmessageHandler.js",
+      "pr10": "16\t9\tmessageHandler.js"
+    },
+    "package-lock.json": {
+      "pr9": "318\t4\tpackage-lock.json",
+      "pr10": "636\t0\tpackage-lock.json"
+    },
+    "package.json": {
+      "pr9": "2\t0\tpackage.json",
+      "pr10": "1\t0\tpackage.json"
+    },
+    "socialConnections.js": {
+      "pr9": "97\t0\tsocialConnections.js",
+      "pr10": "94\t0\tsocialConnections.js"
+    }
+  }
+}
