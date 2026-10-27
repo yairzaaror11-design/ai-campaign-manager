@@ -39,13 +39,6 @@ jobs:
         run: npm audit fix --package-lock-only --ignore-scripts
       - name: Verify reproducible dependency install
         run: npm ci --ignore-scripts
-      - name: Install PostgreSQL 17 client matching isolated server
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y postgresql-client-17
-          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
-          /usr/lib/postgresql/17/bin/pg_dump --version
-          /usr/lib/postgresql/17/bin/pg_restore --version
       - run: npm run check
       - run: npm test
       - name: Isolated synthetic backup and restore (task 2.1 only)
