@@ -14,3 +14,7 @@ Provider.process({tenantId, task, messages, context, deadline, tokenBudget, requ
 
 ## Test plan (not run here)
 Inject deterministic fake Gemini/Claude clients, test timeout, malformed output, tenant context isolation, budget limit, planningOnly prohibition, duplicate tool-call idempotency and fallback safety. Live AI calls require separate authorization and spending cap.
+
+## Task 2.1 execution status
+
+The existing provider and conversation regression suite ran as part of fresh GitHub Actions CI 40492135280 (198 passed, 0 failed). No paid provider call was made. Per-tenant token cost budgets and deterministic fallback tests remain design gaps; no new AI provider routing code was changed in task 2.1.
