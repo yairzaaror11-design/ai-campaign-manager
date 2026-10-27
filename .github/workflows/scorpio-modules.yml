@@ -1,10 +1,11 @@
 name: SCORPIO module checks
 on:
   pull_request:
-    branches: [feature/dashboard-rtl]
+    branches: [feature/dashboard-rtl, feature/scorpio-frontend-agent2]
     paths:
       - 'scorpio/**'
       - 'tests/scorpioModules.test.js'
+      - 'tests/dashboardLegacyApi.test.js'
       - '.github/workflows/scorpio-modules.yml'
   workflow_dispatch:
 permissions:
