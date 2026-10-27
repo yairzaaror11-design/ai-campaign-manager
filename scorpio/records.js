@@ -75,8 +75,6 @@ function validate(kind, input) {
       throw fail("INVALID_CONTENT_TYPE");
     if (p.creationMode && !["manual", "ai"].includes(p.creationMode))
       throw fail("INVALID_CREATION_MODE");
-    if (p.platform && !["facebook", "instagram", "both", "meta"].includes(p.platform))
-      throw fail("INVALID_PLATFORM");
   }
   if (!p.name) throw fail("NAME_REQUIRED");
   const statuses = {
