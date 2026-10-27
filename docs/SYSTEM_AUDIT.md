@@ -17,7 +17,7 @@ The database contains two client rows, but read-only aggregates found no stored 
 
 Repository: [yairzaaror11-design/ai-campaign-manager](https://github.com/yairzaaror11-design/ai-campaign-manager). Default branch is `main` at `0694a9f89ae05f9b998bca4ef04c0e9d8de3a115`. It contains an older minimal Express service under `src/`; the active application entry point is root `index.js`. Do not treat `src/` as the deployed app.
 
-Branches returned during enumeration:
+All branch refs observed at final inventory:
 
 - `audit-security-hardening-20261025` (deployed source)
 - `feature/dashboard-rtl`
@@ -31,7 +31,7 @@ Branches returned during enumeration:
 - `main`
 - `release/agent-flexibility-20261027`
 - `render-safe-deploy`
-- `docs/system-audit-20261027` (documentation branch used for these reports)
+- `docs/system-audit-20261027` (documentation branch used for these reports)\n- `task-2/stabilization-security-20261027` (name observed only; contents were not inspected or changed in order not to start task 2)
 
 Five PRs were open when checked: #1 broad WhatsApp/Meta/application release line to `render-safe-deploy`; #4 marketing brain to `audit-security-hardening`; #5 RTL customer portal to `audit-security-hardening`; #7 WhatsApp context/approval safety to `main`; #8 desktop dashboard layout to `release/agent-flexibility`. PR descriptions and passing CI are evidence of reviewed/tested changes at their stated commits, not proof that each branch is deployed or that live provider behavior passed. The currently deployed branch is `audit-security-hardening-20261025`; `main` and `render-safe-deploy` were not changed by this audit.
 
