@@ -32,7 +32,11 @@ function verifyInputs({source,target,archive}) {
   try {sourceUrl=new URL(source);} catch {throw Error('INVALID_SOURCE_URL');}
   if (!['postgres:','postgresql:'].includes(sourceUrl.protocol)) throw Error('INVALID_SOURCE_PROTOCOL');
   const targetUrl=parseTarget(target);
-  if (sourceUrl.host===targetUrl.host && sourceUrl.pathname===targetUrl.pathname) throw Error('SOURCE_EQUALS_TARGET');
+  // Host aliases can point at the same local PostgreSQL instance. Never dump and restore into the same DB.
+  const loopback = host => ['localhost', '127.0.0.1', '[::1]'].includes(host);
+  const sameHost = sourceUrl.hostname === targetUrl.hostname || (loopback(sourceUrl.hostname) && loopback(targetUrl.hostname));
+  const samePort = (sourceUrl.port || '5432') === (targetUrl.port || '5432');
+  if (sameHost && samePort && decodeURIComponent(sourceUrl.pathname) === decodeURIComponent(targetUrl.pathname)) throw Error('SOURCE_EQUALS_TARGET');
   if (!archive || !path.isAbsolute(archive)) throw Error('ABSOLUTE_ARCHIVE_PATH_REQUIRED');
   return {sourceUrl,targetUrl};
 }
