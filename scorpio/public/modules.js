@@ -317,8 +317,8 @@ function form(title, fields, initial, onSave, wizard = false) {
     }),
     next = button("הבא", () => {
       if (
-        [...groupNodes[step].querySelectorAll("input")].every((i) =>
-          i.reportValidity(),
+        [...groupNodes[step].querySelectorAll("input, select, textarea")].every(
+          (control) => control.reportValidity(),
         )
       ) {
         step++;
