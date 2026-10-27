@@ -50,4 +50,8 @@ jobs:
         env:
           RUN_ISOLATED_RESTORE_REHEARSAL: 'true'
         run: node scripts/ci-isolated-restore.js
+      - name: Isolated Runtime Migration Backup role permission test
+        env:
+          RUN_ISOLATED_ROLE_TEST: 'true'
+        run: node scripts/ci-isolated-role-test.js
       - run: npm audit --omit=dev --audit-level=high
