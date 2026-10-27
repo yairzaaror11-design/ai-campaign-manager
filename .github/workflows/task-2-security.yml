@@ -2,6 +2,8 @@ name: Task 2.1 security checks
 on:
   push:
     branches: [task-2/stabilization-security-20261027]
+  pull_request:
+    branches: [audit-security-hardening-20261025, render-safe-deploy]
   workflow_dispatch:
 permissions:
   contents: read
