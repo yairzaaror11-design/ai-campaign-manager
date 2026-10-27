@@ -19,3 +19,19 @@ Render free DB expires **2026-11-24 08:07:49 UTC**. Before that date: confirm ba
 
 ## Production readiness
 NOT ready to certify commercial-grade protection: restore success, retention policy, runtime role least privilege, enforced TLS and tenant isolation remain unverified or insufficient.
+
+## Task 2.1: least-privilege role separation (code prepared, production unchanged)
+
+db.js now supports `RUN_MIGRATIONS_ON_STARTUP=false`. This is **opt-in**: default startup still runs migrations. Do not set it until a separate migration job and credentials are operational. Proposed accounts:
+
+| Role | Needed | Prohibited |
+|---|---|---|
+| Runtime | CONNECT, USAGE on application schema, SELECT/INSERT/UPDATE/DELETE on required tables, USAGE/SELECT on sequences | CREATEDB, CREATEROLE, schema DDL, TRUNCATE, broad default grants |
+| Migration | CREATE/ALTER schema objects and schema_migrations updates; advisory transaction locks | Superuser, production backup exports |
+| Backup | CONNECT, USAGE, SELECT on backed-up tables/sequences; appropriate pg_dump privileges | INSERT/UPDATE/DELETE, DDL, role management |
+
+Before implementing in isolated PostgreSQL, enumerate every SQL statement from app/worker and validate all required grants, ownership, default privileges, sequence grants and migration version checks. Apply no role changes to production in task 2.1.
+
+## Task 2.1: restore safety fix
+
+The rehearsal validator now treats localhost, 127.0.0.1 and ::1 aliases with matching effective port and database name as the **same target**, rejecting a destructive source-equals-target case before any subprocess executes. Regression test added. No real customer data copied; no restore executed.
