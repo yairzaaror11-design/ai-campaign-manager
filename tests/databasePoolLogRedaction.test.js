@@ -11,6 +11,7 @@ function setup() {
   class FakePool {
     constructor(options) { this.options = options; this.listeners = {}; pool = this; }
     on(event, handler) { this.listeners[event] = handler; }
+    query() { return Promise.resolve({ rows: [] }); }
   }
   const module = { exports: {} };
   const sandbox = {
@@ -23,7 +24,7 @@ function setup() {
     }
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8'), sandbox);
-  try { module.exports.query('SELECT 1'); } catch (error) { if (!String(error.message).includes('p.query is not a function')) throw error; }
+  module.exports.query('SELECT 1');
   return { pool, messages };
 }
 
