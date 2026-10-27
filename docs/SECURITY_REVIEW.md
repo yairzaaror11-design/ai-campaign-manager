@@ -26,3 +26,11 @@ Scope: GitHub source inspection and read-only Render PostgreSQL metadata. No pen
 | S6 | Secret encryption/key lifecycle not verified | Unverified | Inspect token crypto implementation, rotation and log redaction |
 
 No code fix was made without a reproducible failing test. No production config or data was changed.
+
+## Task 2.1 validation and remaining gaps
+
+Fresh CI run 40492135280: 198/198 tests passed, including two independently authenticated portal businesses with separate lead records. The new test asserts tenant A cannot list tenant B's lead and cannot PATCH it successfully. This validates the **lead route scenario only**, not all endpoints. Application code was not changed for lead isolation because the existing route already uses req.portal.clientId and crmService WHERE client_id=$1.
+
+Restore-safety flaw reproduced at the validator level: localhost and 127.0.0.1 aliases could bypass the same-source/target comparison; now blocked and regression-tested. A separate opt-in runtime initialization path avoids DDL when RUN_MIGRATIONS_ON_STARTUP=false, and a PGlite regression checks that the schema remains empty until migration is explicitly enabled. Production roles and network unchanged.
+
+Remaining: independent tenant tests for conversations, tokens, Meta actions, reports, background workers; approval concurrency under two workers; production role least privilege; RLS policy design and compatibility; actual backup restore. Do not certify full tenant security or commercial readiness yet.
