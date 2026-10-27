@@ -39,4 +39,8 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm run check
       - run: npm test
+      - name: Isolated synthetic PostgreSQL backup and restore
+        env:
+          RUN_ISOLATED_RESTORE_REHEARSAL: 'true'
+        run: node scripts/ci-isolated-restore.js
       - run: npm audit --omit=dev --audit-level=high
