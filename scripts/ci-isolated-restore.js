@@ -22,6 +22,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'scorpio-restore-'));
+fs.chmodSync(tmp, 0o700);
 const archive = path.join(tmp, 'test.dump');
 try {
   run('createdb', [source]);
