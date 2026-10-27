@@ -701,7 +701,26 @@ const recordFields = {
   ],
   post: [
     { key: "name", label: "שם הטיוטה", required: true },
-    { key: "platform", label: "רשת חברתית", options: platforms },
+    {
+      key: "contentType",
+      label: "סוג תוכן",
+      options: [["post", "פוסט"], ["reel", "Reel"], ["story", "סטורי"], ["carousel", "קרוסלה"]],
+      default: "post",
+    },
+    {
+      key: "platform",
+      label: "פלטפורמה",
+      options: [["instagram", "Instagram"], ["facebook", "Facebook"], ["both", "Instagram ו־Facebook"], ...platforms],
+      default: "both",
+    },
+    { key: "topic", label: "נושא הפוסט" },
+    { key: "product", label: "מוצר או שירות", type: "textarea" },
+    {
+      key: "creationMode",
+      label: "אופן יצירה",
+      options: [["manual", "כתיבה ועריכה ידנית"], ["ai", "בריף להכנה באמצעות AI — ללא יצירה או חיוב אוטומטיים"]],
+      default: "manual",
+    },
     { key: "text", label: "תוכן הפוסט", type: "textarea", wide: true },
     { key: "assetIds", label: "מזהי מדיה, מופרדים בפסיקים", type: "ids" },
     { key: "scheduledAt", label: "מועד מתוכנן", type: "datetime-local" },
@@ -778,7 +797,7 @@ function editRecord(kind, row, defaults = {}) {
 }
 async function recordsPage(kind) {
   const data = await api("/records/" + kind + "?offset=" + offset);
-  $("toolbar").append(button("יצירה חדשה", () => editRecord(kind), true));
+  $("toolbar").append(button(kind === "post" ? "פוסט חדש" : "יצירה חדשה", () => editRecord(kind), true));
   if (kind === "campaign")
     $("body").append(
       note(
@@ -788,7 +807,7 @@ async function recordsPage(kind) {
   if (kind === "post")
     $("body").append(
       note(
-        "מועדי התוכן נשמרים ביומן. שליחה אוטומטית ופרסום ברשתות עדיין אינם מופעלים.",
+        "ניתן להכין ולשמור בריף, טיוטה ומועד מתוכנן. בחירת AI שומרת בקשה בלבד ואינה מפעילה יצירה בתשלום. אין פרסום אוטומטי או שליחה לרשתות.",
       ),
     );
   const grid = el("div", {
