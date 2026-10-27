@@ -18,6 +18,22 @@ test('customer portal HTTP boundary enforces authentication, CSRF and tenant iso
   assert.equal((await h.db.query('SELECT client_id FROM customer_accounts WHERE client_id=$1',[other.id])).rows.length,0);
   assert.equal((await call('/app/api/leads',{name:'לקוח',phone:'0501234567',clientId:other.id},cookie,csrf)).status,200);
   assert.equal((await require('../crmService').list(other.id)).length,0);assert.equal((await require('../crmService').list(client.id)).length,1);
+  // Two independently authenticated businesses: neither can list or mutate the other's lead.
+  const otherToken=(await portal.createTicket(other.id)).split('#login=')[1];
+  const otherLogin=await call('/app/api/login',{token:otherToken});assert.equal(otherLogin.status,200);
+  const otherCookies=otherLogin.headers.getSetCookie();
+  const otherCookie=otherCookies.map(s=>s.split(';')[0]).join('; ');
+  const otherCsrf=otherCookies.find(s=>s.startsWith('cb_csrf=')).split(';')[0].split('=')[1];
+  assert.equal((await call('/app/api/register',{name:'עסק ב',acceptPrivacy:true},otherCookie,otherCsrf)).status,200);
+  assert.equal((await call('/app/api/leads',{name:'פניית עסק ב',phone:'0509876543'},otherCookie,otherCsrf)).status,200);
+  const aLeads=(await(await call('/app/api/leads',null,cookie)).json()).leads;
+  const bLeads=(await(await call('/app/api/leads',null,otherCookie)).json()).leads;
+  assert.equal(aLeads.length,1);assert.equal(bLeads.length,1);
+  assert.notEqual(aLeads[0].id,bLeads[0].id);
+  assert.equal(aLeads[0].client_id,client.id);assert.equal(bLeads[0].client_id,other.id);
+  const crossUpdate=await call('/app/api/leads/'+bLeads[0].id,{status:'WON',version:bLeads[0].version},cookie,csrf,'PATCH');
+  assert.notEqual(crossUpdate.status,200);
+  assert.equal((await require('../crmService').list(other.id))[0].status,bLeads[0].status);
   const d=await(await call('/app/api/dashboard',null,cookie)).json();assert.equal(d.subscription.checkoutAvailable,false);assert.equal(d.crm.counts.NEW,1);
   assert.equal((await call('/app/api/logout',{},cookie,csrf)).status,200);assert.equal((await call('/app/api/dashboard',null,cookie)).status,401);
  }finally{await new Promise(resolve=>server.close(resolve));await h.close();for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);}
