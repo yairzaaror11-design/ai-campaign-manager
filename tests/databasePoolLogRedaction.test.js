@@ -23,7 +23,7 @@ function setup() {
     }
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../db.js'), 'utf8'), sandbox);
-  module.exports.query('SELECT 1').catch(() => {});
+  try { module.exports.query('SELECT 1'); } catch (error) { if (!String(error.message).includes('p.query is not a function')) throw error; }
   return { pool, messages };
 }
 
