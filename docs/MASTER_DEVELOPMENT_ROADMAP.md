@@ -1,22 +1,36 @@
-# Master development roadmap — planning only, 2026-10-27
+# Master development roadmap
 
-All hours are rough engineering estimates pending code-level review. **Do not start task 2.**
-
-| Stage | Goal and tasks | Files / reuse | Tests and acceptance | Dependency | Hours | Parallel? |
-|---|---|---|---|---|---|---|
-| A | Confirm canonical development branch and inventory differences | index.js, portal, dashboard branches | Diff inventory; no lost modules | None | 6–12 | Yes, read-only |
-| B | Resolve release blockers: DB expiry, backup/restore design, access exposure | render.yaml, db.js, backup script | Documented isolated restore; release checklist | A | 8–16 | With C |
-| C | Verify authentication, tenant isolation and approval boundaries | auth.js, approvalEngine.js, metaWrite.js | Cross-tenant, expiry, replay and write-gate tests | A | 12–24 | With B |
-| D | Validate AI/WhatsApp conversation and fallback | aiService.js, gemini.js, claude.js, conversationOwner.js | Mock tests then separately authorized real-device tests | C | 12–24 | Limited |
-| E | Validate Meta read, drafts, approval, reporting | metaOAuth.js, campaignLifecycle.js, reportService.js | No-spend sandbox and exact-plan checks | C,D | 12–24 | Limited |
-| F | MVP customer acceptance: portal, CRM, onboarding, reports | public/portal, crmService.js, portalRoutes.js | User journey, mobile RTL, tenant isolation | C,D,E | 16–32 | Yes, UI and backend separate |
-| G | Commercial product: billing, backups, monitoring, support, privacy | billingService.js, scripts, docs | Payment sandbox, restore drill, alerts | F | 24–48 | Yes |
-| H | Full SaaS: multi-model routing, advanced social, media, video, analytics | socialConnections.js, graphicService.js, marketingBrain.js | Provider integration and cost ceilings | G | 40–100+ | Yes, bounded interfaces |
+Planning only, based on 2026-10-27 code/infrastructure inspection. Estimates are engineering hours, not calendar durations, and do not include provider approval wait times. No stage below was started as a result of writing this roadmap.
 
 ## Delivery targets
-- **MVP with test customers:** A–F, gated by safe approvals and verified persistence.
-- **Initial commercial product:** G after MVP acceptance and production backup readiness.
-- **Advanced SaaS:** H only after evidence of usage and controlled costs.
 
-## Task 2 (not started)
-Create a controlled consolidation/hardening plan against the selected canonical development branch: diff and reconcile existing portal, conversation and approval modules, add failing regression tests for confirmed gaps, then implement minimal fixes only after separate authorization. No main/render-safe-deploy writes and no production deployment without explicit approval.
+1. **MVP with test customers:** protected customer portal, tested conversation/brief journey, Meta read/report on a connected test account, safe paused campaign draft/approval lifecycle, stable WhatsApp delivery, CRM basics and durable recoverable database.
+2. **Initial commercial product:** paid durable hosting/DB, verified backups/restore, working checkout/webhooks, privacy/retention operations, alerts, support workflows and a small customer onboarding cohort.
+3. **Full SaaS:** multi-team roles, wider social publishing, Google Ads/Analytics, media library/video generation, advanced attribution, model routing/fallback, metering and automated cost controls.
+
+## Ordered work plan
+
+| Phase | Goal and tasks | Relevant files / reuse | Missing work | Tests and completion criteria | Dependencies | Estimate | Parallelizable |
+|---|---|---|---|---|---|---:|---|
+| 0. Choose canonical baseline | Compare deployed `audit-security-hardening`, `release/agent-flexibility`, `feature/dashboard-rtl`, `feature/marketing-brain` and open PRs. Map exact unique changes; do not cherry-pick duplicate modules blindly. Keep all writes in a new/review branch. | `index.js`, root modules, `public/portal/`, PRs #1/#4/#5/#7/#8 | Branch ownership matrix; decide PR sequencing. `src/` is legacy, root is active. | Diff report names every unique module and migration; no source/app change in audit branch; CI on selected baseline green. | None | 4–8h | Yes, read-only |
+| 1. Contain production risks | Decide durable PostgreSQL plan before expiry; create encrypted offsite backup and successful isolated PostgreSQL 18 restore; restrict DB allowlist; reconcile WhatsApp send flag/Blueprint; write RPO/RTO and rollback plan. | `render.yaml`, `db.js`, `scripts/backup-restore-rehearsal.js`, `docs/OPERATIONS.md` | Durable plan and network policy; backup evidence; config drift owner decision; error/worker/queue alerts. | Restore from current archive on isolated PG18 with table counts/checksums; production DB remains unchanged during rehearsal; health/worker and approved sender config match intended policy. | Phase 0; explicit owner decision for billable infrastructure or production config changes | 8–16h engineering + vendor/operator time | Backup design and alert design can proceed alongside security review; production changes sequentially |
+| 2. Security and authorization assurance | Trace every API/portal action; document authentication, tenant context, CSRF, provider callback and background-job ownership. Expand cross-tenant and replay/expiry/write gate tests. Review CI token permissions and auto lockfile push. | `portalRoutes.js`, `portalStore.js`, `auth.js`, `metaOAuth.js`, `approvalEngine.js`, `approvalPolicy.js`, `metaWrite.js`, `.github/workflows/ci.yml` | Route coverage matrix, threat model, least-privilege CI and complete test coverage. | Every mutating route has tenant+role+CSRF/origin checks and appropriate approval; tests reject forged tenant, stale state, replay, unsafe/unapproved write; CI passes without excess write scope. | Phase 0; run beside Phase 1 analysis | 12–24h | Yes, distinct route families |
+| 3. Conversation and AI acceptance | Test Hebrew multi-turn answer, correction, topic switch, voice, media, uncertain input and resume paths. Verify provider routing, malformed output rejection, timeout and spend limits. Keep AI as proposal-only. | `aiService.js`, `gemini.js`, `claude.js`, `conversationOwner.js`, `conversationFlexibility.js`, `briefConversation.js`, `voiceHandler.js`, `graphicService.js` | Current Gemini model ID verification, per-tenant usage caps, Claude production configuration/fallback policy, live customer-device evidence. | Mock suite plus a separately authorized capped live provider/device test; accepted transcript cases, usage recorded, no model-triggered unapproved mutation. | Phases 1–2; live tests after separate owner approval | 12–24h | Text and media QA can split after shared fixtures/contract |
+| 4. Meta connection and campaign proof | Connect a controlled test ad account, verify granted scopes and selected account; test read/report; exercise draft -> exact approval -> paused create; verify activation remains separately gated. | `metaOAuth.js`, `metaConnection.js`, `metaAds.js`, `campaignLifecycle.js`, `metaExecution.js`, `reportService.js` | No current stored OAuth token; account/app permission and business verification evidence. | Test account reports match source values; campaign object graph and status are inspected; budget/activation path remains impossible without explicit current approval. | Phases 1–3; separate approval for any real write | 12–24h | Read/report and approval model review can run in parallel |
+| 5. MVP customer journey | Validate portal login, onboarding, business profile, CRM lead/task flow, WhatsApp context, campaign report and mobile RTL in an isolated/test tenant. | `public/portal/`, `portalRoutes.js`, `portalAgent.js`, `crmService.js`, `workspaceService.js`, `landingService.js` | Live connected test tenant, UX acceptance, no fake metrics and customer support path. | A documented tester completes journey; tenant isolation verified; missing data shown honestly; no campaign spend or outbound message without test consent. | Phases 1–4 | 16–32h | UI acceptance and backend authorization testing can split |
+| 6. Commercial readiness | Configure plan/terms, provider sandbox checkout/webhooks, tax/privacy, deletion/retention, backup restore cadence, monitoring/alerts, support and incident response. | `billingService.js`, `migrations/009-011`, `privacyPages.js`, `maintenance.js`, `docs/OPERATIONS.md` | No subscription rows, no verified merchant setup, no alert target or published SLA. | Sandbox checkout and duplicate/out-of-order webhook tests; successful restore drill; privacy and billing review; alerts demonstrably received. | Phase 5 | 24–48h | Billing, operations and privacy can proceed separately after shared policy |
+| 7. Full SaaS capabilities | Add team/business membership roles, provider-specific social publishing, Google Ads/Analytics, durable media library/video generation, advanced attribution, model routing and unit economics. | `socialConnections.js`, `workspaceService.js`, `graphicService.js`, `reportService.js`, `marketingBrain.js` | Google Ads/Analytics and video absent; social rows absent; team roles/usage metering incomplete. | Each provider has separate OAuth/security, scopes, live sandbox/permission validation, cost ceiling, tenant isolation and customer acceptance. | Phase 6 | 40–100+ h | Yes, after stable connector contracts |
+
+### MVP exit criteria
+
+- Durable database and tested recovery are proven; no expiring free database remains.
+- Database exposure is restricted and key rotation/backup recovery is documented.
+- WhatsApp live send policy matches the approved environment configuration.
+- No open cross-tenant/approval critical issue.
+- Test customer can complete an end-to-end chat/portal/report journey with no fabricated metrics.
+- Meta writes remain off unless a separately scoped, approved sandbox validation requires them.
+- CI remains green and production dependency audit has no high-severity finding.
+
+## Exact Task 2 (not started)
+
+**Task 2 — Production infrastructure stabilization plan for Campaign Bachat.** Prepare the exact Render/PostgreSQL change plan to: (1) replace the Free PostgreSQL plan before 2026-11-24 while preserving data, (2) create a fresh encrypted backup and prove restore to an isolated PostgreSQL 18 target, (3) restrict the database network allowlist, (4) reconcile live `WHATSAPP_SEND_ENABLED=true` with the checked-in Blueprint value `false`, and (5) define health/worker/queue alerts. First produce a reviewable change list with cost, downtime/data-loss risk, rollback, and verification steps. Do not apply billable plan changes or production config/network changes until the user explicitly authorizes those exact changes. No app feature work or deployment is part of Task 2.
