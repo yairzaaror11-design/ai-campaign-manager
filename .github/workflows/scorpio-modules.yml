@@ -1,5 +1,7 @@
 name: SCORPIO module checks
 on:
+  push:
+    branches: [fix/dashboard-functional-completion]
   pull_request:
     branches: [feature/dashboard-rtl, feature/scorpio-frontend-agent2]
     paths:
