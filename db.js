@@ -48,7 +48,7 @@ async function transaction(work) {
     return result;
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (rollbackError) {
-      logger.error('Database rollback failed', { error: rollbackError.message });
+      logger.error('Database rollback failed', { code: typeof rollbackError.code === 'string' && /^[A-Z0-9_]{2,12}$/.test(rollbackError.code) ? rollbackError.code : 'ROLLBACK_ERROR' });
     }
     throw error;
   } finally { client.release(); }
