@@ -154,8 +154,18 @@ async function legacy(path, method = "GET", body) {
     headers: { "Content-Type": "application/json", "X-Dashboard-Request": "1" },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
-  const data = await r.json();
-  if (!r.ok) throw Object.assign(Error(data.code), { code: data.code });
+  let data;
+  try {
+    data = await r.json();
+  } catch {
+    data = {};
+  }
+  if (!r.ok) {
+    if (r.status === 401) loginUI();
+    throw Object.assign(Error(data.code || "MODULE_UNAVAILABLE"), {
+      code: data.code || "MODULE_UNAVAILABLE",
+    });
+  }
   return data;
 }
 function button(label, action, write = false) {
@@ -266,7 +276,7 @@ function form(title, fields, initial, onSave, wizard = false) {
     if (field.options) {
       input = el(
         "select",
-        { name: field.key },
+        { name: field.key, required: !!field.required },
         field.options.map((o) =>
           el(
             "option",
@@ -307,8 +317,8 @@ function form(title, fields, initial, onSave, wizard = false) {
     }),
     next = button("הבא", () => {
       if (
-        [...groupNodes[step].querySelectorAll("input")].every((i) =>
-          i.reportValidity(),
+        [...groupNodes[step].querySelectorAll("input, select, textarea")].every(
+          (control) => control.reportValidity(),
         )
       ) {
         step++;
@@ -691,7 +701,26 @@ const recordFields = {
   ],
   post: [
     { key: "name", label: "שם הטיוטה", required: true },
-    { key: "platform", label: "רשת חברתית", options: platforms },
+    {
+      key: "contentType",
+      label: "סוג תוכן",
+      options: [["post", "פוסט"], ["reel", "Reel"], ["story", "סטורי"], ["carousel", "קרוסלה"]],
+      default: "post",
+    },
+    {
+      key: "platform",
+      label: "פלטפורמה",
+      options: [["instagram", "Instagram"], ["facebook", "Facebook"], ["both", "Instagram ו־Facebook"], ...platforms],
+      default: "both",
+    },
+    { key: "topic", label: "נושא הפוסט" },
+    { key: "product", label: "מוצר או שירות", type: "textarea" },
+    {
+      key: "creationMode",
+      label: "אופן יצירה",
+      options: [["manual", "כתיבה ועריכה ידנית"], ["ai", "בריף להכנה באמצעות AI — ללא יצירה או חיוב אוטומטיים"]],
+      default: "manual",
+    },
     { key: "text", label: "תוכן הפוסט", type: "textarea", wide: true },
     { key: "assetIds", label: "מזהי מדיה, מופרדים בפסיקים", type: "ids" },
     { key: "scheduledAt", label: "מועד מתוכנן", type: "datetime-local" },
@@ -768,7 +797,7 @@ function editRecord(kind, row, defaults = {}) {
 }
 async function recordsPage(kind) {
   const data = await api("/records/" + kind + "?offset=" + offset);
-  $("toolbar").append(button("יצירה חדשה", () => editRecord(kind), true));
+  $("toolbar").append(button(kind === "post" ? "פוסט חדש" : "יצירה חדשה", () => editRecord(kind), true));
   if (kind === "campaign")
     $("body").append(
       note(
@@ -778,7 +807,7 @@ async function recordsPage(kind) {
   if (kind === "post")
     $("body").append(
       note(
-        "מועדי התוכן נשמרים ביומן. שליחה אוטומטית ופרסום ברשתות עדיין אינם מופעלים.",
+        "ניתן להכין ולשמור בריף, טיוטה ומועד מתוכנן. בחירת AI שומרת בקשה בלבד ואינה מפעילה יצירה בתשלום. אין פרסום אוטומטי או שליחה לרשתות.",
       ),
     );
   const grid = el("div", {

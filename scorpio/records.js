@@ -37,7 +37,7 @@ function validate(kind, input) {
       "copy",
       "status",
     ],
-    post: ["name", "text", "platform", "assetIds", "scheduledAt", "status"],
+    post: ["name", "text", "platform", "assetIds", "scheduledAt", "status", "contentType", "topic", "product", "creationMode"],
     appointment: ["name", "leadId", "scheduledAt", "notes", "status"],
     ticket: ["name", "text", "status"],
     notification: ["name", "text", "status"],
@@ -69,6 +69,12 @@ function validate(kind, input) {
           : 200,
         k === "name",
       );
+  }
+  if (kind === "post") {
+    if (p.contentType && !["post", "reel", "story", "carousel"].includes(p.contentType))
+      throw fail("INVALID_CONTENT_TYPE");
+    if (p.creationMode && !["manual", "ai"].includes(p.creationMode))
+      throw fail("INVALID_CREATION_MODE");
   }
   if (!p.name) throw fail("NAME_REQUIRED");
   const statuses = {
