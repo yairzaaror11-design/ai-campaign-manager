@@ -41,6 +41,11 @@ jobs:
         run: npm ci --ignore-scripts
       - run: npm run check
       - run: npm test
+      - name: Isolated synthetic backup and restore (task 2.1 only)
+        if: github.event_name == 'pull_request' && github.head_ref == 'task-2/stabilization-security-20261027'
+        env:
+          RUN_ISOLATED_RESTORE_REHEARSAL: 'true'
+        run: node scripts/ci-isolated-restore.js
       - name: Enforce production dependency security
         run: npm audit --omit=dev --audit-level=high
       - name: Commit lockfile only after all gates pass
