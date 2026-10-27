@@ -7,8 +7,8 @@ if (process.env.CI !== 'true' || process.env.RUN_ISOLATED_ROLE_TEST !== 'true' |
 const db = new URL(url);
 if (!['localhost', '127.0.0.1', '[::1]'].includes(db.hostname) || db.pathname !== '/campaign_test') throw Error('ISOLATED_TEST_DATABASE_REQUIRED');
 const env = { ...process.env, PGHOST: '127.0.0.1', PGPORT: db.port || '5432', PGUSER: decodeURIComponent(db.username), PGPASSWORD: decodeURIComponent(db.password), PGDATABASE: 'campaign_test' };
-function sql(statement, expectFailure = false) {
-  const p = spawnSync('psql', ['-X', '-At', '-v', 'ON_ERROR_STOP=1', '-c', statement], { env, encoding: 'utf8', timeout: 15000 });
+function sql(statement, expectFailure = false, sessionRole = null) {
+  const p = spawnSync('psql', ['-X', '-At', '-v', 'ON_ERROR_STOP=1', '-c', statement], { env: sessionRole ? { ...env, PGOPTIONS: '-c role=' + sessionRole } : env, encoding: 'utf8', timeout: 15000 });
   if (p.error) throw Error('PSQL_EXECUTION_FAILED');
   if (expectFailure) { assert.notEqual(p.status, 0, 'unexpected privileged SQL success'); return; }
   if (p.status !== 0) throw Error('PSQL_TEST_FAILED');
@@ -26,8 +26,8 @@ try {
   sql("SET ROLE scorpio_ci_runtime; INSERT INTO " + schema + ".probe VALUES (1, 'synthetic'); RESET ROLE");
   assert.equal(sql('SET ROLE scorpio_ci_runtime; SELECT value FROM ' + schema + '.probe; RESET ROLE').split('\n')[0], 'synthetic');
   sql('SET ROLE scorpio_ci_runtime; CREATE TABLE ' + schema + '.forbidden(id int)', true);
-  sql('SET ROLE scorpio_ci_runtime; CREATE DATABASE scorpio_forbidden', true);
-  sql('SET ROLE scorpio_ci_runtime; CREATE ROLE scorpio_forbidden', true);
+  sql('CREATE DATABASE scorpio_forbidden', true, 'scorpio_ci_runtime');
+  sql('CREATE ROLE scorpio_forbidden', true, 'scorpio_ci_runtime');
   assert.equal(sql('SET ROLE scorpio_ci_backup; SELECT value FROM ' + schema + '.probe; RESET ROLE').split('\n')[0], 'synthetic');
   sql("SET ROLE scorpio_ci_backup; INSERT INTO " + schema + ".probe VALUES (2, 'forbidden')", true);
   sql('SET ROLE scorpio_ci_migration; ALTER TABLE ' + schema + '.probe ADD COLUMN note text; RESET ROLE');
