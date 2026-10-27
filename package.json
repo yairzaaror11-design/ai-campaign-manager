@@ -5,17 +5,26 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "check": "node --check index.js && node --check webhook.js && node --check gemini.js && node --check metaAds.js && node --check metaWrite.js && node --check metaVerify.js && node --check messageHandler.js && node --check actionPlan.js && node --check approvalEngine.js && node --check actionValidator.js && node --check actionExecutor.js && node --check auditLog.js && node --check mediaHandler.js && node --check voiceHandler.js && node --check db.js && node --check clientStore.js && node --check sessionStore.js && node --check actionStore.js"
+    "check": "node -e \"const fs=require('fs'),cp=require('child_process');function scan(d){for(const e of fs.readdirSync(d,{withFileTypes:true})){if(['node_modules','.git','src'].includes(e.name))continue;const p=d+'/'+e.name;if(e.isDirectory())scan(p);else if(e.name.endsWith('.js'))cp.execFileSync(process.execPath,['--check',p],{stdio:'inherit'})}}scan('.')\"",
+    "test": "node --test tests/*.test.js",
+    "preflight": "node scripts/preflight.js",
+    "worker:messages": "node messageWorker.js"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
     "axios": "^1.7.9",
+    "cheerio": "^1.1.2",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "winston": "^3.17.0",
-    "pg": "^8.13.1"
+    "ipaddr.js": "^2.2.0",
+    "pg": "^8.13.1",
+    "winston": "^3.17.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
+  },
+  "packageManager": "npm@10.9.2",
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11"
   }
 }

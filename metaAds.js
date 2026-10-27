@@ -11,6 +11,9 @@ function token() {
 }
 
 async function get(path, params = {}) {
+  const connection = require('./metaConnection');
+  if (connection.context.getStore()) return connection.tenantRead(path, params);
+  if (process.env.META_LEGACY_SINGLE_TENANT !== 'true') throw Error('TENANT_CONTEXT_REQUIRED');
   return (
     await axios.get(base() + path, {
       params: { ...params, access_token: token() },
@@ -55,13 +58,22 @@ async function getCampaignPerformance(id, date = 'last_7d') {
   ]);
   if (!allowed.has(date)) date = 'last_7d';
 
-  return get(`/${id}/insights`, {
+  const data=[];let after;
+  for(let page=0;page<20;page++) {
+  const result=await get(`/${id}/insights`, {
     fields:
       'campaign_id,campaign_name,impressions,reach,clicks,spend,ctr,cpc,cpm,frequency,actions,cost_per_action_type,website_purchase_roas',
     level: 'campaign',
     date_preset: date,
-    limit: 100
+    limit: 100,
+    ...(after?{after}:{})
   });
+  data.push(...(result.data || []));
+  if(!result.paging?.next) return {data};
+  after=result.paging?.cursors?.after;
+  if(typeof after!=='string'||after.length>4096) throw Error('INVALID_REPORT_CURSOR');
+  }
+  throw Error('REPORT_PAGE_LIMIT');
 }
 
 async function getCampaignInsights(campaignId, date = 'last_7d') {
@@ -79,7 +91,13 @@ async function getCampaignInsights(campaignId, date = 'last_7d') {
   });
 }
 
+async function getCampaignStructure(id) {
+ if(!/^\d+$/.test(String(id))) throw Error('Invalid campaign ID');
+ return get('/'+id+'/adsets',{fields:'id,name,status,campaign_id,ads{id,name,status,adset_id}',limit:100});
+}
+
 module.exports = {
+  getCampaignStructure,
   getAdAccounts,
   getCampaigns,
   getCampaign,
