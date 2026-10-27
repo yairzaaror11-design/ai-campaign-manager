@@ -8,6 +8,7 @@ on:
       - 'scorpio/**'
       - 'tests/scorpioModules.test.js'
       - 'tests/dashboardLegacyApi.test.js'
+      - 'tests/dashboardWizardValidation.test.js'
       - '.github/workflows/scorpio-modules.yml'
   workflow_dispatch:
 permissions:
