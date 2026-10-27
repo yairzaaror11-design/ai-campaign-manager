@@ -154,8 +154,18 @@ async function legacy(path, method = "GET", body) {
     headers: { "Content-Type": "application/json", "X-Dashboard-Request": "1" },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
-  const data = await r.json();
-  if (!r.ok) throw Object.assign(Error(data.code), { code: data.code });
+  let data;
+  try {
+    data = await r.json();
+  } catch {
+    data = {};
+  }
+  if (!r.ok) {
+    if (r.status === 401) loginUI();
+    throw Object.assign(Error(data.code || "MODULE_UNAVAILABLE"), {
+      code: data.code || "MODULE_UNAVAILABLE",
+    });
+  }
   return data;
 }
 function button(label, action, write = false) {
