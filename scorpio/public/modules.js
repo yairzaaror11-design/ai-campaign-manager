@@ -276,7 +276,7 @@ function form(title, fields, initial, onSave, wizard = false) {
     if (field.options) {
       input = el(
         "select",
-        { name: field.key },
+        { name: field.key, required: !!field.required },
         field.options.map((o) =>
           el(
             "option",
