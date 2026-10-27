@@ -27,3 +27,13 @@ Two exploratory metadata queries failed due to incorrect column assumptions (pg_
 
 ## Code changes
 No application code changed; no defect was claimed fixed without a reproducer. Five task-2 documentation files were created on task branch. This is a **partial task-2 completion**: test execution and comprehensive branch content diff remain outstanding.
+
+## Task 2.1 — fresh CI evidence (2026-10-27)
+
+GitHub Actions workflow run https://github.com/yairzaaror11-design/ai-campaign-manager/actions/runs/40492135280 on commit 954d27cc9485186af7cb9e30aac70f7b0479d07f completed **success**. GitHub job logs show **198 tests, 198 passed, 0 failed, 0 skipped, 0 cancelled**; npm run check passed; npm ci --ignore-scripts passed; npm audit --omit=dev --audit-level=high found 0 vulnerabilities. The workflow uses Node.js 22 and ephemeral PostgreSQL 16, TEST_DATABASE_URL, DB_SSL=false; it did not deploy. Draft PR #9 is CI-only, unmerged. CI did not push lockfile to the audit branch (commit-lockfile step skipped).
+
+Changed application code: scripts/backup-restore-rehearsal.js (reject source==target through loopback aliases); db.js (opt-in RUN_MIGRATIONS_ON_STARTUP=false for runtime without DDL). Changed tests: tests/backupRestoreSafety.test.js (alias regression), tests/customerPortalHttp.test.js (two-session, two-business lead list and cross-tenant PATCH denial), tests/runtimeMigrationSeparation.test.js (runtime without DDL then explicit migration). Updated docs/DATABASE_RECOVERY_PLAN.md.
+
+Test coverage limits: no production database mutations; no actual pg_dump/pg_restore rehearsal; no two-tenant adversarial HTTP coverage for Meta tokens, reports, conversations or background jobs was newly added. Existing project tests ran, but that is not equivalent to proving all cross-tenant attack paths. No real campaign/AI/provider calls.
+
+Local container could not clone GitHub (DNS/network unavailable), so GitHub Actions was used as the safe isolated execution path. The local `npm ci` command could not execute without a checked-out lockfile; the CI run completed dependency installation successfully.
