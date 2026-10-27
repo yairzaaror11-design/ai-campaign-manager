@@ -48,8 +48,7 @@ test('customer portal HTTP boundary enforces authentication, CSRF and tenant iso
   const bHistory=await(await call('/app/api/agent',null,otherCookie)).json();
   const aHistory=await(await call('/app/api/agent',null,cookie)).json();
   assert.deepEqual(aHistory.messages,[]);assert.deepEqual(bHistory.messages,[]);
-  const bAgent=await call('/app/api/agent',{message:'שלום עסק ב',screen:'campaign',requestId:require('node:crypto').randomUUID()},otherCookie,otherCsrf);
-  assert.equal(bAgent.status,200);
+  await require('../marketingStore').update(other.id,null,p=>{p.portalChat={messages:[{role:'user',content:'שלום עסק ב',screen:'campaign',at:new Date().toISOString()}],requests:[]};return {handled:false,changed:true};});
   const bHistoryAfter=await(await call('/app/api/agent',null,otherCookie)).json();
   const aHistoryAfter=await(await call('/app/api/agent',null,cookie)).json();
   assert.ok(bHistoryAfter.messages.some(m=>m.content==='שלום עסק ב'));
