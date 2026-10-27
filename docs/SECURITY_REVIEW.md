@@ -34,3 +34,9 @@ Fresh CI run 40492135280: 198/198 tests passed, including two independently auth
 Restore-safety flaw reproduced at the validator level: localhost and 127.0.0.1 aliases could bypass the same-source/target comparison; now blocked and regression-tested. A separate opt-in runtime initialization path avoids DDL when RUN_MIGRATIONS_ON_STARTUP=false, and a PGlite regression checks that the schema remains empty until migration is explicitly enabled. Production roles and network unchanged.
 
 Remaining: independent tenant tests for conversations, tokens, Meta actions, reports, background workers; approval concurrency under two workers; production role least privilege; RLS policy design and compatibility; actual backup restore. Do not certify full tenant security or commercial readiness yet.
+
+## Task 2.1 follow-up: cross-tenant HTTP regression expansion
+
+New test assertions in tests/customerPortalHttp.test.js use two independent authenticated portal sessions and check workspace task listing, cross-tenant task PATCH denial, and portal-agent conversation history separation. The existing lead isolation test remains. tests/campaignLifecycle.test.js now also checks that an adapter's activate method is never called during paused creation or an attempted activation without a separate approval. These are mock/local-DB tests, not live Meta writes. CI evidence for the new commit must be read from GitHub Actions; earlier 198-pass result predates these added assertions.
+
+Source review confirms portalRoutes.js wraps /app/api endpoints with portalStore.authenticate and passes req.portal.clientId to CRM, workspace, report, social, and agent handlers. metaConnection.credentials queries client_id and decrypts AES-256-GCM ciphertext with clientId as AAD; this is a code-level control, not proof of exhaustive isolation. Background job ownership and all internal service call paths remain to be fully threat-modelled. No RLS or production permissions changed.
