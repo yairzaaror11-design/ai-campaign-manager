@@ -61,7 +61,11 @@ async function initializeDatabase() {
     return false;
   }
 
-  await require('./migrate').migrate(transaction);
+  // Deployments using a least-privilege runtime role must run migrations separately.
+  // Preserve existing startup behavior unless explicitly disabled after a migration job succeeds.
+  if (process.env.RUN_MIGRATIONS_ON_STARTUP !== 'false') {
+    await require('./migrate').migrate(transaction);
+  }
   await query('SELECT 1');
   ready = true;
   logger.info('Database initialized');
