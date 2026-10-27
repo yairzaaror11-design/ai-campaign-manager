@@ -4,6 +4,7 @@ function revise(p,text){
  const j=p.journey,n=require('./conversationAnalysis').norm(text);
  const mode=/קצר/.test(n)?'short':/אישי|אנושי|פשוט/.test(n)?'personal':/^(?:המסר|מסר(?: אחר)?|הכל|הכול|את הכל|את הכול|הסגנון|סגנון)$/.test(n)?'message':null;
  if(!mode){
+  j.creativeFeedback=text.slice(0,1000);
   j.pendingField='creativeFeedback';
   return{handled:true,reply:/הצעה/.test(n)?'מה ההצעה החדשה שתרצה להציג במודעה?':'כדי לשנות את הנוסח, אפשר לבקש ״מסר אחר״, ״הכול״, ״קצר יותר״ או ״סגנון אישי״. מה לשנות?'};
  }

@@ -2,7 +2,10 @@
 const router=require('express').Router(),path=require('node:path'),db=require('./db'),auth=require('./portalStore');
 router.use('/app',(req,res,next)=>{res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"});next();});
 router.get('/app',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/index.html')));
+router.get('/app/:screen',(req,res,next)=>{if(![...require('./portalAgent').SCREENS,'pages','performance'].includes(req.params.screen))return next();res.sendFile(path.join(__dirname,'public/portal/index.html'));});
 router.get('/app/portal.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/portal.js')));
+router.get('/app/dashboard.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/dashboard.js')));
+router.get('/app/components.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/components.js')));
 router.get('/app/portal.css',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/portal.css')));
 router.post('/app/api/login',require('./rateLimit').middleware('portal-login',20),async(req,res)=>{
  try{
@@ -15,13 +18,13 @@ router.post('/app/api/login',require('./rateLimit').middleware('portal-login',20
 router.use('/app/api',require('./rateLimit').middleware('portal-api',120),async(req,res,next)=>{
  try{req.portal=await auth.authenticate(req,{write:!['GET','HEAD'].includes(req.method)});next();}catch(e){res.status(e.message==='PORTAL_CSRF'?403:401).json({error:'צריך להיכנס דרך קישור אישי מה-WhatsApp.'});}
 });
-const endpoint=handler=>async(req,res)=>{try{await require('./metaConnection').context.run(String(req.portal.clientId),()=>handler(req,res));}catch(e){res.status(e.message==='LEAD_NOT_FOUND_OR_STALE'?409:400).json({error:e.message==='LEAD_NOT_FOUND_OR_STALE'?'הפנייה עודכנה במקום אחר. רעננו ונסו שוב.':'לא ניתן להשלים את הפעולה. בדקו את הפרטים ונסו שוב.'});}};
+const endpoint=handler=>async(req,res)=>{try{await require('./metaConnection').context.run(String(req.portal.clientId),()=>handler(req,res));}catch(e){res.status(['LEAD_NOT_FOUND_OR_STALE','WORKSPACE_STALE','WORKSPACE_REQUEST_CONFLICT'].includes(e.message)?409:400).json({error:e.message==='LEAD_NOT_FOUND_OR_STALE'?'הפנייה עודכנה במקום אחר. רעננו ונסו שוב.':e.message==='WORKSPACE_STALE'?'הפרטים עודכנו במקביל. רעננו את המסך לפני עריכה נוספת.':e.message==='WORKSPACE_REQUEST_CONFLICT'?'הבקשה הזו כבר נשמרה עם פרטים אחרים. פתחו מחדש את הטופס.':'לא ניתן להשלים את הפעולה. בדקו את הפרטים ונסו שוב.'});}};
 router.get('/app/api/dashboard',endpoint(async(req,res)=>{
  const id=req.portal.clientId,p=await require('./marketingStore').load(id);
  const account=(await db.query('SELECT display_name,email,consent_version FROM customer_accounts WHERE client_id=$1',[id])).rows[0]||null;
  const subscription=(await db.query('SELECT plan_code,status,period_end FROM customer_subscriptions WHERE client_id=$1',[id])).rows[0]||{plan_code:'PILOT',status:'PILOT'};
  const graphics=(await db.query('SELECT COUNT(*)::int AS count FROM graphic_jobs WHERE client_id=$1 AND created_at>NOW()-INTERVAL \'1 day\'',[id])).rows[0]?.count||0;
- res.json({account,subscription:{...subscription,checkoutAvailable:require('./billingService').configured(),notice:'מנוי הפיילוט אינו חיוב כספי. מדיה משולמת לפלטפורמת הפרסום בנפרד. רכישה תיפתח רק לאחר הגדרת ספק, מחיר ותנאים.'},business:p?require('./conversationFacts').all(p):{},brand:p?.brand||null,websiteChecks:p?.websiteChecks||null,draft:p?.journey?.draft||null,stage:p?.journey?.stage||'DISCOVERY',connection:p?.connection?{status:p.connection.status,account:p.connection.account,lastCheckAt:p.connection.lastCheckAt}:null,crm:await require('./crmService').summary(id),usage:{graphicsAttemptsLast24Hours:graphics},capabilities:{metaWrites:process.env.READ_ONLY==='false'&&process.env.META_WRITES_ENABLED==='true',googleAds:false,videoGeneration:false,billing:require('./billingService').configured()}});
+ res.json({productName:'SCORPIO AI',profileVersion:p?.version||0,account,subscription:{...subscription,checkoutAvailable:require('./billingService').configured(),notice:'מנוי הפיילוט אינו חיוב כספי. מדיה משולמת לפלטפורמת הפרסום בנפרד. רכישה תיפתח רק לאחר הגדרת ספק, מחיר ותנאים.'},business:p?require('./conversationFacts').all(p):{},brand:p?.brand||null,websiteChecks:p?.websiteChecks||null,draft:p?.journey?.draft||null,stage:p?.journey?.stage||'DISCOVERY',connection:p?.connection?{status:p.connection.status,account:p.connection.account,lastCheckAt:p.connection.lastCheckAt}:null,crm:await require('./crmService').summary(id),usage:{graphicsAttemptsLast24Hours:graphics},capabilities:{metaWrites:process.env.READ_ONLY==='false'&&process.env.META_WRITES_ENABLED==='true',googleAds:false,videoGeneration:false,billing:require('./billingService').configured()}});
 }));
 router.post('/app/api/register',endpoint(async(req,res)=>res.json(await auth.register(req.portal.clientId,req.body))));
 router.post('/app/api/logout',endpoint(async(req,res)=>{
@@ -63,8 +66,11 @@ router.post('/app/api/meta/check',endpoint(async(req,res)=>res.json(await requir
 router.post('/app/api/meta/select',endpoint(async(req,res)=>{
  await require('./metaConnection').selectAccount(req.portal.clientId,req.body?.accountId);res.json(await require('./metaConversation').verify(req.portal.clientId));
 }));
+router.post('/app/api/landing/drafts',endpoint(async(req,res)=>res.json(await require('./landingDrafts').save(req.portal.clientId,req.body))));
+router.patch('/app/api/landing/drafts/:id',endpoint(async(req,res)=>res.json(await require('./landingDrafts').save(req.portal.clientId,req.body,req.params.id))));
+router.post('/app/api/landing/:id/publish',endpoint(async(req,res)=>res.json(await require('./landingDrafts').publish(req.portal.clientId,req.params.id,req.body))));
 router.post('/app/api/landing',endpoint(async(req,res)=>res.json(await require('./landingService').create(req.portal.clientId,req.body))));
-router.get('/app/api/landing',endpoint(async(req,res)=>{const r=await db.query('SELECT id,slug,status,created_at FROM landing_pages WHERE client_id=$1 ORDER BY created_at DESC LIMIT 20',[req.portal.clientId]);res.json({pages:r.rows.map(p=>({...p,url:auth.origin()+'/p/'+p.slug}))});}));
+router.get('/app/api/landing',endpoint(async(req,res)=>{const r=await db.query('SELECT id,slug,payload,status,revision,created_at FROM landing_pages WHERE client_id=$1 ORDER BY created_at DESC LIMIT 20',[req.portal.clientId]);res.json({pages:r.rows.map(p=>({...p,url:p.status==='PUBLISHED'?auth.origin()+'/p/'+p.slug:null}))});}));
 router.get('/app/api/billing/price',endpoint(async(req,res)=>res.json(await require('./billingService').price())));
 router.post('/app/api/billing/checkout',endpoint(async(req,res)=>res.json(await require('./billingService').checkout(req.portal.clientId,req.body))));
 router.post('/app/api/billing/manage',endpoint(async(req,res)=>res.json(await require('./billingService').management(req.portal.clientId))));
@@ -74,4 +80,20 @@ router.get('/app/api/report',endpoint(async(req,res)=>{
  const v=await require('./metaConversation').verify(req.portal.clientId);if(!v.canRead)return res.status(409).json({error:require('./metaConversation').statusReply(v)});
  res.json({text:await require('./reportService').campaignReport(req.portal.clientId,'last_7d')});
 }));
+
+// Preserve social provider configuration and callbacks from the dashboard branch.
+router.get('/app/api/integrations',endpoint(async(req,res)=>res.json({social:await require('./socialConnections').list(req.portal.clientId)})));
+router.post('/app/api/social/:provider/connect',endpoint(async(req,res)=>{
+ const social=require('./socialConnections'),r=await social.begin(req.portal.clientId,req.params.provider,req.portal.tokenHash);social.setBinding(res,req.params.provider,r.binding);res.json({url:r.url});
+}));
+router.post('/app/api/social/:provider/account',endpoint(async(req,res)=>{await require('./socialConnections').selectAccount(req.portal.clientId,req.params.provider,req.body?.accountId);res.json({ok:true});}));
+router.post('/app/api/social/:provider/disconnect',endpoint(async(req,res)=>{if(req.body?.confirm!==true)return res.sendStatus(400);await require('./socialConnections').disconnect(req.portal.clientId,req.params.provider);res.json({ok:true});}));
+// All workspace routes inherit the existing session, Origin, CSRF and tenant context boundary.
+router.get('/app/api/workspace/:kind',endpoint(async(req,res)=>res.json(await require('./workspaceService').list(req.portal.clientId,req.params.kind))));
+router.post('/app/api/workspace/:kind',endpoint(async(req,res)=>res.json(await require('./workspaceService').save(req.portal.clientId,req.params.kind,req.body?.payload,{requestId:req.body?.requestId}))));
+router.patch('/app/api/workspace/:kind/:id',endpoint(async(req,res)=>res.json(await require('./workspaceService').save(req.portal.clientId,req.params.kind,req.body?.payload,{id:req.params.id,version:req.body?.version,requestId:req.body?.requestId}))));
+router.post('/app/api/brand',endpoint(async(req,res)=>res.json(await require('./workspaceService').saveBrand(req.portal.clientId,req.body))));
+router.get('/app/api/agent',endpoint(async(req,res)=>res.json(await require('./portalAgent').history(req.portal.clientId))));
+router.post('/app/api/agent',require('./rateLimit').middleware('portal-agent',30),endpoint(async(req,res)=>res.json(await require('./portalAgent').send(req.portal.clientId,req.body))));
+
 module.exports=router;

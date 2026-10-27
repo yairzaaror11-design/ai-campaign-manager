@@ -178,7 +178,7 @@ async function routeText(from, text, prefix = '') {
     try {
       const client = await getOrCreateClient(from);
       if(text!=='/meta-delete-data-confirm'&&require('./marketingConversation').enabled()){
-        const guided=await require('./marketingConversation').handleMarketingMessage(client.id,text,require('./whatsappDelivery').messageContext.getStore()?.eventId,{onSlow:()=>notifyProcessing(from)});
+        const guided=await require('./marketingConversation').handleMarketingMessage(client.id,text,require('./whatsappDelivery').messageContext.getStore()?.eventId,{onSlow:()=>notifyProcessing(from),history:await getHistory(from)});
         if(guided.handled){const ui=await require('./conversationUi').prepare(client.id,guided.reply,guided.decisionKey);await safeSend(from,ui.text,ui);return;}
       }
       let reply;
@@ -271,7 +271,7 @@ async function routeText(from, text, prefix = '') {
   if (text === '/start' && (!configured() || !require('./marketingConversation').enabled())) {
     await safeSend(
       from,
-      'היי, אני קמפיין בצ׳ט. אפשר לבקש קמפיין, גרפיקה ודוחות בעברית. לחיבור חשבון פרסום: /meta-connect. ליצירת גרפיקה: צור לי גרפיקה ותאר את העסק והמסר. לדוח: /report. כל שינוי בקמפיין דורש אישור; פרסום זמין רק כאשר הרשאות הכתיבה מופעלות.'
+      'היי, אני SCORPIO AI. אפשר לבקש קמפיין, גרפיקה ודוחות בעברית. לחיבור חשבון פרסום: /meta-connect. ליצירת גרפיקה: צור לי גרפיקה ותאר את העסק והמסר. לדוח: /report. כל שינוי בקמפיין דורש אישור; פרסום זמין רק כאשר הרשאות הכתיבה מופעלות.'
     );
     return;
   }
@@ -292,7 +292,7 @@ async function routeText(from, text, prefix = '') {
       let handled;
       if(owner==='lifecycle')handled=await handleLifecycleMessage(from,text);
       else if(owner==='brief')handled=await handleBriefMessage(from,text);
-      else if(owner==='marketing'&&require('./marketingConversation').enabled())handled=await require('./marketingConversation').handleMarketingMessage(client.id,text,require('./whatsappDelivery').messageContext.getStore()?.eventId,{onSlow:()=>notifyProcessing(from)});
+      else if(owner==='marketing'&&require('./marketingConversation').enabled())handled=await require('./marketingConversation').handleMarketingMessage(client.id,text,require('./whatsappDelivery').messageContext.getStore()?.eventId,{onSlow:()=>notifyProcessing(from),history:await getHistory(from)});
       if(handled?.handled){
         const reply=prefix?`${prefix}\n\n${handled.reply}`:handled.reply;
         await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:handled.historyReply||reply}]);

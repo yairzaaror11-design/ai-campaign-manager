@@ -60,7 +60,10 @@ function parsePending(field,text){
 function transition(p,text,{analysis=localAnalysis(text),now=new Date().toISOString()}={}){
  const j=init(p),n=norm(text);const oldPending=j.pendingField;
  const result=(reply,extra={})=>({handled:true,reply,...extra});
+ const flex=require('./conversationFlexibility');
+ if(j.detour&&['yes','no'].includes(localAnalysis(text).intent))return flex.detour(j);
  if(require('./conversationControl').isReset(text))return{handled:false,resetRequested:true};
+ if(analysis.analysisUnavailable&&analysis.messageKind==='side_question')return flex.detour(j);
  if(analysis.analysisUnavailable&&j.stage==='DISCOVERY'&&oldPending)return result('לא הצלחתי לפרש בביטחון את כל הפרטים בהודעה. נשמור על מה שכבר ידוע.\n'+QUESTIONS[oldPending]);
  if(oldPending==='dailyBudget'&&/כמה.*(?:נותן|ייתן|פניות|לידים|מכירות|חשיפות)|מה.*תקציב.*נותן|מה מקבלים|עזרה.*תקציב/.test(text))return result(require('./budgetGuidance').explain()+'\n\n'+QUESTIONS.dailyBudget,{decisionKey:'dailyBudget'});
  if(analysis.intent==='pause'){j.paused=true;return result('עצרנו כאן. הפרטים נשמרו, ואפשר לחזור כשנוח.');}
@@ -69,10 +72,11 @@ function transition(p,text,{analysis=localAnalysis(text),now=new Date().toISOStr
  if(analysis.intent==='greeting'){
   if(j.draft&&!j.draft.stale&&['STRATEGY_REVIEW','CREATIVE_REVIEW','PLAN_REVIEW'].includes(j.stage))return stageReply(p,j.stage,'היי, הפרטים מהשיחה הקודמת שמורים. נמשיך מהמקום שבו עצרנו.');
   if(j.stage!=='IDLE'&&j.stage!=='COMPLETE')return advance(p,{target:j.requestedOutput||'strategy',prefix:'היי, הפרטים מהשיחה הקודמת שמורים. נמשיך מהמקום שבו עצרנו.'});
-  return result('היי! אני קמפיין בצ׳ט. נכיר בקצרה את העסק, נכין כיוון ומודעות, ואז נציג תוכנית לבדיקה שלך. נחבר חשבון פרסום כשצריך; פרסום ידרוש אישור נפרד. אפשר לבחור בלחיצה, לכתוב או לשלוח הודעה קולית. מה נרצה לעשות היום?',{decisionKey:'welcome'});
+  return result('היי! אני SCORPIO AI. נכיר בקצרה את העסק, נכין כיוון ומודעות, ואז נציג תוכנית לבדיקה שלך. נחבר חשבון פרסום כשצריך; פרסום ידרוש אישור נפרד. אפשר לבחור בלחיצה, לכתוב או לשלוח הודעה קולית. מה נרצה לעשות היום?',{decisionKey:'welcome'});
  }
- if(analysis.intent==='clarify')return result(oldPending?(EXPLANATIONS[oldPending]||'כדי לבחור כיוון שמתאים לעסק, חסר הפרט הזה.')+'\n'+QUESTIONS[oldPending]:'אפשר לציין איזה פרט כדאי להסביר?');
- if(analysis.intent==='summary')return result(facts.summary(p)||'עדיין לא נמסרו פרטי עסק. אפשר לספר במה העסק עוסק.');
+ if(analysis.messageKind==='side_question'&&!(analysis.updates||[]).length)return flex.detour(j);
+ if(analysis.intent==='clarify'){j.detour=true;return result(oldPending?(EXPLANATIONS[oldPending]||'כדי לבחור כיוון שמתאים לעסק, חסר הפרט הזה.')+'\n'+QUESTIONS[oldPending]:'אפשר לציין איזה פרט כדאי להסביר?');}
+ if(analysis.intent==='summary'){j.detour=true;return result(facts.summary(p)||'עדיין לא נמסרו פרטי עסק. אפשר לספר במה העסק עוסק.');}
  if(['connect','connection_status','select_account','disconnect','renew','knowledge','report'].includes(analysis.intent))return{handled:false,connectionIntent:analysis.intent};
  if(/^(אפיון חדש|קמפיין חדש)$/.test(n)){p.planId=crypto.randomUUID();p.journey=null;init(p);p.journey.stage='DISCOVERY';return advance(p,{prefix:'נתכנן קמפיין חדש ונשתמש בפרטי העסק שכבר שמורים. אפשר לעדכן כל פרט.'});}
  const changed=[];
@@ -85,7 +89,16 @@ function transition(p,text,{analysis=localAnalysis(text),now=new Date().toISOStr
   if(facts.write(p,u.field,u.value,{evidence:u.evidence,now}))changed.push(u.field);
  }
  if(changed.length)facts.correctionsInvalidate(p,changed);
- if(analysis.intent==='ad'&&/לא אהבתי|שפר|שנה|שני|לתקן/.test(text)&&j.draft){j.pendingField='creativeFeedback';return result(QUESTIONS.creativeFeedback);}
+ // Keep the current question while the normal conversational responder addresses a detour.
+ if(analysis.messageKind==='side_question')return flex.detour(j);
+ if(analysis.intent==='draft'){
+  j.detour=false;
+  if(!facts.value(p,'product')&&!facts.value(p,'businessType'))return advance(p,{prefix:'אפשר להכין טיוטה עם מה שידוע. חסר רק מה אנחנו מציעים.'});
+  return stageReply(p,j.requestedOutput==='plan'?'PLAN_REVIEW':'CREATIVE_REVIEW','זו טיוטה ראשונית לפי מה שידוע כרגע. פרטים חסרים נשאיר פתוחים לבדיקה.');
+ }
+ if(analysis.intent==='ad'&&/לא אהבתי|שפר|שנה|שני|לתקן|תשנה|תשני|יותר|פחות|סגנון|טון|תדגיש/.test(text)&&j.draft){
+  j.pendingField='creativeFeedback';j.creativeFeedback=text.length>25?text.slice(0,1000):null;return result(QUESTIONS.creativeFeedback);
+ }
  if(oldPending==='creativeFeedback'&&!changed.length&&!['pause','greeting','summary','clarify'].includes(analysis.intent)){
   return require('./creativeRevision').revise(p,text);
  }
@@ -100,13 +113,15 @@ function transition(p,text,{analysis=localAnalysis(text),now=new Date().toISOStr
  }
  if(analysis.intent==='no'&&oldPending==='offerMediaSeparate'){facts.write(p,oldPending,false,{now,evidence:text});return advance(p,{target:j.requestedOutput});}
  if(analysis.intent==='no')return result('מה נרצה לשנות בכיוון שהצעתי?');
+ if(analysis.messageKind==='request'&&analysis.intent==='other')return flex.detour(j);
  const wantsBuild=['build','ad','strategy','plan','continue'].includes(analysis.intent);
  if(wantsBuild){
+  const resumingDetour=j.detour;delete j.detour;
   if(['ad','plan','strategy'].includes(analysis.intent))j.requestedOutput=analysis.intent;
   if(!j.requestedOutput)j.requestedOutput='strategy';
   // Resume the actual current stage instead of silently returning to discovery.
   if(analysis.intent==='continue'&&j.draft&&!j.draft.stale&&['STRATEGY_REVIEW','CREATIVE_REVIEW','PLAN_REVIEW'].includes(j.stage)){
-    if(j.paused)return stageReply(p,j.stage);
+    if(j.paused||resumingDetour)return stageReply(p,j.stage);
     if(j.stage==='STRATEGY_REVIEW'){j.strategyApproved=true;return stageReply(p,'CREATIVE_REVIEW');}
     if(j.stage==='CREATIVE_REVIEW'){j.creativeApproved=true;return stageReply(p,'PLAN_REVIEW');}
     return result('הטיוטה המקומית מוכנה ושמורה. אפשר לבקש לחבר חשבון Meta או לתקן פרט בתוכנית. לא בוצע פרסום.');
@@ -114,15 +129,16 @@ function transition(p,text,{analysis=localAnalysis(text),now=new Date().toISOStr
   return advance(p,{target:j.requestedOutput,prefix:j.stage==='IDLE'?'נכין כיוון לפרסום. אשאל עד שמונה שאלות קצרות לפי מה שחסר, ואפשר לתקן פרטים בכל שלב.':''});
  }
  if((analysis.updates||[]).length){
+  delete j.detour;
   if(j.stage==='IDLE')return result('שמרתי את הפרטים על העסק. אפשר לבקש להכין קמפיין או לשאול שאלה.');
   return advance(p,{target:j.requestedOutput||'strategy',prefix:analysis.correction?'עדכנתי רק את הפרטים ששונו.':''});
  }
- if(j.stage==='DISCOVERY'&&oldPending&&!j.paused&&analysis.intent==='other'&&!/[?？]/.test(text)&&!/^(איך|למה|מה |ספר|ספרי|תסביר|תסבירי|אפשר |תיצור |תצור |צור |שאלה אחרת)/.test(text)){
+ if(j.stage==='DISCOVERY'&&oldPending&&!j.paused&&analysis.intent==='other'&&!flex.isDetour(text)&&!/[?？]/.test(text)&&!/^(איך|למה|מה |ספר|ספרי|תסביר|תסבירי|אפשר |תיצור |תצור |צור |שאלה אחרת)/.test(text)){
   const parsed=parsePending(oldPending,text);if(parsed.error)return result(parsed.error);
-  facts.write(p,oldPending,parsed.value,{status:parsed.status||'known',evidence:text,now});j.pendingField=null;
+  facts.write(p,oldPending,parsed.value,{status:parsed.status||'known',evidence:text,now});j.pendingField=null;delete j.detour;
   return advance(p,{target:j.requestedOutput||'strategy'});
  }
- return{handled:false};
+ return flex.detour(j);
 }
 module.exports={CORE,QUESTIONS,EXPLANATIONS,init,missing,offerMissing,nextField,advance,buildDraft,parsePending,transition};
 

@@ -1,7 +1,7 @@
 'use strict';
 const crypto=require('node:crypto'),store=require('./marketingStore');
 const FOOTER='אפשר גם לכתוב או לשלוח הודעה קולית';
-function context(p){return JSON.stringify([p.planId,p.journey?.stage,p.journey?.pendingField,p.journey?.revision,p.journey?.inputMode,p.connection?.status,p.connection?.pendingQuestion,p.mediaContext?.assetId,p.mediaBudgetQuestion?.amount,p.businessImport?.foundAt,p.businessEntry?.awaitingConfirmation,p.crmFocus?.id,p.crmFocus?.version,JSON.stringify(p.crmMenu||[])]);}
+function context(p){return JSON.stringify([p.planId,p.journey?.stage,p.journey?.pendingField,p.journey?.revision,p.journey?.inputMode,p.journey?.detour,p.connection?.status,p.connection?.pendingQuestion,p.mediaContext?.assetId,p.mediaBudgetQuestion?.amount,p.businessImport?.foundAt,p.businessEntry?.awaitingConfirmation,p.crmFocus?.id,p.crmFocus?.version,JSON.stringify(p.crmMenu||[])]);}
 const choice=(title,text,description)=>({title,text,...(description?{description}:{})});
 const DECISIONS=["crm_leads","crm_status","business_entry","business_import","plan_review","media_variant", "budget_period", "media_action", "has_ad_account", "connected", "connection_offer", "account_selection", "businessGoal", "dailyBudget", "leadDestination", "offerMediaSeparate", "strategy_review", "creative_review", "welcome"];
 function choices(p,decisionKey){

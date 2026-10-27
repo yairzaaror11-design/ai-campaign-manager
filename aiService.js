@@ -11,6 +11,7 @@ async function processMessage(text,history=[],options={}) {
  if(!provider) throw Error('AI_PROVIDER_UNSUPPORTED');
  const response=await provider(text,history,options);
  if(!response || typeof response.text!=='string'||response.text.length>16000||!Array.isArray(response.actionPlans)||response.actionPlans.length>5) throw Error('INVALID_AI_OUTPUT');
+ if(options.planningOnly&&response.actionPlans.length)throw Error('PLANNING_ACTION_REJECTED');
  for(const plan of response.actionPlans) {
    if(!plan || typeof plan!=='object'||!plan.requiresApproval||typeof plan.id!=='string'||!require('./actionPlan').isWriteIntent(plan.intent)||JSON.stringify(plan).length>16000) throw Error('INVALID_AI_PLAN');
  }

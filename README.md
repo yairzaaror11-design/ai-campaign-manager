@@ -1,4 +1,4 @@
-# Campaign Bachat — קמפיין בצ׳ט
+# SCORPIO AI — SCORPIO AI
 
 WhatsApp-driven Meta campaign management using Node.js/Express, PostgreSQL and a configurable Gemini/Claude service. The active entry point is root `index.js`; `src/` and the old Railway deployment guide are legacy.
 

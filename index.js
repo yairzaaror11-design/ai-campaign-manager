@@ -33,6 +33,7 @@ app.use('/webhook', webhook);
 app.use('/telnyx', telnyx);
 app.use('/health', health);
 app.use('/auth/meta', require('./metaOAuth'));
+app.use('/auth/social', require('./socialConnections').router);
 app.use('/meta', require('./metaDeletion').router);
 app.use(require('./portalRoutes'));
 app.use(require('./landingRoutes'));
@@ -41,7 +42,7 @@ app.use(require('./privacyPages'));
 
 app.get('/', (req, res) =>
   res.json({
-    name: 'Campaign Bachat',
+    name: 'SCORPIO AI',
     version: '1.8.0',
     stage: 6,
     status: 'running',
@@ -75,7 +76,7 @@ async function start() {
   }
 
   const server=app.listen(PORT, '0.0.0.0', () =>
-    logger.info('Campaign Bachat started', {
+    logger.info('SCORPIO AI started', {
       port: PORT,
       version: '1.8.0',
       stage: 6,

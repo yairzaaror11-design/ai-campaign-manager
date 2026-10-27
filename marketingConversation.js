@@ -55,7 +55,7 @@ function diagnosticTransition(p,text,{now=new Date().toISOString()}={}) {
       return deliverNext(p,'נמשיך מהמקום שבו עצרנו.');
     }
     p.session={route:requested,pendingId:null,answersSinceSummary:0,paused:false,awaitingContinue:false,complete:false};
-    return deliverNext(p,requested==='onboarding'?'היי, אני קמפיין בצ׳ט. נכיר את העסק ונבנה כיוון לפרסום, שאלה אחת בכל פעם. אפשר לכתוב ״לא ידוע״ או ״עצור״.':'נבדוק את זה יחד, שאלה אחת בכל פעם. אפשר לכתוב ״לא ידוע״ או ״עצור״.');
+    return deliverNext(p,requested==='onboarding'?'היי, אני SCORPIO AI. נכיר את העסק ונבנה כיוון לפרסום, שאלה אחת בכל פעם. אפשר לכתוב ״לא ידוע״ או ״עצור״.':'נבדוק את זה יחד, שאלה אחת בכל פעם. אפשר לכתוב ״לא ידוע״ או ״עצור״.');
   }
   if(/^(להמשיך|נמשיך|המשך|ממשיכים|אפשר להמשיך)$/.test(n)||(n==='כן'&&p.session?.awaitingContinue)) {
     if(!p.session) return {handled:false};
@@ -81,7 +81,11 @@ function transition(p,text,options={}) {
  if(requested&&requested!=='onboarding'){
   p.session=null;const r=diagnosticTransition(p,text,options);p.session.controller='diagnostic';return r;
  }
- if(p.session?.controller==='diagnostic'&&!['build','ad','strategy','plan'].includes(analysis.intent))return diagnosticTransition(p,text,options);
+ if(p.session?.controller==='diagnostic'&&!['build','draft','ad','strategy','plan'].includes(analysis.intent)){
+  if(analysis.messageKind==='side_question')return{handled:false};
+  return diagnosticTransition(p,text,options);
+ }
+ if(p.session?.controller==='diagnostic'&&['build','draft','ad','strategy','plan'].includes(analysis.intent))p.session=null;
  const r=require('./campaignJourney').transition(p,text,{...options,analysis});
  if(r.handled&&p.session?.route==='onboarding')p.session=null;
  return r;
@@ -109,11 +113,13 @@ async function handleMarketingMessage(clientId,text,eventId,options={}) {
     }
     const metaIntent=['connect','connection_status','select_account','disconnect','renew','knowledge'].includes(analysis.intent)||text.startsWith('/meta-')||/להתחיל לפרסם (?:בפייסבוק|במטא)/.test(text)||(['yes','no'].includes(analysis.intent)&&snapshot.connection?.pendingQuestion==='hasAdAccount')||(analysis.intent==='yes'&&snapshot.connection?.status==='CONNECTION_OFFERED')||(snapshot.connection?.status==='ACCOUNT_SELECTION_REQUIRED'&&/^\d+$/.test(text));
     if(metaIntent){if(options.onSlow&&analysis.intent!=='knowledge')await options.onSlow();return require('./metaConversation').handle(clientId,text,analysis,eventId);}
+    const candidate=structuredClone(snapshot);
+    let prepared=transition(candidate,text,{analysis});
+    prepared=await require('./creativeGeneration').enrich(candidate,prepared,{writer:options.creativeWriter});
     try{return await store.update(clientId,eventId,p=>{
       if((p.version||0)!==(existing?.version||0))throw Error('STALE_CONVERSATION_ANALYSIS');
-      if(!existing)p.planId=snapshot.planId;
-      p.answers=snapshot.answers;if(!p.journey)p.journey=snapshot.journey;
-      const result=transition(p,text,{analysis});
+      Object.assign(p,candidate);
+      const result=prepared;
       if(result.handled)result.audit=p.journey?.stage||'DIAGNOSTIC';
       if(!result.handled&&Object.keys(p.answers).length!==Object.keys(existing?.answers||{}).length)result.changed=true;
       return result;

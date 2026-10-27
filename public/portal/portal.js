@@ -1,7 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id),statuses={NEW:'חדש',CONTACTED:'בטיפול',APPOINTMENT:'נקבעה פגישה',WON:'נסגרה עסקה',LOST:'לא הבשיל'};
-let state;let leadEventId=crypto.randomUUID();
-function tell(text,error=false){$('status').textContent=text;$('status').classList.toggle('error',error);}
+let state;let statusTimer;let leadEventId=crypto.randomUUID();
+function tell(text,error=false){clearTimeout(statusTimer);$('status').textContent=text;$('status').classList.toggle('error',error);if(!error)statusTimer=setTimeout(()=>$('status').textContent='',6000);}
 function text(tag,value,cls){const e=document.createElement(tag);e.textContent=value;if(cls)e.className=cls;return e;}
 function csrf(){return document.cookie.split('; ').find(x=>x.startsWith('cb_csrf='))?.split('=')[1]||'';}
 async function api(path,body,method=body?'POST':'GET'){
@@ -9,7 +9,7 @@ async function api(path,body,method=body?'POST':'GET'){
  const data=await response.json().catch(()=>({error:'לא ניתן להשלים את הבקשה כרגע.'}));if(!response.ok)throw Error(data.error||'הפעולה לא הושלמה.');return data;
 }
 function field(container,label,value){const e=text('div','','metric');e.append(text('strong',label),text('span',String(value??'עדיין לא נקבע')));container.append(e);}
-function openPanel(name){document.querySelectorAll('[data-view]').forEach(e=>e.hidden=e.dataset.view!==name);}
+function openPanel(name){document.querySelectorAll('[data-view]').forEach(e=>e.hidden=e.dataset.view!==name);document.dispatchEvent(new CustomEvent('portal:navigate',{detail:name}));}
 async function refresh(){
  state=await api('dashboard');$('workspace').hidden=false;$('locked').hidden=true;$('logout').hidden=false;
  const b=state.business||{},draft=state.draft;
@@ -34,7 +34,7 @@ async function refresh(){
  $('lead-form').hidden=!state.account;
  $('subscription').replaceChildren(text('p','מסלול: '+state.subscription.plan_code),text('p',state.subscription.notice),text('p','ניסיונות יצירת תמונות ב-24 השעות האחרונות: '+state.usage.graphicsAttemptsLast24Hours));
  const c=state.crm.counts;$('lead-count').textContent=Object.values(c).reduce((a,b)=>a+b,0)+' פניות במערכת';
- tell('הפרטים מהשיחה נשמרו. אפשר להמשיך מאיפה שעצרנו.');
+ tell('פרטי העסק נטענו.');document.dispatchEvent(new CustomEvent('portal:refresh',{detail:state}));
 }
 async function loadLeads(){
  const data=await api('leads'),list=$('leads-list');list.replaceChildren();
@@ -44,10 +44,10 @@ async function loadLeads(){
   const select=document.createElement('select');select.setAttribute('aria-label','מצב הטיפול ב-'+lead.name);
   for(const [v,label]of Object.entries(statuses)){const option=document.createElement('option');option.value=v;option.textContent=label;option.selected=v===lead.status;select.append(option);}
   select.addEventListener('change',async()=>{select.disabled=true;try{await api('leads/'+lead.id,{status:select.value,version:lead.version},'PATCH');await loadLeads();await refresh();tell('מצב הפנייה עודכן.');}catch(e){tell(e.message,true);select.disabled=false;}});
-  card.append(details,select);list.append(card);
+  card.append(details,select);if(window.ScorpioDashboard)card.append(window.ScorpioDashboard.leadRevenueButton(lead));list.append(card);
  }
 }
-async function run(button,work){button.disabled=true;try{await work();}catch(e){tell(e.message,true);}finally{button.disabled=false;}}
+async function run(button,work){if(button.disabled)return;button.disabled=true;button.setAttribute('aria-busy','true');try{await work();}catch(e){tell(e.message,true);}finally{button.disabled=false;button.removeAttribute('aria-busy');}}
 document.querySelectorAll('[data-panel]').forEach(button=>button.addEventListener('click',()=>run(button,async()=>{openPanel(button.dataset.panel);if(button.dataset.panel==='leads')await loadLeads();})));
 $('register-form').addEventListener('submit',e=>{e.preventDefault();run(e.submitter,async()=>{const f=new FormData(e.target);await api('register',{name:f.get('name'),email:f.get('email'),acceptPrivacy:f.get('acceptPrivacy')==='on'});await refresh();tell('החשבון נפתח. כל הפרטים מה-WhatsApp נשמרו.');});});
 $('lead-form').addEventListener('submit',e=>{e.preventDefault();run(e.submitter,async()=>{const f=new FormData(e.target);await api('leads',{...Object.fromEntries(f.entries()),sourceEventId:leadEventId});leadEventId=crypto.randomUUID();e.target.reset();await loadLeads();await refresh();tell('הפנייה נשמרה.');});});
@@ -65,7 +65,7 @@ $('report').addEventListener('click',()=>run($('report'),async()=>{tell('מכי�
  await refresh();
 }catch(e){$('locked').hidden=false;$('workspace').hidden=true;tell(e.message,true);}})();
 
-$('landing-create').addEventListener('click',()=>run($('landing-create'),async()=>{const r=await api('landing',{confirmPublish:true});const a=document.createElement('a');a.textContent='דף הפניות שלך מוכן';a.href=r.url;a.target='_blank';a.rel='noopener noreferrer';$('landing-link').replaceChildren(a);tell('דף הפניות פורסם. פניות ממנו יישמרו כאן במערכת.');}));
+$('landing-create').addEventListener('click',()=>run($('landing-create'),async()=>{if(!await window.ScorpioUI.confirm('פרסום דף פניות','הנוסח מטיוטת הקמפיין המוצגת יופיע בדף ציבורי עם טופס פניות. האם לפרסם כעת?','אישור פרסום'))return;const r=await api('landing',{confirmPublish:true});const a=document.createElement('a');a.textContent='דף הפניות שלך מוכן';a.href=r.url;a.target='_blank';a.rel='noopener noreferrer';$('landing-link').replaceChildren(a);tell('דף הפניות פורסם. פניות ממנו יישמרו כאן במערכת.');}));
 
 $('show-price').addEventListener('click',()=>run($('show-price'),async()=>{
  const price=await api('billing/price'),container=$('price-review');container.replaceChildren();
