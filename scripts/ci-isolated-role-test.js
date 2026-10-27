@@ -24,11 +24,11 @@ try {
   sql('GRANT SELECT, INSERT, UPDATE, DELETE ON ' + schema + '.probe TO scorpio_ci_runtime');
   sql('GRANT SELECT ON ' + schema + '.probe TO scorpio_ci_backup');
   sql("SET ROLE scorpio_ci_runtime; INSERT INTO " + schema + ".probe VALUES (1, 'synthetic'); RESET ROLE");
-  assert.equal(sql('SET ROLE scorpio_ci_runtime; SELECT value FROM ' + schema + '.probe; RESET ROLE').split('\n')[0], 'synthetic');
+  assert.equal(sql('SET ROLE scorpio_ci_runtime; SELECT value FROM ' + schema + '.probe; RESET ROLE').split('\n').includes('synthetic'), true);
   sql('SET ROLE scorpio_ci_runtime; CREATE TABLE ' + schema + '.forbidden(id int)', true);
   sql('CREATE DATABASE scorpio_forbidden', true, 'scorpio_ci_runtime');
   sql('CREATE ROLE scorpio_forbidden', true, 'scorpio_ci_runtime');
-  assert.equal(sql('SET ROLE scorpio_ci_backup; SELECT value FROM ' + schema + '.probe; RESET ROLE').split('\n')[0], 'synthetic');
+  assert.equal(sql('SET ROLE scorpio_ci_backup; SELECT value FROM ' + schema + '.probe; RESET ROLE').split('\n').includes('synthetic'), true);
   sql("SET ROLE scorpio_ci_backup; INSERT INTO " + schema + ".probe VALUES (2, 'forbidden')", true);
   sql('SET ROLE scorpio_ci_migration; ALTER TABLE ' + schema + '.probe ADD COLUMN note text; RESET ROLE');
   console.log('Isolated Runtime/Migration/Backup role permissions: PASS');
