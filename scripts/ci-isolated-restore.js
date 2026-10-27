@@ -16,6 +16,7 @@ const target = 'campaign_bachat_restore_ci';
 function run(command, args, db = 'postgres') {
   const result = spawnSync(command, args, { env: { ...env, PGDATABASE: db }, encoding: 'utf8', timeout: 30000 });
   if (result.error || result.status !== 0) throw Error(command + '_FAILED: ' + (result.error?.code || result.status));
+  if (command === 'pg_dump' || command === 'pg_restore') console.log(command + ': PASS');
   return result.stdout.trim();
 }
 const fs = require('node:fs');
@@ -32,6 +33,7 @@ try {
   run('pg_restore', ['--exit-on-error', '--single-transaction', '--dbname=' + target, archive]);
   const result = run('psql', ['-At', '-c', 'SELECT payload FROM restore_probe WHERE id=1'], target);
   assert.equal(result, 'synthetic-only');
+  console.log('Restored synthetic data comparison: PASS');
   console.log('Isolated synthetic pg_dump/pg_restore rehearsal: PASS');
 } finally {
   try { run('dropdb', ['--if-exists', '--force', target]); } catch {}
