@@ -24,7 +24,7 @@ function getPool() {
 
     pool.on('error', (error) => {
       ready = false;
-      logger.error('Database pool error', { error: error.message });
+      logger.error('Database pool error', { code: typeof error.code === 'string' && /^[A-Z0-9_]{2,12}$/.test(error.code) ? error.code : 'POOL_ERROR' });
     });
   }
 
