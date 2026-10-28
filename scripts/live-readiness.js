@@ -12,18 +12,23 @@ async function probe(name,work) {
  try {return {name,status:'PASSED',...await work()};}
  catch(error) {return {name,...errorSummary(error)};}
 }
-async function run({envFile,targets=null}) {
- const values=dotenv.parse(fs.readFileSync(envFile));
+const TARGETS=['META_ACCOUNT_ACCESS','META_PERMISSION_ACCESS','WHATSAPP_PHONE_ACCESS','GEMINI_MODEL_ACCESS','GEMINI_CAMPAIGN_UNDERSTANDING','CLAUDE_API_ACCESS'];
+async function run({envFile,targets=null,allowGeneration=false,values=process.env}={}) {
+ if(targets!==null&&(!Array.isArray(targets)||!targets.length||targets.some(t=>!TARGETS.includes(t))))throw Error('INVALID_READINESS_TARGETS');
+ if(envFile)values=dotenv.parse(fs.readFileSync(envFile));
+ if(targets===null)targets=['META_ACCOUNT_ACCESS','META_PERMISSION_ACCESS','WHATSAPP_PHONE_ACCESS',values.AI_PROVIDER==='claude'?'CLAUDE_API_ACCESS':'GEMINI_MODEL_ACCESS'];
+ const metaToken=values.META_ADS_ACCESS_TOKEN||values.META_ACCESS_TOKEN;
  const version=/^v\d+\.\d+$/.test(values.META_GRAPH_VERSION || '')?values.META_GRAPH_VERSION:'v26.0';
  const graph=(path,token,params={})=>axios.get('https://graph.facebook.com/'+version+path,{headers:{Authorization:'Bearer '+token},params,timeout:15000,maxRedirects:0}).then(r=>r.data);
  const results=[];
  if(!targets || targets.includes('META_ACCOUNT_ACCESS')) results.push(await probe('META_ACCOUNT_ACCESS',async()=>{
-   if(!values.META_ADS_ACCESS_TOKEN) throw Error('missing');
-   const accounts=await graph('/me/adaccounts',values.META_ADS_ACCESS_TOKEN,{fields:'id,account_status,currency',limit:100});
+   if(!metaToken?.trim())return{status:'NOT_CONFIGURED',missing:'META_ADS_ACCESS_TOKEN or META_ACCESS_TOKEN'};
+   const accounts=await graph('/me/adaccounts',metaToken,{fields:'id,account_status,currency',limit:100});
    return {accessibleAccounts:accounts.data?.length || 0,activeAccounts:accounts.data?.filter(a=>a.account_status===1).length || 0,partial:!!accounts.paging?.next,oauthFlowVerified:false};
  }));
  if(!targets || targets.includes('META_PERMISSION_ACCESS')) results.push(await probe('META_PERMISSION_ACCESS',async()=>{
-   const permissions=await graph('/me/permissions',values.META_ADS_ACCESS_TOKEN);
+   if(!metaToken?.trim())return{status:'NOT_CONFIGURED',missing:'META_ADS_ACCESS_TOKEN or META_ACCESS_TOKEN'};
+   const permissions=await graph('/me/permissions',metaToken);
    return {granted:(permissions.data || []).filter(p=>p.status==='granted').map(p=>p.permission),commercialApprovalVerified:false};
  }));
  if(!targets || targets.includes('WHATSAPP_PHONE_ACCESS')) results.push(await probe('WHATSAPP_PHONE_ACCESS',async()=>{
@@ -32,8 +37,17 @@ async function run({envFile,targets=null}) {
    const phone=await graph('/'+values.WHATSAPP_PHONE_NUMBER_ID,values.WHATSAPP_ACCESS_TOKEN,{fields:'id,verified_name,quality_rating,code_verification_status'});
    return {phoneAccessible:!!phone.id,verification:phone.code_verification_status || null,quality:phone.quality_rating || null,messagesSent:0};
  }));
+ if(targets.includes('GEMINI_MODEL_ACCESS')) results.push(await probe('GEMINI_MODEL_ACCESS',async()=>{
+   if(!values.GEMINI_API_KEY?.trim())return{status:'NOT_CONFIGURED',missing:'GEMINI_API_KEY',generationTested:false};
+   const model=values.GEMINI_MODEL||'gemini-3.5-flash';
+   if(!/^gemini-[a-z0-9.-]+$/.test(model))return{status:'INVALID_MODEL_CONFIGURATION',generationTested:false};
+   const available=(await axios.get('https://generativelanguage.googleapis.com/v1beta/models',{headers:{'x-goog-api-key':values.GEMINI_API_KEY},timeout:15000,maxRedirects:0})).data.models||[];
+   const supported=available.some(m=>m.name==='models/'+model&&m.supportedGenerationMethods?.includes('generateContent'));
+   return{status:supported?'PASSED':'NO_SUPPORTED_MODEL',model,modelsListed:available.length,generationTested:false};
+ }));
  if(!targets || targets.includes('GEMINI_CAMPAIGN_UNDERSTANDING')) results.push(await probe('GEMINI_CAMPAIGN_UNDERSTANDING',async()=>{
-   if(!values.GEMINI_API_KEY) throw Error('missing');
+   if(allowGeneration!==true)return{status:'APPROVAL_REQUIRED',generationTested:false};
+   if(!values.GEMINI_API_KEY?.trim())return{status:'NOT_CONFIGURED',missing:'GEMINI_API_KEY',generationTested:false};
    const available=(await axios.get('https://generativelanguage.googleapis.com/v1beta/models',{headers:{'x-goog-api-key':values.GEMINI_API_KEY},timeout:15000,maxRedirects:0})).data.models || [];
    const preferred=[values.GEMINI_MODEL,'gemini-2.5-flash'].filter((id,index,all)=>/^gemini-[a-z0-9.-]+$/.test(id || '')&&all.indexOf(id)===index);
    const model=preferred.find(id=>available.some(m=>m.name==='models/'+id&&m.supportedGenerationMethods?.includes('generateContent')));
@@ -55,8 +69,12 @@ async function run({envFile,targets=null}) {
  return results;
 }
 if(require.main===module) {
- const envFile=process.argv[2];
- if(!envFile) {console.error('Usage: node scripts/live-readiness.js <private-env-file>');process.exitCode=1;}
- else run({envFile,targets:process.argv[3]?process.argv[3].split(','):null}).then(results=>console.log(JSON.stringify({results},null,2))).catch(()=>{console.error('Readiness probe failed; no credentials logged');process.exitCode=1;});
+ const args=process.argv.slice(2),allowGeneration=args.includes('--allow-generation');
+ const positional=args.filter(a=>a!=='--allow-generation');
+ const envFile=!positional[0]||positional[0]==='--env'?undefined:positional[0];
+ run({envFile,targets:positional[1]?positional[1].split(','):null,allowGeneration}).then(results=>{
+  console.log(JSON.stringify({results},null,2));
+  if(results.some(r=>r.status!=='PASSED'))process.exitCode=1;
+ }).catch(()=>{console.error('Readiness probe failed; no credentials logged');process.exitCode=1;});
 }
 module.exports={run,errorSummary};

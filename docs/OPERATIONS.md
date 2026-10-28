@@ -6,6 +6,18 @@ Keep READ_ONLY=true, META_WRITES_ENABLED=false, WHATSAPP_SEND_ENABLED=false and 
 
 The active application is root index.js. src/ is a legacy implementation and is not a supported deployment entry point. npm start starts the web API and, by default, the message processing/delivery/retention loop. Set WHATSAPP_WORKER_IN_WEB=false and run npm run worker:messages in a separately approved worker service if independent scaling is required. Do not run the legacy worker.js against live accounts: it is mock-only.
 
+### WhatsApp-first chat and worker readiness
+
+WhatsApp discovery, saved business facts, strategy, creative drafts and local plan review do not require the customer portal or a dashboard session. Explicit requests such as `אני רוצה עוד לקוחות` start the existing journey and retain the stated goal. Creating a local plan or answering `כן` in its review does not authorize Meta spending or activation.
+
+With `REQUIRE_WORKER_HEARTBEAT=true`, the message-worker heartbeat records the older of the inbound and outbound loops' last successful completion times. Maintenance alone cannot refresh readiness. Both loops must complete at least once; an interrupted or repeatedly failing loop eventually makes `/health` return 503 after the existing 90-second freshness threshold. `/health/live` still reports process liveness. No heartbeat schema migration is required. During startup, readiness may remain 503 until both loops finish their first iteration. A long-running operation may exceed the threshold; inspect the queue and sanitized logs before restarting or retrying any uncertain external operation.
+
+### Provider checks without exporting credentials
+
+Run `node scripts/live-readiness.js --env` to use existing injected environment bindings. The default checks only read Meta accounts/permissions, WhatsApp phone metadata and the selected AI provider's model catalog. They send no messages, create no campaigns and perform no model generation. A missing binding is reported by name as `NOT_CONFIGURED`; any non-passing selected check exits nonzero. The optional private-env-file input remains supported. Never paste credentials into chat or commit an environment export.
+
+Select a check with, for example, `node scripts/live-readiness.js --env WHATSAPP_PHONE_ACCESS`. Gemini generation is separate: only after explicit operator approval of API spending, select `GEMINI_CAMPAIGN_UNDERSTANDING` and supply `--allow-generation`. Listing a model does not validate model output, OAuth completion, webhook delivery, commercial permissions or live campaign execution. Do not enable generation as part of an unattended default readiness check.
+
 ## Configuration
 
 Start from .env.example. Production startup validates required database, WhatsApp, OAuth, encryption and approval/deletion keys plus provider configuration before listening. Never put values in a PR, report or chat. Use three independent random secrets: a base64-encoded 32-byte Meta encryption key, a strong APPROVAL_HMAC_KEY, and a strong DELETION_HMAC_KEY. Keep these outside database backups and preserve the HMAC keys when changing token encryption keys.

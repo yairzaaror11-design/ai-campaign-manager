@@ -2,6 +2,13 @@
 const {FIELDS,validate}=require('./conversationFacts');
 const norm=s=>String(s||'').normalize('NFKC').replace(/[״׳"']/g,'').replace(/[?!.,]+$/g,'').trim();
 const INTENTS=['reset','greeting','capabilities','build','draft','ad','strategy','plan','clarify','summary','correct','continue','yes','no','pause','report','connect','connection_status','select_account','disconnect','renew','knowledge','other'];
+// Exact requests can start planning without waiting for a provider. Keep this
+// narrow: questions, negations and longer prose still require normal analysis.
+function growthGoal(text){
+ if(/[?？]/.test(text))return null;
+ const match=norm(text).replace(/\s+/g,' ').match(/^(?:(?:אני|אנחנו) )?(?:רוצה|רוצים|רוצות|צריך|צריכה|צריכים|צריכות) (?:(?:להביא|לקבל|להשיג) )?(?:עוד|יותר) (לקוחות|פניות|לידים|מכירות)$/);
+ return match?({לקוחות:'לקוחות חדשים',פניות:'פניות מתאימות',לידים:'פניות מתאימות',מכירות:'מכירות'})[match[1]]:null;
+}
 function localAnalysis(text){
  const raw=String(text).trim(),n=norm(raw);const updates=[];
  if(require('./conversationControl').isReset(raw))return{intent:'reset',updates:[],correction:false};
@@ -25,6 +32,7 @@ function localAnalysis(text){
  else if(/מודעה|מודעות|קופי|כותרות/.test(n)&&/תכין|תכיני|כתוב|כתבי|צור|רוצה|ננסח/.test(n))intent='ad';
  else if(/תוכנית|תכנית/.test(n)&&/קמפיין/.test(n))intent='plan';
  else if(/אסטרטגיה/.test(n))intent='strategy';
+ else if(growthGoal(raw))intent='build';
  else if(/קמפיין|לפרסם|פרסום/.test(n)&&/רוצה|רוצים|תכין|תכיני|להתחיל|בנה|לבנות|הכן|נתחיל/.test(n))intent='build';
  if(require('./conversationFlexibility').partialDraftRequested(raw))intent='draft';
  // Questions about facts do not assert those facts.
@@ -33,7 +41,8 @@ function localAnalysis(text){
   m=raw.match(/(?:יש לי עסק (?:ל|של\s*)?|אני (?:מתקין|מתקינה|עוסק|עוסקת ב))\s*(.+?)(?=\s*(?:באזור|בנתניה|בתל אביב|בחיפה|ורוצה|ואני|בתקציב|,|\n)|$)/);if(m){add('businessType',m[1].trim(),m[0]);add('product',m[1].trim(),m[0]);}
   m=raw.match(/(?:העסק(?: שלי)?|אנחנו|אני)\s+(?:מוכר|מוכרת|מוכרים|מוכרות)\s+([^.!?\n]+)/);if(m){add('businessType',m[1].trim(),m[0]);add('product',m[1].trim(),m[0]);}
   m=raw.match(/באזור\s+(.+?)(?=\s*(?:ורוצה|ואני|בתקציב|,|\n)|$)|(?:בנתניה|בתל אביב|בחיפה|בירושלים)|כל הארץ/);if(m){const area=m[1]||m[0].replace(/^ב(?=נתניה|תל אביב|חיפה|ירושלים)/,'');add('geography',area,m[0]);add('serviceArea',area,m[0]);}
-  if(!/לכל בעל עסק/.test(raw)&&/מכירות|להגדיל(?: את)? (?:ההכנסות|הכנסות)|עוד לקוחות/.test(raw))add('businessGoal',/עוד לקוחות/.test(raw)&&!/מכירות|הכנסות/.test(raw)?'לקוחות חדשים':'מכירות',raw.match(/מכירות|להגדיל(?: את)? (?:ההכנסות|הכנסות)|עוד לקוחות/)[0]);
+  if(growthGoal(raw))add('businessGoal',growthGoal(raw),raw);
+  else if(!/לכל בעל עסק/.test(raw)&&/מכירות|להגדיל(?: את)? (?:ההכנסות|הכנסות)|עוד לקוחות/.test(raw))add('businessGoal',/עוד לקוחות/.test(raw)&&!/מכירות|הכנסות/.test(raw)?'לקוחות חדשים':'מכירות',raw.match(/מכירות|להגדיל(?: את)? (?:ההכנסות|הכנסות)|עוד לקוחות/)[0]);
   else if(/יותר לידים|יותר פניות/.test(raw))add('businessGoal','פניות מתאימות',raw.match(/יותר לידים|יותר פניות/)[0]);
   m=raw.match(/(\d[\d,]*(?:\.\d+)?)\s*(₪|ש[״"']?ח|שקל(?:ים)?|ILS|USD|דולר|\$|אירו|EUR|€)\s*(?:ליום|ביום|יומי)/i);
   if(!m)m=raw.match(/תקציב(?: הפרסום)? היומי(?: שלי)?(?: הוא)?\s+(\d[\d,]*(?:\.\d+)?)\s*(₪|ש[״\"']?ח|שקל(?:ים)?|ILS|USD|דולר|\$|אירו|EUR|€)/i);
@@ -73,8 +82,9 @@ const ANALYSIS_SYSTEM=`You extract explicit facts and intent from Hebrew WhatsAp
 async function analyze(text,profile,{interpreter,onSlow,history=[]}={}){
  const local=localAnalysis(text);
  if(interpreter)return validateAnalysis(await interpreter(text,profile),text);
- // Only exact controls bypass interpretation; short or partially recognized prose still needs context.
- if(['reset','greeting','pause','continue'].includes(local.intent)||(['yes','no'].includes(local.intent)&&!profile?.journey?.detour)||text.startsWith('/'))return local;
+ // Exact controls and explicit growth requests bypass interpretation; short or
+ // partially recognized prose still needs context.
+ if(growthGoal(text)||['reset','greeting','pause','continue'].includes(local.intent)||(['yes','no'].includes(local.intent)&&!profile?.journey?.detour)||text.startsWith('/'))return local;
  try {
   if(onSlow)await onSlow();
   const result=await require('./aiService').analyzeConversation(text,{stage:profile?.journey?.stage,pendingField:profile?.journey?.pendingField,pendingQuestion:profile?.session?.controller==='diagnostic'?require('./marketingQuestions').question(profile.session.pendingId)?.whatsapp_text:require('./campaignJourney').QUESTIONS[profile?.journey?.pendingField]||null,detour:!!profile?.journey?.detour,facts:require('./conversationFacts').all(profile||{answers:{}}),recentMessages:history.slice(-12).map(m=>({role:m.role,content:String(m.content||'').slice(0,1600)}))});

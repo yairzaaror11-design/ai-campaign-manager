@@ -3,12 +3,13 @@ const {logger}=require('./logger');
 function startBackgroundJobs({intervalMs=1000}={}) {
  const workerId=require('crypto').randomUUID();
  let stopped=false,cycles=0;
+ const progress={inbound:null,outbound:null};
  const loops=[];
  function startLoop(work,label) {
   const loop={timer:null,active:Promise.resolve()};loops.push(loop);
   const tick=()=>{
    if(stopped) return;
-   loop.active=Promise.resolve().then(work).catch(()=>{logger.error('Background iteration failed',{job:label});})
+   loop.active=Promise.resolve().then(work).then(()=>{if(label in progress)progress[label]=new Date();}).catch(()=>{logger.error('Background iteration failed',{job:label});})
     .finally(()=>{if(!stopped){loop.timer=setTimeout(tick,intervalMs);loop.timer.unref?.();}});
   };
   tick();
@@ -22,7 +23,13 @@ function startBackgroundJobs({intervalMs=1000}={}) {
  startLoop(()=>require('./whatsappDelivery').runOne(),'outbound');
  startLoop(async()=>{
   if(cycles++%60===0) await require('./maintenance').maintain();
-  await require('./db').query("INSERT INTO worker_heartbeats(worker_id,role,last_success_at) VALUES($1,'MESSAGES',NOW()) ON CONFLICT(worker_id) DO UPDATE SET last_success_at=NOW()",[workerId]);
+  // Maintenance alone does not prove that messages can be processed or sent.
+  // Retain the older loop's actual completion time so a hung/failing loop
+  // becomes unhealthy even while the other loops keep running.
+  if(progress.inbound&&progress.outbound){
+   const lastSuccess=new Date(Math.min(progress.inbound.getTime(),progress.outbound.getTime()));
+   await require('./db').query("INSERT INTO worker_heartbeats(worker_id,role,last_success_at) VALUES($1,'MESSAGES',$2) ON CONFLICT(worker_id) DO UPDATE SET last_success_at=EXCLUDED.last_success_at",[workerId,lastSuccess]);
+  }
  },'maintenance');
  return async()=>{
   stopped=true;for(const loop of loops)clearTimeout(loop.timer);
