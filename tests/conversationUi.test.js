@@ -59,3 +59,20 @@ test('buttons are tenant-bound, context-bound, single-use and pass through the e
  }finally{whatsapp.safeSend=send;delete require.cache[require.resolve('../messageHandler')];for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);await h.close();}
 });
 
+
+test('latest menu survives unrelated profile updates but rejects changed decision',async()=>{
+ const h=await openDatabase();
+ try {
+  const client=await require('../clientStore').getOrCreateClient('972501009901');
+  await store.update(client.id,null,p=>{p.connection={status:'CONNECTION_OFFERED'};return{handled:false,changed:true};});
+  const prepared=await ui.prepare(client.id,'לשלוח קישור?','connection_offer');
+  const id=prepared.interactivePayload.interactive.action.buttons[0].reply.id;
+  await store.update(client.id,null,p=>{p.unrelatedUpdate='ok';return{handled:false,changed:true};});
+  const reply=id=>({interactive:{type:'button_reply',button_reply:{id}}});
+  assert.equal(await ui.consume(client.id,reply(id)),'כן');
+  const next=await ui.prepare(client.id,'לשלוח קישור?','connection_offer');
+  const nextId=next.interactivePayload.interactive.action.buttons[0].reply.id;
+  await store.update(client.id,null,p=>{p.connection.status='CONNECTED';return{handled:false,changed:true};});
+  assert.equal(await ui.consume(client.id,reply(nextId)),null);
+ }finally{await h.close();}
+});

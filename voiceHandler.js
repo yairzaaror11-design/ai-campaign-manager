@@ -97,7 +97,15 @@ async function transcribeVoiceMessage(message, options = {}) {
     }
   });
 
-  const transcript = String(response.text || '').trim();
+  // Some provider responses omit the convenience .text field while returning
+  // valid candidate parts. Only text parts are accepted as transcription.
+  const direct = typeof response.text === 'string' ? response.text : '';
+  const parts = (response.candidates || []).flatMap(candidate =>
+    Array.isArray(candidate.content?.parts) ? candidate.content.parts : []
+  );
+  const fallback = parts.filter(part => typeof part.text === 'string')
+    .map(part => part.text).join('');
+  const transcript = String(direct.trim() || fallback).trim();
   if (!transcript) throw Error('Empty transcription');
 
   logger.info('voice_transcribed', {
