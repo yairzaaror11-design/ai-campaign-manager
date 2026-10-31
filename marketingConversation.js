@@ -106,9 +106,11 @@ async function handleMarketingMessage(clientId,text,eventId,options={}) {
     const snapshot=await hydrateLegacy(clientId,existing||store.emptyProfile());
     const analysis=await require('./conversationAnalysis').analyze(text,snapshot,options);
     if(analysis.intent==='report'){
-      if(options.onSlow)await options.onSlow();const status=await require('./metaConversation').verify(clientId);
+      const period=require('./reportPeriod').parse(text);
+      if(!period)return{handled:true,reply:'לאיזו תקופה להציג את הדוח? אפשר לכתוב החודש, בשנה האחרונה או שני תאריכים.'};
+      const status=await require('./metaConversation').verify(clientId);
       if(!status.canRead)return{handled:true,reply:require('./metaConversation').statusReply(status)};
-      try{return{handled:true,reply:await require('./reportService').campaignReport(clientId,'last_7d')};}
+      try{return{handled:true,reply:await require('./reportService').campaignReport(clientId,period)};}
       catch{return{handled:true,reply:'לא הצלחתי לקרוא את הדוח כרגע. אין לי נתונים שאפשר לדווח עליהם בביטחון.'};}
     }
     const metaIntent=['connect','connection_status','select_account','disconnect','renew','knowledge'].includes(analysis.intent)||text.startsWith('/meta-')||/להתחיל לפרסם (?:בפייסבוק|במטא)/.test(text)||(['yes','no'].includes(analysis.intent)&&snapshot.connection?.pendingQuestion==='hasAdAccount')||(analysis.intent==='yes'&&snapshot.connection?.status==='CONNECTION_OFFERED')||(snapshot.connection?.status==='ACCOUNT_SELECTION_REQUIRED'&&/^\d+$/.test(text));

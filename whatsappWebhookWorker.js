@@ -17,10 +17,12 @@ async function runOne({ handler = handleIncomingMessage } = {}) {
     const event = await claimNextInboundEvent();
     if (!event) return { status: 'IDLE' };
 
+    const started=Date.now();
     try {
       const payload = event.payload || {};
       await handler(payload.message, payload.contact || {});
       await markInboundDone(event.event_id);
+      logger.info('WhatsApp inbound processed',{eventKey:require('node:crypto').createHash('sha256').update(event.event_id).digest('hex').slice(0,12),durationMs:Date.now()-started,status:'DONE',messageType:payload.message?.type||'unknown'});
       return { status: 'DONE' };
     } catch (error) {
       try {

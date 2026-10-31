@@ -1,7 +1,7 @@
 'use strict';
 const crypto=require('node:crypto'),store=require('./marketingStore');
 const FOOTER='אפשר גם לכתוב או לשלוח הודעה קולית';
-function context(p){return JSON.stringify([p.planId,p.journey?.stage,p.journey?.pendingField,p.journey?.revision,p.journey?.inputMode,p.journey?.detour,p.connection?.status,p.connection?.pendingQuestion,p.mediaContext?.assetId,p.mediaBudgetQuestion?.amount,p.businessImport?.foundAt,p.businessEntry?.awaitingConfirmation,p.crmFocus?.id,p.crmFocus?.version,JSON.stringify(p.crmMenu||[])]);}
+function context(p){return JSON.stringify([p.planId,p.journey?.stage,p.journey?.pendingField,p.journey?.revision,p.journey?.inputMode,p.journey?.detour,p.connection?.status,p.connection?.account?.id,p.connection?.accountPage,p.connection?.accountQuery,JSON.stringify((p.connection?.accounts||[]).map(a=>a.id)),p.connection?.pendingQuestion,p.mediaContext?.assetId,p.mediaBudgetQuestion?.amount,p.businessImport?.foundAt,p.businessEntry?.awaitingConfirmation,p.crmFocus?.id,p.crmFocus?.version,JSON.stringify(p.crmMenu||[])]);}
 const choice=(title,text,description)=>({title,text,...(description?{description}:{})});
 const DECISIONS=["crm_leads","crm_status","business_entry","business_import","plan_review","media_variant", "budget_period", "media_action", "has_ad_account", "connected", "connection_offer", "account_selection", "businessGoal", "dailyBudget", "leadDestination", "offerMediaSeparate", "strategy_review", "creative_review", "welcome"];
 function choices(p,decisionKey){
@@ -22,7 +22,13 @@ function choices(p,decisionKey){
  if(decisionKey==='has_ad_account'&&connection?.pendingQuestion==='hasAdAccount')return [choice('יש לי חשבון','כן'),choice('זו הפעם הראשונה','לא')];
  if(decisionKey==='connected'&&connection?.status==='CONNECTED')return[choice('קמפיין חדש','אני רוצה קמפיין'),choice('בדיקת ביצועים','תוצאות השבוע')];
  if(decisionKey==='connection_offer'&&connection?.status==='CONNECTION_OFFERED')return[choice('שלחו קישור','כן'),choice('לא עכשיו','לא')];
- if(decisionKey==='account_selection'&&connection?.status==='ACCOUNT_SELECTION_REQUIRED')return(connection.accounts||[]).slice(0,9).map((a,i)=>choice(`${i+1}. ${String(a.name).slice(0,17)}`,String(i+1),a.id));
+ if(decisionKey==='account_selection'&&connection?.status==='ACCOUNT_SELECTION_REQUIRED'){
+  const page=require('./accountMenu').page(connection);
+  const items=page.items.map((a,i)=>choice(`${page.offset+i+1}. ${String(a.name).slice(0,16)}`,`/meta-select ${a.id}`,a.id));
+  if(page.index>0)items.push(choice('הקודם',`/meta-page ${page.index-1}`));
+  if(page.hasNext)items.push(choice('חשבונות נוספים',`/meta-page ${page.index+1}`));
+  return items;
+ }
  if(pending&&decisionKey===pending){
   if(pending==='dailyBudget'&&j.inputMode!=='budget_custom')return[...require('./budgetGuidance').OPTIONS.map(o=>choice(o.title,`${o.amount} שקל ביום`,o.description)),{...choice('סכום אחר','מה הכוונה?','אפשר להקליד סכום יומי ומטבע'),kind:'budget_custom'}];
   if(pending==='businessGoal'&&require('./businessEntry').enabled()&&p.businessEntry?.linkAsked)return[choice('יותר פניות','פניות מתאימות'),choice('מכירות','מכירות'),choice('תורים ופגישות','תורים ופגישות'),choice('מטרה אחרת','מה הכוונה?')];
@@ -50,7 +56,7 @@ async function prepare(clientId,reply,decisionKey=null){
   const nonce=crypto.randomBytes(12).toString('hex');
   const long=reply.length>1024;
   const interactivePayload=payload(long?'מה נרצה לעשות בשלב הבא?':reply,items,nonce);
-  p.ui={nonce,context:context(p),choices:items,expiresAt:Date.now()+24*60*60*1000};
+  p.ui={nonce,decisionKey,context:context(p),choices:items,expiresAt:Date.now()+24*60*60*1000};
   result={text:reply,interactivePayload,...(long?{leadingText:reply}:{})};return{handled:false,changed:true};
  });return result;
 }
@@ -67,5 +73,12 @@ async function consume(clientId,message){
   return{handled:false,changed:true};
  });return selected;
 }
-module.exports={choices,payload,prepare,consume,context};
+async function refresh(clientId){
+ const p=await store.load(clientId);
+ const key=p?.ui?.decisionKey;
+ const reply='הבחירה הזו כבר לא עדכנית. הנה האפשרויות המעודכנות; אפשר גם לענות בכתיבה.';
+ if(key&&choices(p,key).length)return prepare(clientId,reply,key);
+ return {text:reply+' כדי להציג את חשבונות הפרסום אפשר לכתוב ״החשבונות שלי״.'};
+}
+module.exports={choices,payload,prepare,consume,context,refresh};
 

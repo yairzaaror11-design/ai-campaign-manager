@@ -5,7 +5,7 @@ const {openDatabase}=require('./helpers/database');
 function deferred(){let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};}
 async function bounded(promise){let timer;try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('NOTICE_TEST_TIMEOUT')),5000);})]);}finally{clearTimeout(timer);}}
 
-test('real worker delivers an interim reply while graphics and AI are still pending, then delivers each result once',async()=>{
+test('worker delivers graphics progress but ordinary AI emits only the final reply, each once',async()=>{
  const h=await openDatabase();
  const previous={...process.env};
  const whatsapp=require('../whatsapp'),graphics=require('../graphicService');
@@ -41,14 +41,14 @@ test('real worker delivers an interim reply while graphics and AI are still pend
   assert.deepEqual(sent.map(x=>x.payload.type),['text','image']);
   phase='ai';
   await inbound.enqueueInboundEvents([event('progress-ai','איך אפשר לשפר את ההצעה העסקית?')]);
-  await bounded(aiStarted.promise);await bounded(aiNotice.promise);
-  assert.equal(sent.length,3,'AI notice is delivered before AI resolves');
+  await bounded(aiStarted.promise);
+  assert.equal(sent.length,2,'ordinary AI must not enqueue a waiting notice');
   aiGate.resolve();await bounded(answerSent.promise);
-  assert.equal(sent.length,4);
+  assert.equal(sent.length,3);
   assert.equal((await inbound.enqueueInboundEvents([event('progress-ai','איך אפשר לשפר את ההצעה העסקית?')])).inserted,0);
   await stop();stop=null;
   const rows=await h.db.query('SELECT status FROM whatsapp_outbox ORDER BY created_at');
-  assert.equal(rows.rows.length,4);assert.ok(rows.rows.every(r=>r.status==='SENT'));
+  assert.equal(rows.rows.length,3);assert.ok(rows.rows.every(r=>r.status==='SENT'));
   assert.equal((await h.db.query('SELECT * FROM worker_heartbeats')).rows.length,0);
   assert.equal((await h.db.query('SELECT * FROM approvals')).rows.length,0);
  } finally {

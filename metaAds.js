@@ -52,11 +52,7 @@ async function getCampaign(campaignId) {
 
 async function getCampaignPerformance(id, date = 'last_7d') {
   validateAccountId(id);
-  const allowed = new Set([
-    'today', 'yesterday', 'last_7d', 'last_14d',
-    'last_30d', 'this_month', 'last_month'
-  ]);
-  if (!allowed.has(date)) date = 'last_7d';
+  const period=require('./reportPeriod').validate(date);
 
   const data=[];let after;
   for(let page=0;page<20;page++) {
@@ -64,7 +60,7 @@ async function getCampaignPerformance(id, date = 'last_7d') {
     fields:
       'campaign_id,campaign_name,impressions,reach,clicks,spend,ctr,cpc,cpm,frequency,actions,cost_per_action_type,website_purchase_roas',
     level: 'campaign',
-    date_preset: date,
+    ...period,
     limit: 100,
     ...(after?{after}:{})
   });

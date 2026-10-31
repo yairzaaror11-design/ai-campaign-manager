@@ -76,7 +76,7 @@ function statusDecision(v){return v.status==='CONNECTED'?'connected':v.status===
 function statusResult(v){return{handled:true,reply:statusReply(v),decisionKey:statusDecision(v)};}
 function statusReply(v){
  if(v.status==='CONNECTED')return`החשבון ״${v.account.name}״ אומת וחובר. ${v.canManage?'כל שינוי ידרוש אישור נפרד.':'אפשר לקרוא נתונים; שינוי קמפיינים אינו זמין כרגע.'} אפשר לבדוק קמפיינים קיימים או להכין טיוטה חדשה.`;
- if(v.status==='ACCOUNT_SELECTION_REQUIRED')return v.accounts.length?'אלה חשבונות הפרסום הזמינים:\n'+v.accounts.map((a,i)=>`${i+1}. ${a.name} (${a.id})`).join('\n')+'\nבאיזה חשבון נרצה לעבוד?':'ההרשאה נקלטה, אך לא נמצא חשבון מודעות פעיל שאפשר לבחור. אפשר לבדוק גישה במנהל המודעות או להכין טיוטה מקומית.';
+ if(v.status==='ACCOUNT_SELECTION_REQUIRED')return v.accounts.length?require('./accountMenu').reply({accounts:v.accounts}):'ההרשאה נקלטה, אך לא נמצא חשבון מודעות פעיל שאפשר לבחור. אפשר לבדוק גישה במנהל המודעות או להכין טיוטה מקומית.';
  if(v.status==='MISSING_PERMISSIONS')return v.missing?.includes('ads_read')?'חסרה הרשאת ads_read לקריאת נתוני הפרסום. אין כרגע גישה לדוחות. אפשר לבדוק את הרשאות החיבור ב-Meta ולחבר מחדש.':'Meta חסמה את בדיקת הגישה בגלל הרשאות. אין כרגע אפשרות לקרוא דוחות; צריך לבדוק את ההרשאה לחשבון ולחיבור ב-Meta לפני ניסיון נוסף.';
  if(v.status==='TOKEN_EXPIRED'||v.status==='RECONNECT_REQUIRED')return'ההרשאה אינה תקפה כרגע. אפשר להכין טיוטה מקומית או לבקש קישור אישי לחיבור מחדש.';
  if(v.status==='CONNECTION_FAILED')return'לא הצלחתי לאמת את החיבור מול Meta כרגע. לא אסמן אותו כמחובר. אפשר לנסות בדיקה חדשה או להמשיך בטיוטה מקומית.';
@@ -119,7 +119,8 @@ async function handle(clientId,text,analysis,eventId){
  const selection=p?.connection?.status==='ACCOUNT_SELECTION_REQUIRED'&&(explicit||/^\d{1,3}$/.test(n)||(analysis.intent==='yes'&&p.connection.accounts?.length===1));
  if(selection||explicit){
   const fresh=await verify(clientId);
-  const id=explicit?.[1]||fresh.accounts?.[(analysis.intent==='yes'?1:Number(n))-1]?.id;
+  const visible=(p.connection?.accounts||fresh.accounts||[]).filter(a=>!p.connection?.accountQuery||require('./accountMenu').normalize(a.name).includes(require('./accountMenu').normalize(p.connection.accountQuery)));
+  const id=explicit?.[1]||visible[(analysis.intent==='yes'?1:Number(n))-1]?.id;
   if(!id||!fresh.accounts?.some(a=>a.id===id))return{handled:true,reply:'החשבון הזה אינו ברשימת החשבונות שאומתו עבורך.\n'+statusReply(fresh)};
   try {await meta.selectAccount(clientId,id);return statusResult(await verify(clientId));}
   catch{return{handled:true,reply:'לא ניתן לבחור את החשבון הזה בלי גישה תקפה. אפשר לבדוק שוב את רשימת החשבונות.'};}

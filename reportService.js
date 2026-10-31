@@ -3,7 +3,7 @@ const db=require('./db');
 async function campaignReport(clientId,preset='last_7d') {
  const meta=require('./metaConnection');
  if(String(meta.context.getStore())!==String(clientId)) throw Error('TENANT_CONTEXT_REQUIRED');
- if(!['today','yesterday','last_7d','last_14d','last_30d','this_month','last_month'].includes(preset)) throw Error('INVALID_REPORT_PERIOD');
+ require('./reportPeriod').validate(preset);
  const c=await meta.credentials(clientId);
  if(!c.meta_ad_account_id) throw Error('ACCOUNT_SELECTION_REQUIRED');
  const account=await meta.graph('/'+c.meta_ad_account_id,c.token,{fields:'id,name,currency'});
@@ -13,9 +13,11 @@ async function campaignReport(clientId,preset='last_7d') {
  const sum=key=>rows.reduce((total,row)=>{const n=Number(row[key] || 0);if(!Number.isFinite(n)||n<0) throw Error('INVALID_META_METRICS');return total+n;},0);
  const totals={spend:sum('spend'),impressions:sum('impressions'),clicks:sum('clicks')};
  const payload={account:{id:account.id,name:account.name,currency:account.currency},preset,totals,campaigns:rows};
+ const latest=await meta.credentials(clientId);
+ if(latest.meta_ad_account_id!==c.meta_ad_account_id||String(latest.meta_generation)!==String(c.meta_generation))throw Error('REPORT_ACCOUNT_CHANGED');
  const id=require('crypto').randomUUID();
- await db.query('INSERT INTO performance_snapshots(id,client_id,account_id,date_preset,payload) VALUES($1,$2,$3,$4,$5::jsonb)',[id,clientId,c.meta_ad_account_id,preset,JSON.stringify(payload)]);
+ await db.query('INSERT INTO performance_snapshots(id,client_id,account_id,date_preset,payload) VALUES($1,$2,$3,$4,$5::jsonb)',[id,clientId,c.meta_ad_account_id,typeof preset==='string'?preset:'custom',JSON.stringify(payload)]);
  const analysis=require('./marketingBrain').analyze(payload);
- return 'דוח '+preset+' — '+account.name+'\n'+require('./marketingBrain').format(analysis);
+ return 'דוח '+require('./reportPeriod').label(preset)+' — '+account.name+'\n'+require('./marketingBrain').format(analysis);
 }
 module.exports={campaignReport};

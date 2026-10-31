@@ -97,7 +97,7 @@ async function transcribeVoiceMessage(message, options = {}) {
     }
   });
 
-  const transcript = String(response.text || '').trim();
+  const transcript = extractTranscript(response);
   if (!transcript) throw Error('Empty transcription');
 
   logger.info('voice_transcribed', {
@@ -110,4 +110,19 @@ async function transcribeVoiceMessage(message, options = {}) {
   return transcript;
 }
 
-module.exports = { transcribeVoiceMessage, getAudio };
+function extractTranscript(response) {
+  const candidate=response?.candidates?.[0];
+  if(candidate?.finishReason && candidate.finishReason!=='STOP')throw Error('Incomplete transcription');
+  const parts=(candidate?.content?.parts||[]).filter(p=>!p.thought);
+  const segments=parts.map(p=>{
+    if(typeof p.text==='string'&&p.text.trim())return p.text.trim();
+    const t=p.audioTranscription;
+    if(typeof t?.text==='string')return t.text.trim();
+    if(Array.isArray(t?.words))return t.words.map(w=>typeof w.word==='string'?w.word:'').filter(Boolean).join(' ');
+    return '';
+  }).filter(Boolean);
+  const text=(segments.length?segments.join(' '):String(response?.text||'')).trim();
+  if(!text||text.length>12000)throw Error('Empty or oversized transcription');
+  return text;
+}
+module.exports = { transcribeVoiceMessage, getAudio, extractTranscript };

@@ -41,7 +41,7 @@ function approvalInstruction(approval) {
 }
 
 async function handleApproval(from, code) {
-  await notifyProcessing(from,'קיבלתי את בקשת האישור, בודק אותה.');
+
   const consumed = await consumeApproval(from, code);
 
   if (!consumed.ok) {
@@ -107,12 +107,12 @@ async function processNaturalLanguage(from, text, prefix = '') {
 }
 
 async function handleVoice(from, message) {
-  await notifyProcessing(from,'קיבלתי את ההודעה הקולית, מקשיב ומכין לך תשובה.');
+
   try {
     const transcript = await transcribeVoiceMessage(message);
     await routeText(from, transcript, `שמעתי: "${transcript}"`);
   } catch (error) {
-    logger.error('Voice handling failed', { error: error.message });
+    logger.error('Voice handling failed', { errorType: error?.name || 'Error' });
     await safeSend(
       from,
       'לא הצלחתי לתמלל את ההודעה הקולית. נסה לשלוח אותה שוב.'
@@ -144,7 +144,7 @@ async function handleTenantMessage(message, contact) {
   if(message.type==='interactive'){
     const client=await getOrCreateClient(from);
     const selected=await require('./conversationUi').consume(client.id,message);
-    if(!selected){await safeSend(from,'הבחירה הזו כבר לא עדכנית. אפשר לענות בכתיבה על השאלה האחרונה או לכתוב ״להמשיך״.');return;}
+    if(!selected){const fresh=await require('./conversationUi').refresh(client.id);await safeSend(from,fresh.text,fresh);return;}
     await routeText(from,selected);return;
   }
 
@@ -172,9 +172,19 @@ async function routeText(from, text, prefix = '') {
     await safeSend(from,'איפסתי את פרטי השיחה והטיוטה וביטלתי אישורי פעולה ממתינים. חיבור Meta נשמר. מה העסק עושה, ובאיזה שם הוא פועל?');
     return;
   }
+  if(configured()){
+    const client=await getOrCreateClient(from);
+    const read=await require('./readConversation').handle(client.id,text);
+    if(read?.handled){
+      const reply=prefix?`${prefix}\n\n${read.reply}`:read.reply;
+      await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:reply}]);
+      const ui=await require('./conversationUi').prepare(client.id,reply,read.decisionKey);
+      await safeSend(from,ui.text,ui);return;
+    }
+  }
   const meta = require('./metaConnection');
   if (text.startsWith('/meta-')) {
-    if(text!=='/meta-delete-data-confirm') await notifyProcessing(from,'קיבלתי, בודק את חיבור חשבון הפרסום.');
+
     try {
       const client = await getOrCreateClient(from);
       if(text!=='/meta-delete-data-confirm'&&require('./marketingConversation').enabled()){
@@ -201,7 +211,7 @@ async function routeText(from, text, prefix = '') {
     await safeSend(from,text==='/notifications-on'?'הסכמת לקבלת עדכונים נרשמה. ניתן לבטל עם /notifications-off.':'הסכמת העדכונים בוטלה.');return;
   }
   if (/^\/report(?: (today|yesterday|last_7d|last_14d|last_30d|this_month|last_month))?$/.test(text)) {
-    await notifyProcessing(from,'קיבלתי, מכין לך את דוח הביצועים.');
+
     try {const client=await getOrCreateClient(from);await safeSend(from,await require('./reportService').campaignReport(client.id,text.split(' ')[1] || 'last_7d'));}
     catch {await safeSend(from,'לא ניתן להפיק דוח כרגע. בדוק שחיבור Meta והחשבון הנבחר בתוקף.');}return;
   }

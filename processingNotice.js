@@ -1,5 +1,6 @@
 'use strict';
 async function notifyProcessing(to,text='קיבלתי, בודק ומכין לך תשובה.') {
+  if(text==='קיבלתי, בודק ומכין לך תשובה.')return;
   const context=require('./whatsappDelivery').messageContext.getStore();
   if(!context||context.processingNoticeQueued) return;
   // One interim reply per authenticated inbound message, including voice->AI chains.
