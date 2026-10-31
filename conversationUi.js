@@ -61,7 +61,9 @@ async function consume(clientId,message){
  let selected=null;
  await store.update(clientId,null,p=>{
   const [,nonce,index]=id.split(':');const ui=p.ui;
-  if(!ui||ui.nonce!==nonce||ui.context!==context(p)||ui.expiresAt<Date.now())return{handled:false};
+  // The nonce identifies the most recently issued menu. Other conversation state may
+  // legitimately change between sending the menu and receiving its reply.
+  if(!ui||ui.nonce!==nonce||ui.expiresAt<Date.now())return{handled:false};
   const c=ui.choices[Number(index)];if(!c)return{handled:false};
   selected=c.text;if(c.kind==='budget_custom')p.journey.inputMode='budget_custom';delete p.ui;
   return{handled:false,changed:true};
