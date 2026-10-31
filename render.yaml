@@ -41,10 +41,11 @@ services:
         value: "true"
       - key: APP_PUBLIC_URL
         sync: false
+      # Match the Meta app selected for this integration; set Login for Business config from that app dashboard.
       - key: META_APP_ID
-        value: "3244596585929846"
+        value: "1893122418791568"
       - key: META_LOGIN_CONFIG_ID
-        value: "1547508470739287"
+        sync: false
       - key: META_TOKEN_ENCRYPTION_KEY
         sync: false
       - key: APPROVAL_HMAC_KEY
