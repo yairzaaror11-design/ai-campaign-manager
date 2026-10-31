@@ -50,7 +50,7 @@ async function prepare(clientId,reply,decisionKey=null){
   const nonce=crypto.randomBytes(12).toString('hex');
   const long=reply.length>1024;
   const interactivePayload=payload(long?'מה נרצה לעשות בשלב הבא?':reply,items,nonce);
-  p.ui={nonce,context:context(p),choices:items,expiresAt:Date.now()+24*60*60*1000};
+  p.ui={nonce,decisionKey,context:context(p),choices:items,expiresAt:Date.now()+24*60*60*1000};
   result={text:reply,interactivePayload,...(long?{leadingText:reply}:{})};return{handled:false,changed:true};
  });return result;
 }
@@ -64,6 +64,8 @@ async function consume(clientId,message){
   // The nonce identifies the most recently issued menu. Other conversation state may
   // legitimately change between sending the menu and receiving its reply.
   if(!ui||ui.nonce!==nonce||ui.expiresAt<Date.now())return{handled:false};
+  // Reject choices whose underlying decision changed, but allow unrelated state updates.
+  if(!ui.decisionKey||JSON.stringify(choices(p,ui.decisionKey))!==JSON.stringify(ui.choices))return{handled:false};
   const c=ui.choices[Number(index)];if(!c)return{handled:false};
   selected=c.text;if(c.kind==='budget_custom')p.journey.inputMode='budget_custom';delete p.ui;
   return{handled:false,changed:true};
