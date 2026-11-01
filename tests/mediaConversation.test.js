@@ -9,19 +9,20 @@ test('media receipt is short, proposes actions separately and never leaks valida
  media.receiveWhatsAppMedia=async message=>({type:message.type,mediaId:'test-wa-media',mimeType:message.type==='image'?'image/png':'video/mp4',caption:'',buffer:Buffer.from('reference'),fileSize:9});
  delete require.cache[require.resolve('../messageHandler')];
  Object.assign(process.env,{AUTHORIZED_PHONE_NUMBERS:'972501008111',MARKETING_DISCOVERY_ENABLED:'true',WHATSAPP_SEND_ENABLED:'false'});
+ const rows=m=>m.interactive.action.buttons?.map(b=>b.reply)||m.interactive.action.sections[0].rows;
  const from='972501008111',handler=require('../messageHandler').handleIncomingMessage;
  const send=(id,extra)=>handler({id,from,timestamp:String(Math.floor(Date.now()/1000)),...extra});
  try{
   await send('video',{type:'video',video:{id:'123'}});
   assert.equal(sent.length,2);assert.equal(sent[0].text,'קיבלתי את הסרטון.');assert.equal(sent[1].text,'מה נעשה עם הסרטון?');
-  assert.equal(sent[1].options.interactivePayload.interactive.action.buttons.length,3);
+  assert.equal(rows(sent[1].options.interactivePayload).length,4);
   assert.doesNotMatch(JSON.stringify(sent),/בדיקת סוג|גודל|מזהה מדיה|עיון בלבד|לא פורסם|CREATE_BUNDLE/);
-  const old=sent[1].options.interactivePayload.interactive.action.buttons[0].reply.id;
+  const old=rows(sent[1].options.interactivePayload)[0].id;
   await send('image',{type:'image',image:{id:'456'}});assert.equal(sent.length,4);assert.match(sent[3].text,/מה נעשה עם התמונה/);assert.match(sent[3].text,/אישור נפרד/);
   const client=await require('../clientStore').getOrCreateClient(from),ui=require('../conversationUi');
   assert.equal(await ui.consume(client.id,{interactive:{type:'button_reply',button_reply:{id:old}}}),null);
-  const button=sent[3].options.interactivePayload.interactive.action.buttons[0].reply.id;
-  await send('copy',{type:'interactive',interactive:{type:'button_reply',button_reply:{id:button,title:'פרסם עכשיו'}}});assert.match(sent.at(-1).text,/מה העסק עושה/);
+  const button=rows(sent[3].options.interactivePayload)[0].id;
+  await send('copy',{type:'interactive',interactive:{type:'button_reply',button_reply:{id:button,title:'פרסם עכשיו'}}});assert.match(sent.at(-1).text,/מה בא לך/);
   let generated=0,referenceInputs=[];
   graphics.createGraphic=async(_client,prompt,options)=>{generated++;referenceInputs.push(options.referenceImage);return{id:'test',whatsapp_media_id:String(generated)};};
   // The batch passes the actual tenant-owned source image to each generated variant.

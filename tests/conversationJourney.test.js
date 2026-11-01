@@ -17,16 +17,16 @@ test('one free-form message fills business, product, region, goal and daily budg
 });
 test('five consecutive answers advance with no forced summary or continue checkpoint',()=>{
  const p=store.emptyProfile();transition(p,'אני רוצה לפרסם את העסק');
- for(const message of ['שירותי פרסום','מכירות','ניהול במטא','בעלי עסקים מכל התחומים','כל הארץ']){
+ for(const message of ['ניהול במטא','מכירות','100 שקל ביום','בעלי עסקים מכל התחומים','כל הארץ']){
   const r=transition(p,message);assert.doesNotMatch(r.reply,/שמרתי עד עכשיו|להמשיך\?/);assert.equal((r.reply.match(/\?/g)||[]).length,1);
  }
- assert.equal(p.journey.pendingField,'advantage');
+ assert.equal(p.journey.pendingField,'leadDestination');
 });
 test('clarification preserves pending field and the following answer resolves exactly it',()=>{
- const p=store.emptyProfile();transition(p,'נתחיל');transition(p,'פרסום');transition(p,'מכירות');
+ const p=store.emptyProfile();transition(p,'נתחיל');
  assert.equal(p.journey.pendingField,'product');const before=JSON.stringify(p.answers);
  assert.match(transition(p,'מה הכוונה?').reply,/שירות אחד/);assert.equal(JSON.stringify(p.answers),before);
- transition(p,'ניהול במטא');assert.equal(facts.value(p,'product'),'ניהול קמפיינים ב-Meta');assert.equal(p.journey.pendingField,'audience');
+ transition(p,'ניהול במטא');assert.equal(facts.value(p,'product'),'ניהול קמפיינים ב-Meta');assert.equal(p.journey.pendingField,'businessGoal');
 });
 test('an explicit summary includes budget and offer without overwriting the pending audience answer',()=>{
  const p=complete();facts.write(p,'offer','14 יום של ניהול קמפיין במתנה');journey.init(p);p.journey.stage='DISCOVERY';p.journey.pendingField='audience';
@@ -45,7 +45,7 @@ test('contextual yes and continue lead from strategy to ads and then a local pla
  const confirmation=transition(p,'כן');assert.match(confirmation.reply,/אינו אישור להוצאה/);assert.notEqual(p.journey.stage,'ACTIVE');
 });
 test('an early request for an ad asks one essential missing question instead of losing the request',()=>{
- const p=store.emptyProfile();const r=transition(p,'תכין לי מודעה');assert.equal(p.journey.requestedOutput,'ad');assert.equal(p.journey.pendingField,'businessType');assert.equal((r.reply.match(/\?/g)||[]).length,1);
+ const p=store.emptyProfile();const r=transition(p,'תכין לי מודעה');assert.equal(p.journey.requestedOutput,'ad');assert.equal(p.journey.pendingField,'product');assert.equal((r.reply.match(/\?/g)||[]).length,1);
 });
 test('a plan can be prepared without a Meta connection and never claims publication',()=>{
  const p=complete();const r=transition(p,'תכין תוכנית קמפיין');assert.equal(p.journey.stage,'PLAN_REVIEW');assert.match(r.reply,/לא נוצר ולא הופעל/);assert.equal(p.connection,undefined);
@@ -78,7 +78,7 @@ test('pause/resume and a reconstructed profile preserve facts across interruptio
 });
 test('an unrelated question does not become the pending field answer',()=>{
  const p=store.emptyProfile();transition(p,'נתחיל');const before=JSON.stringify(p.answers);
- assert.equal(transition(p,'איך מכינים קפה?').handled,false);assert.equal(JSON.stringify(p.answers),before);assert.equal(p.journey.pendingField,'businessType');
+ assert.equal(transition(p,'איך מכינים קפה?').handled,false);assert.equal(JSON.stringify(p.answers),before);assert.equal(p.journey.pendingField,'product');
 });
 test('creative feedback makes a targeted revision while leaving business facts intact',()=>{
  const p=complete();transition(p,'תכין מודעה');const original=p.journey.draft.creatives[0].body;
@@ -92,7 +92,7 @@ test('evidence validation rejects cross-tenant instructions, invented evidence a
 });
 test('provider failure preserves a pending question rather than storing an error or inventing facts',()=>{
  const p=store.emptyProfile();transition(p,'נתחיל');const r=transition(p,'פרטים ארוכים שלא פורשו',{analysis:{intent:'other',updates:[],analysisUnavailable:true}});
- assert.match(r.reply,/לא הצלחתי לפרש/);assert.equal(Object.keys(p.answers).length,0);assert.equal(p.journey.pendingField,'businessType');
+ assert.match(r.reply,/לא הצלחתי לפרש/);assert.equal(Object.keys(p.answers).length,0);assert.equal(p.journey.pendingField,'product');
 });
 test('feminine forms and explicit language preference are recognized without guessing gender',()=>{
  const p=store.emptyProfile();transition(p,'אני מתקינה פרגולות באזור נתניה ורוצה עוד לקוחות בתקציב של 100 שקל ביום');

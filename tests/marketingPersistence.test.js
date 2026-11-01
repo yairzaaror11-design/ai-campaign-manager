@@ -34,7 +34,7 @@ test('marketing answers persist per tenant, replay safely, seed only known brief
     assert.equal(await store.load(a.id),null);
     assert.ok(await store.load(b.id));
     await assert.rejects(handleMarketingMessage(a.id,'שלום','late'),/MARKETING_CLIENT_NOT_FOUND/);
-    assert.match(first.reply,/מה העסק עושה/);
+    assert.match(first.reply,/מה בא לך/);
   } finally {await h.close();}
 });
 

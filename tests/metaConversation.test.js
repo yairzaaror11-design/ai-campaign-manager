@@ -63,7 +63,7 @@ test('guided Meta connection states, verified permissions and tenant boundaries'
   await t.test('a user without an ad account can contextually accept local campaign preparation',async()=>{
    const manager=require('../marketingConversation');await manager.handleMarketingMessage(b.id,'אני רוצה להתחיל לפרסם בפייסבוק','new-advertiser');
    assert.match((await manager.handleMarketingMessage(b.id,'לא','no-account')).reply,/טיוטת קמפיין/);
-   const r=await manager.handleMarketingMessage(b.id,'כן','prepare-local');assert.match(r.reply,/מה העסק עושה/);assert.equal((await store.load(b.id)).journey.stage,'DISCOVERY');
+   const r=await manager.handleMarketingMessage(b.id,'כן','prepare-local');assert.match(r.reply,/מה בא לך/);assert.equal((await store.load(b.id)).journey.stage,'DISCOVERY');
   });
   await t.test('failed OAuth persists a sanitized failure and a consumed callback cannot replay',async()=>{
    const c=await require('../clientStore').getOrCreateClient('972501009333');

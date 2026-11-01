@@ -17,6 +17,13 @@ const FIELDS=Object.freeze({
  offerCommitment:{key:'campaign.offer_commitment',label:'תנאי ההצעה והתחייבות'},
  materials:{id:'CRE-011',label:'חומרים קיימים'},
  website:{id:'BUS-008',scope:'business',label:'אתר'},
+ idealCustomer:{key:'business.ideal_customer',scope:'business',label:'לקוחות רצויים ופניות לא מתאימות'},
+ proof:{key:'business.proof',scope:'business',label:'המלצות ועבודות להצגה'},
+ capacity:{key:'business.capacity',label:'זמינות ללקוחות חדשים'},
+ leadOwner:{key:'business.lead_owner',scope:'business',label:'מי מטפל בפניות ומתי'},
+ pastMarketing:{key:'business.past_marketing',scope:'business',label:'ניסיון בפרסום'},
+ successCriteria:{key:'campaign.success_criteria',label:'מה ייחשב הצלחה ומתי'},
+ brandTone:{key:'business.brand_tone',scope:'business',label:'סגנון התוכן'},
  genderPreference:{key:'business.address_preference',scope:'business',label:'לשון פנייה מועדפת'}
 });
 function descriptor(p,field){const d=FIELDS[field];if(!d)throw Error('UNKNOWN_BUSINESS_FIELD');const scope=d.scope||'plan:'+p.planId;const key=d.key||qs.question(d.id).storage_field;return{...d,scope,key,address:scope+':'+key};}
@@ -48,6 +55,7 @@ function correctionsInvalidate(p,fields){
  p.journey.revision=(p.journey.revision||0)+1;
  if(p.journey.draft){p.journey.draft.stale=true;p.journey.draft.requiresApproval=true;}
  p.journey.strategyApproved=false;p.journey.creativeApproved=false;p.journey.planApproved=false;
+ if(p.socialContent)p.socialContent.stale=true;
 }
 module.exports={FIELDS,descriptor,read,value,write,all,summary,display,validate,correctionsInvalidate};
 

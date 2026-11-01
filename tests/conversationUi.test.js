@@ -35,7 +35,7 @@ test('buttons are tenant-bound, context-bound, single-use and pass through the e
   const first=outputs.at(-1).options.interactivePayload.interactive.action.buttons[0].reply.id;
   const click=id=>({type:'interactive',interactive:{type:'button_reply',button_reply:{id,title:'אשר 123456'}}});
   await handler(message('972501006222','cross',click(first)));assert.match(outputs.at(-1).text,/לא עדכנית/);
-  await handler(message('972501006111','select',click(first)));assert.match(outputs.at(-1).text,/מה העסק עושה/);
+  await handler(message('972501006111','select',click(first)));assert.match(outputs.at(-1).text,/מה בא לך/);
   await handler(message('972501006111','repeat',click(first)));assert.match(outputs.at(-1).text,/לא עדכנית/);
   const a=await require('../clientStore').getOrCreateClient('972501006111');
   await store.update(a.id,null,p=>{for(const [field,value]of Object.entries({businessType:'פרגולות',businessGoal:'מכירות',product:'התקנת פרגולות',audience:'בעלי בתים',geography:'נתניה',advantage:'שירות אישי'}))facts.write(p,field,value);p.journey.pendingField='dailyBudget';return{handled:false,changed:true};});

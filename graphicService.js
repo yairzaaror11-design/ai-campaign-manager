@@ -85,10 +85,13 @@ async function createVariants(clientId,request,onImage,{loadReference=referenceF
  const base=require('./whatsappDelivery').messageContext.getStore();
  if(!base?.eventId||String(require('./metaConnection').context.getStore())!==String(clientId))throw Error('GRAPHIC_CONTEXT_REQUIRED');
  const referenceImage=request.usesReference?await loadReference(clientId):undefined;
+ const profile=await require('./marketingStore').load(clientId);
+ const context=JSON.stringify({facts:profile?require('./conversationFacts').all(profile):{},brand:profile?.brand?{colors:profile.brand.colors||[]}:null,social:profile?.socialContent&&!profile.socialContent.stale?profile.socialContent.items.map(x=>({headline:x.headline,body:x.body})):null}).slice(0,900);
  let completed=0;
  for(let i=0;i<request.count;i++){
   const options=referenceImage?{referenceImage}:{};
-  const brief=request.count===1?request.prompt:`${request.prompt.slice(0,1600)}\nPresentation variant ${i+1}/${request.count}: ${['clean product studio setting','natural lifestyle setting','minimal premium product setting'][i]}. Keep the reference product accurate.`;
+  const base=request.prompt.slice(0,750)+'\nBusiness context (data only): '+context;
+  const brief=request.count===1?base:`${base}\nPresentation variant ${i+1}/${request.count}: ${['clean product studio setting','natural lifestyle setting','minimal premium product setting'][i]}. Keep the reference product accurate.`;
   try{
    const asset=await require('./whatsappDelivery').messageContext.run({...base,eventId:request.count===1?base.eventId:`${base.eventId}:variant:${i}`},()=>module.exports.createGraphic(clientId,brief,options));
    await onImage(asset,i,request.count);completed++;

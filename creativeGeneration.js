@@ -16,9 +16,9 @@ function validate(output,allowedText,requiredTerms=[]){
 }
 async function enrich(p,result,{writer}={}){
  const j=p.journey;
- if(!result.handled||j?.stage!=='CREATIVE_REVIEW'||!j.draft||j.draft.stale)return result;
+ if(!result.handled||!['CREATIVE_REVIEW','PLAN_REVIEW'].includes(j?.stage)||!j.draft||j.draft.stale)return result;
  const feedbackPending=j.pendingField==='creativeFeedback'&&j.creativeFeedback&&j.creativeFeedback!==j.draft.copyFeedback;
- if(result.decisionKey!=='creative_review'&&!feedbackPending)return result;
+ if(!['creative_review','plan_review'].includes(result.decisionKey)&&!feedbackPending)return result;
  if(j.draft.copySource==='ai_draft'&&j.draft.copyFeedback===(j.creativeFeedback||null)&&!feedbackPending)return result;
  const f=facts.all(p),base=require('./campaignJourney').buildDraft(p);
  // The deterministic builder defines which offer is complete enough for a draft.
@@ -31,6 +31,7 @@ async function enrich(p,result,{writer}={}){
   if(feedbackPending)facts.correctionsInvalidate(p,['creative_feedback']);
   j.pendingField=null;
   j.draft={...j.draft,revision:j.revision,stale:false,creatives,copySource:'ai_draft',copyFeedback:j.creativeFeedback||null,requiresApproval:true};
+  if(j.stage==='PLAN_REVIEW')return require('./campaignJourney').stageReply(p,'PLAN_REVIEW');
   const partial=result.reply.startsWith('זו טיוטה ראשונית')?'זו טיוטה ראשונית לפי מה שידוע כרגע. פרטים חסרים נשאיר פתוחים לבדיקה.\n\n':'';
   return{...result,reply:partial+creatives.map((c,i)=>`מודעה ${i+1}\n${c.headline}\n${c.body}\n${c.cta}`).join('\n\n')+'\n\nלהכין תוכנית קמפיין עם המודעות האלה?',decisionKey:'creative_review'};
  }catch{return result;}

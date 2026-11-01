@@ -19,17 +19,16 @@ test('complete journey uses explicit decisions, keeps facts and never approves M
  let menu=await ui.prepare('a','נוסח פתיחה חדש לגמרי',r.decisionKey);
  const id=menu.interactivePayload.interactive.action.buttons[0].reply.id;
  const selected=await ui.consume('a',click(id));assert.equal(selected,'אני רוצה קמפיין');
- r=journey.transition(p,selected);assert.equal(p.journey.pendingField,'businessType');assert.equal(r.decisionKey,null);
- const answers=['סטודיו לעיצוב','מכירות','עיצוב בתים','בעלי דירות','נתניה','שירות אישי','100 שקל ביום','פניות בוואטסאפ'];
+ r=journey.transition(p,selected);assert.equal(p.journey.pendingField,'product');assert.equal(r.decisionKey,null);
+ const answers=['עיצוב בתים','מכירות','100 שקל ביום','בעלי דירות','נתניה','פניות בוואטסאפ'];
  for(const answer of answers)r=journey.transition(p,answer);
- assert.equal(p.journey.stage,'STRATEGY_REVIEW');assert.equal(r.decisionKey,'strategy_review');
+ assert.equal(p.journey.stage,'PLAN_REVIEW');assert.equal(r.decisionKey,null);assert.match(r.reply,/מודעה 1/);
  assert.equal(facts.value(p,'dailyBudget').amount,100);
- r=journey.transition(p,'כן');assert.equal(r.decisionKey,'creative_review');
- r=journey.transition(p,'כן');assert.equal(p.journey.stage,'PLAN_REVIEW');assert.equal(r.decisionKey,null);
+ r=journey.transition(p,'כן');assert.equal(p.journey.stage,'PLAN_REVIEW');assert.equal(r.decisionKey,undefined);
  assert.equal(p.journey.draft.status,'LOCAL_DRAFT');
  r=journey.transition(p,'כן');assert.match(r.reply,/אישור נפרד/);
  journey.transition(p,'בעצם 200 שקל ביום');assert.equal(facts.value(p,'dailyBudget').amount,200);
- assert.equal(facts.value(p,'businessType'),'סטודיו לעיצוב');
+ assert.equal(facts.value(p,'product'),'עיצוב בתים');
  assert.equal(p.journey.planApproved,false);
 });
 test('long and voice-prefixed replies retain menus and reject invalid decision keys',async()=>{

@@ -99,11 +99,13 @@ async function hydrateLegacy(clientId,p){
 }
 async function handleMarketingMessage(clientId,text,eventId,options={}) {
   if(!enabled()) return {handled:false};
+  await require('./personalConversation').hydrate(clientId);
+  const personal=await require('./personalConversation').handle(clientId,text,eventId);if(personal)return personal;
   const launchProfile=await store.load(clientId);
   if(text==='חבר הרשאת יצירת קמפיינים')return require('./metaConversation').handle(clientId,text,{},eventId);
-  const startLaunch=/^(המשך ליצירת הקמפיין|צור את הקמפיין במטא|הכן ליצירה ב־Meta)$/.test(text)||launchProfile?.launch?.stage!=='SETUP'&&launchProfile?.journey?.stage==='PLAN_REVIEW'&&!launchProfile?.journey?.detour&&/^(כן|מאשר|מאשרת)$/.test(text);
+  const startLaunch=/^(המשך ליצירת הקמפיין|צור את הקמפיין במטא|הכן ליצירה ב־Meta)$/.test(text)||launchProfile?.launch?.stage!=='SETUP'&&launchProfile?.journey?.stage==='PLAN_REVIEW'&&!launchProfile?.journey?.detour&&launchProfile?.journey?.requestedOutput!=='social'&&/^(כן|מאשר|מאשרת)$/.test(text);
   if(startLaunch)return require('./campaignSetup').start(clientId);
-  if(launchProfile?.launch?.stage==='SETUP'&&!text.startsWith('/')&&!/^(לא עכשיו|עצור|קמפיין חדש|אני רוצה קמפיין)$/.test(text)){
+  if(launchProfile?.launch?.stage==='SETUP'&&launchProfile?.journey?.requestedOutput!=='social'&&!require('./socialContent').requested(text)&&!text.startsWith('/')&&!/^(לא עכשיו|עצור|קמפיין חדש|אני רוצה קמפיין)$/.test(text)){
    const current=await require('./metaConnection').credentials(clientId);
    if(current.meta_ad_account_id!==launchProfile.launch.accountId){await store.update(clientId,null,p=>{delete p.launch;return{handled:false,changed:true};});return{handled:true,reply:'חשבון הפרסום השתנה. לפני יצירה נוודא שהתוכנית מתאימה לעסק של החשבון החדש. אפשר לכתוב ״המשך ליצירת הקמפיין״ לבדיקת הפרטים.'};}
    return{handled:false};
@@ -127,14 +129,22 @@ async function handleMarketingMessage(clientId,text,eventId,options={}) {
     const candidate=structuredClone(snapshot);
     let prepared=transition(candidate,text,{analysis});
     prepared=await require('./creativeGeneration').enrich(candidate,prepared,{writer:options.creativeWriter});
-    try{return await store.update(clientId,eventId,p=>{
+    prepared=await require('./socialContent').enrich(candidate,prepared,{writer:options.creativeWriter});
+    if(prepared.decisionKey==='plan_review'&&candidate.journey?.track==='BOTH'){
+      const output=candidate.journey.requestedOutput;
+      if(!candidate.socialContent||candidate.socialContent.stale){const social=require('./socialContent').prepare(candidate);await require('./socialContent').enrich(candidate,social,{writer:options.creativeWriter});}
+      candidate.journey.requestedOutput=output;prepared.reply+='\n\n'+require('./socialContent').render(candidate);
+    }
+    try{const saved=await store.update(clientId,eventId,p=>{
       if((p.version||0)!==(existing?.version||0))throw Error('STALE_CONVERSATION_ANALYSIS');
       Object.assign(p,candidate);
       const result=prepared;
       if(result.handled)result.audit=p.journey?.stage||'DIAGNOSTIC';
       if(!result.handled&&Object.keys(p.answers).length!==Object.keys(existing?.answers||{}).length)result.changed=true;
       return result;
-    });}catch(error){if(error.message!=='STALE_CONVERSATION_ANALYSIS'||attempt)throw error;}
+    });
+    if(prepared.decisionKey==='social_review'||candidate.journey?.track==='BOTH'&&prepared.decisionKey==='plan_review'){try{await require('./socialContent').sync(clientId,candidate.socialContent);}catch{saved.reply+='\nשמירת טיוטות התוכן בלוח לא הושלמה כרגע; התוכן נשמר בשיחה.';}}
+    return saved;}catch(error){if(error.message!=='STALE_CONVERSATION_ANALYSIS'||attempt)throw error;}
   }
 }
 module.exports={enabled,routeRequested,transition,diagnosticTransition,handleMarketingMessage,asksOrChangesTask};

@@ -20,7 +20,7 @@ test('WhatsApp → confirmed business → preview → registration → CRM retai
  try{
   a=await require('../clientStore').getOrCreateClient('972501007111');b=await require('../clientStore').getOrCreateClient('972501007222');
   await t.test('new user is invited to send a business link or describe the business',async()=>{
-   const r=await entry.handle(a.id,'היי','intro');assert.equal(r.decisionKey,'business_entry');assert.match(r.reply,/קישור לאתר/);assert.equal(Object.keys((await store.load(a.id)).answers).length,0);
+   const r=await entry.handle(a.id,'אני רוצה קמפיין','intro');assert.equal(r.decisionKey,'business_entry');assert.match(r.reply,/קישור לאתר/);assert.equal(Object.keys((await store.load(a.id)).answers).length,0);
   });
   await t.test('facts and brand are proposals until the customer confirms',async()=>{
    const r=await entry.handle(a.id,'https://example.com','site',{inspect:async()=>require('../publicWebsite').extract(Buffer.from(fixture),'https://example.com/')});assert.equal(r.decisionKey,'business_import');

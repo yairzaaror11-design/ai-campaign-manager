@@ -7,7 +7,7 @@ for(const text of ['יקר לי','זה יקר מדי','אין לי כסף','אנ
  test(`a detour is not stored as a business answer: ${text}`,()=>{
   const p=started(),before=JSON.stringify(p.answers);const r=journey.transition(p,text);
   assert.equal(r.handled,false);assert.equal(r.changed,true);assert.equal(JSON.stringify(p.answers),before);
-  assert.equal(p.journey.pendingField,'businessType');assert.equal(p.journey.detour,true);
+  assert.equal(p.journey.pendingField,'product');assert.equal(p.journey.detour,true);
  });
 }
 test('a hypothetical budget is not an assertion and projections are not performance reports',()=>{
@@ -38,7 +38,7 @@ test('a correction during a question updates only the corrected fact, then resum
  const a=analyze.validateAnalysis({intent:'correct',messageKind:'side_question',correction:true,updates:[{field:'geography',value:'נתניה',evidence:'האזור הוא נתניה'}]},text);
  const r=journey.transition(p,text,{analysis:a});assert.equal(r.handled,false);
  assert.equal(facts.value(p,'geography'),'נתניה');assert.equal(facts.value(p,'businessType'),null);
- journey.transition(p,'נמשיך');assert.equal(p.journey.pendingField,'businessType');
+ journey.transition(p,'נמשיך');assert.equal(p.journey.pendingField,'product');
 });
 test('a provisional draft can use existing facts without forcing the entire questionnaire',()=>{
  const p=started();facts.write(p,'businessType','חנות פרחים');facts.write(p,'product','זרי פרחים');

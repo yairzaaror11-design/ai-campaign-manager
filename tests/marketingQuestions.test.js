@@ -27,16 +27,16 @@ test('interview asks one necessary question and never pauses merely after three 
   const p=emptyProfile();
   assert.match(transition(p,'שלום').reply,/מה נרצה לעשות היום/);
   assert.equal(p.journey.stage,'IDLE');
-  transition(p,'אני רוצה קמפיין');transition(p,'שירות תיקונים');
-  transition(p,'מכירות');const third=transition(p,'תיקון מזגנים');
+  transition(p,'אני רוצה קמפיין');transition(p,'תיקון מזגנים');
+  transition(p,'מכירות');const third=transition(p,'100 שקל ביום');
   assert.equal(p.journey.pendingField,'audience');
   assert.doesNotMatch(third.reply,/להמשיך|שמרתי עד עכשיו/);
   assert.equal(require('../conversationFacts').value(p,'product'),'תיקון מזגנים');
 });
 test('unknown is stored as null, never zero and not asked again',()=>{
   const p=emptyProfile();transition(p,'נתחיל');transition(p,'לא יודע');
-  assert.equal(require('../conversationFacts').read(p,'businessType').status,'unknown');
-  assert.equal(require('../conversationFacts').read(p,'businessType').value,null);
+  assert.equal(require('../conversationFacts').read(p,'product').status,'unknown');
+  assert.equal(require('../conversationFacts').read(p,'product').value,null);
   transition(p,'שלום');assert.equal(p.journey.pendingField,'businessGoal');
 });
 test('stop, explanation and unrelated action requests do not become interview answers',()=>{
@@ -47,7 +47,7 @@ test('stop, explanation and unrelated action requests do not become interview an
   assert.equal(Object.keys(p.answers).length,0);
   transition(p,'עצור');assert.equal(p.journey.paused,true);
   assert.equal(transition(p,'זה לא תשובה לשאלה').handled,false);
-  transition(p,'נמשיך');assert.equal(p.journey.pendingField,'businessType');
+  transition(p,'נמשיך');assert.equal(p.journey.pendingField,'product');
 });
 test('new plan preserves business facts but never reuses previous goals or economics',()=>{
   const p=emptyProfile();transition(p,'שם העסק: העסק שלי');transition(p,'נתחיל');transition(p,'שירות תיקונים');transition(p,'מכירות');
@@ -55,7 +55,7 @@ test('new plan preserves business facts but never reuses previous goals or econo
   transition(p,'אפיון חדש');assert.notEqual(p.planId,oldPlan);
   assert.equal(qs.answerFor(p,'GOAL-001'),null);
   assert.equal(qs.answerFor(p,'BUS-001').value,'העסק שלי');
-  transition(p,'פניות');assert.equal(p.journey.pendingField,'product');
+  assert.equal(p.journey.pendingField,'product');transition(p,'תיקון מזגנים');assert.equal(p.journey.pendingField,'businessGoal');
 });
 test('explicit correction preserves history without interpreting answer text as instructions',()=>{
   const p=emptyProfile();transition(p,'נתחיל');transition(p,'שירות');transition(p,'פניות');

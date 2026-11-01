@@ -29,7 +29,7 @@ test('dashboard context is current, bounded and isolated; free conversation pres
   });
   const request={message:'מה כדאי לקדם?',screen:'products',requestId:crypto.randomUUID()};
   const first=await agent.send(a.id,request);assert.match(first.reply,/זרי הפרחים/);assert.equal(first.externalActionsExecuted,false);
-  assert.equal((await store.load(a.id)).journey.pendingField,'businessType');
+  assert.equal((await store.load(a.id)).journey.pendingField,'product');
   assert.equal((await agent.history(a.id)).messages.length,2);assert.equal((await agent.history(b.id)).messages.length,0);
   assert.equal((await agent.send(a.id,request)).reply,first.reply);assert.equal(replies,1);
   await assert.rejects(agent.send(a.id,{...request,message:'שינוי'}),/WORKSPACE_REQUEST_CONFLICT/);

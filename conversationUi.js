@@ -1,24 +1,27 @@
 'use strict';
 const crypto=require('node:crypto'),store=require('./marketingStore');
 const FOOTER='אפשר גם לכתוב או לשלוח הודעה קולית';
-function context(p){return JSON.stringify([p.planId,p.journey?.stage,p.journey?.pendingField,p.journey?.revision,p.journey?.inputMode,p.journey?.detour,p.connection?.status,p.connection?.account?.id,p.connection?.accountPage,p.connection?.accountQuery,JSON.stringify((p.connection?.accounts||[]).map(a=>a.id)),p.connection?.pendingQuestion,p.mediaContext?.assetId,p.mediaBudgetQuestion?.amount,p.businessImport?.foundAt,p.businessEntry?.awaitingConfirmation,p.crmFocus?.id,p.crmFocus?.version,JSON.stringify(p.crmMenu||[])]);}
+function context(p){return JSON.stringify([p.planId,p.journey?.stage,p.journey?.pendingField,p.journey?.revision,p.journey?.inputMode,p.journey?.detour,p.connection?.status,p.connection?.account?.id,p.connection?.accountPage,p.connection?.accountQuery,JSON.stringify((p.connection?.accounts||[]).map(a=>a.id)),p.connection?.pendingQuestion,p.mediaContext?.assetId,p.mediaBudgetQuestion?.amount,p.businessImport?.foundAt,p.businessEntry?.awaitingConfirmation,p.socialContent?.id,p.socialContent?.revision,p.journey?.requestedOutput,p.journey?.socialFeedbackPending,JSON.stringify(p.crmIntake||null),JSON.stringify(p.crmFollowup||null),p.crmFocus?.id,p.crmFocus?.version,JSON.stringify(p.crmMenu||[])]);}
 const choice=(title,text,description)=>({title,text,...(description?{description}:{})});
-const DECISIONS=["management_connect","crm_leads","crm_status","business_entry","business_import","plan_review","media_variant", "budget_period", "media_action", "has_ad_account", "connected", "connection_offer", "account_selection", "businessGoal", "dailyBudget", "leadDestination", "offerMediaSeparate", "strategy_review", "creative_review", "welcome"];
+const DECISIONS=["advantage","journey_route","social_review","management_connect","crm_leads","crm_status","business_entry","business_import","plan_review","media_variant", "budget_period", "media_action", "has_ad_account", "connected", "connection_offer", "account_selection", "businessGoal", "dailyBudget", "leadDestination", "offerMediaSeparate", "strategy_review", "creative_review", "welcome"];
 function choices(p,decisionKey){
  if(decisionKey==null)return [];
  if(!DECISIONS.includes(decisionKey))throw Error('INVALID_DECISION_KEY');
  const j=p.journey||{},pending=j.pendingField,connection=p.connection;
+ if(decisionKey==='journey_route')return[choice('להביא פניות ותורים','להביא פניות ותורים'),choice('תוכן לסושיאל','תוכן לסושיאל'),choice('לשלב את שניהם','לשלב את שניהם')];
+ if(decisionKey==='social_review'&&p.socialContent)return[choice('לשנות נוסח','שינוי נוסח לסושיאל'),choice('לוח תוכן לשבוע','לוח תוכן לשבוע'),choice('להכין גרפיקה','תכין לי גרפיקה לפוסט של העסק'),choice('קמפיין פניות','נעבור לקמפיין פניות')];
  if(decisionKey==='crm_leads'&&p.crmMenu?.length)return p.crmMenu.map((x,i)=>choice(`${i+1}. ${x.name.slice(0,16)}`,`פתח פנייה ${i+1}`));
  if(decisionKey==='crm_status'&&p.crmFocus)return[choice('חדשה','סמן כפנייה חדשה'),choice('בטיפול','סמן פנייה בטיפול'),choice('נקבעה פגישה','סמן שנקבעה פגישה'),choice('נסגרה עסקה','סמן שנסגרה עסקה'),choice('לא הבשילה','סמן שהפנייה לא הבשילה')];
  if(decisionKey==='management_connect')return[choice('חיבור הרשאת יצירה','חבר הרשאת יצירת קמפיינים'),choice('להמשיך בטיוטה','לא עכשיו')];
  if(decisionKey==='business_entry')return[choice('אין לי קישור','אין לי קישור')];
  if(decisionKey==='business_import'&&p.businessEntry?.awaitingConfirmation)return[choice('הפרטים נכונים','הפרטים נכונים'),choice('לתקן פרטים','לתקן פרטים')];
- if(decisionKey==='plan_review'&&j.stage==='PLAN_REVIEW')return[choice('תצוגה והרשמה','תצוגה מקדימה'),choice('המשך ליצירה ב־Meta','המשך ליצירת הקמפיין'),choice('לשנות פרטים','לא')];
+ if(decisionKey==='plan_review'&&j.stage==='PLAN_REVIEW')return[choice('תצוגה והרשמה','תצוגה מקדימה'),choice('המשך ליצירה ב־Meta','המשך ליצירת הקמפיין'),choice('לשנות פרטים','לא'),choice('דיוק התוכנית','דיוק התוכנית'),choice('תוכן לסושיאל','תוכן לסושיאל')];
  if(decisionKey==='media_variant'&&p.mediaVariants?.length)return p.mediaVariants.map((_,i)=>choice(`גרסה ${i+1}`,`בחרתי גרסה ${i+1}`));
  if(decisionKey==='budget_period'&&p.mediaBudgetQuestion)return[choice('תקציב יומי','זה תקציב יומי'),choice('לכל הקמפיין','זה לכל הקמפיין'),choice('מחיר המוצר','זה מחיר המוצר')];
  if(decisionKey==='media_action'&&p.mediaContext)return[
  choice('נוסח למודעה','תכין לי מודעה עם הקובץ ששלחתי'),
  choice('תוכנית קמפיין','תכין תוכנית קמפיין עם הקובץ ששלחתי'),
+ choice('פוסט לסושיאל','פוסט מהקובץ ששלחתי'),
  p.mediaContext.type==='image'?choice('גרסאות לתמונה','תיצור לי 3 תמונות מהתמונה ששלחתי'):choice('טקסט לסרטון','נוסח לסרטון ששלחתי')];
  if(decisionKey==='has_ad_account'&&connection?.pendingQuestion==='hasAdAccount')return [choice('יש לי חשבון','כן'),choice('זו הפעם הראשונה','לא')];
  if(decisionKey==='connected'&&connection?.status==='CONNECTED')return[choice('קמפיין חדש','אני רוצה קמפיין'),choice('בדיקת ביצועים','תוצאות השבוע')];
@@ -31,15 +34,16 @@ function choices(p,decisionKey){
   return items;
  }
  if(pending&&decisionKey===pending){
+  if(pending==='advantage')return[choice('תציע לי כיוון','תציע לי כיוון')];
   if(pending==='dailyBudget'&&j.inputMode!=='budget_custom')return[...require('./budgetGuidance').OPTIONS.map(o=>choice(o.title,`${o.amount} שקל ביום`,o.description)),{...choice('סכום אחר','מה הכוונה?','אפשר להקליד סכום יומי ומטבע'),kind:'budget_custom'}];
-  if(pending==='businessGoal'&&require('./businessEntry').enabled()&&p.businessEntry?.linkAsked)return[choice('יותר פניות','פניות מתאימות'),choice('מכירות','מכירות'),choice('תורים ופגישות','תורים ופגישות'),choice('מטרה אחרת','מה הכוונה?')];
+  if(pending==='businessGoal'&&require('./businessEntry').enabled()&&p.businessEntry?.linkAsked)return[choice('יותר פניות','פניות מתאימות'),choice('מכירות','מכירות'),choice('תורים ופגישות','תורים ופגישות'),choice('תוכן לסושיאל','תוכן לסושיאל'),choice('גם תוכן וגם פניות','לשלב את שניהם'),choice('מטרה אחרת','מה הכוונה?')];
   if(pending==='businessGoal')return[choice('יותר מכירות','מכירות'),choice('לקוחות חדשים','לקוחות חדשים'),choice('יותר חשיפה לעסק','חשיפה למותג')];
   if(pending==='leadDestination')return[choice('WhatsApp','פניות בוואטסאפ'),choice('טלפון','שיחות טלפון'),choice('אתר העסק','אתר העסק'),choice('טופס פניות','טופס פניות'),choice('עוד לא החלטתי','לא יודע')];
   if(pending==='offerMediaSeparate')return[choice('המדיה בנפרד','כן'),choice('המדיה כלולה','לא'),choice('עוד לא ידוע','לא יודע')];
  }
  if(decisionKey==='strategy_review'&&j.stage==='STRATEGY_REVIEW')return[choice('נכין מודעות','כן'),choice('רוצה לשנות','לא')];
  if(decisionKey==='creative_review'&&j.stage==='CREATIVE_REVIEW')return[choice('נכין תוכנית','כן'),choice('לשנות את המודעות','לא אהבתי את המודעה')];
- if(decisionKey==='welcome'&&j.stage==='IDLE')return[choice('קמפיין חדש','אני רוצה קמפיין'),choice('חיבור חשבון Meta','חבר חשבון מטא'),choice('בדיקת פרסום קיים','מצב חיבור חשבון מטא')];
+ if(decisionKey==='welcome'&&j.stage==='IDLE')return[choice('נפרסם מוצר או שירות','אני רוצה קמפיין'),choice('תוכן לסושיאל','תוכן לסושיאל'),choice('משהו אחר בראש','יש לי משהו אחר בראש')];
  return[];
 }
 function payload(body,items,nonce){
@@ -51,9 +55,10 @@ function payload(body,items,nonce){
 async function prepare(clientId,reply,decisionKey=null){
  let result={text:reply};
  await store.update(clientId,null,p=>{
+  reply=require('./personalConversation').decorate(p,reply,decisionKey);result.text=reply;
   const items=choices(p,decisionKey);
   // Long creative outputs remain ordinary messages; only clear decision points receive controls.
-  if(!items.length){if(p.ui){delete p.ui;return{handled:false,changed:true};}return{handled:false};}
+  if(!items.length){const changed=!!p.person||!!p.ui;if(p.ui)delete p.ui;return{handled:false,changed};}
   const nonce=crypto.randomBytes(12).toString('hex');
   const long=reply.length>1024;
   const interactivePayload=payload(long?'מה נרצה לעשות בשלב הבא?':reply,items,nonce);
