@@ -7,12 +7,8 @@ router.use((req,res,next)=>{
   res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'});
   next();
 });
-const wrap = fn => async(req,res)=>{try { await fn(req,res); } catch { res.status(400).json({error:'Meta connection failed. Request a new link in your authorized chat.'}); }};
-router.get('/connect', (req,res)=>{
-  const nonce = require('node:crypto').randomBytes(16).toString('base64');
-  res.set('Content-Security-Policy',`default-src 'none'; script-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'`);
-  res.type('html').send(`<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8"><title>חיבור Meta</title><h1>חיבור חשבון Meta לSCORPIO AI</h1><p>בחר את ההרשאות במסך הרשמי של Meta. יצירה או הפעלה של קמפיין ידרשו אישור נפרד שלך ב־WhatsApp.</p><button id="connect">המשך ל־Meta</button><script nonce="${nonce}">const invite=location.hash.slice(1);history.replaceState(null,'',location.pathname);document.getElementById('connect').onclick=async()=>{const r=await fetch('/auth/meta/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({invite})});const d=await r.json();if(r.ok)location.assign(d.url);else document.getElementById('connect').textContent='הקישור פג. בקש קישור חדש בצ׳אט.';};</script></html>`);
-});
+const wrap = fn => async(req,res)=>{try { await fn(req,res); } catch { if(req.method==='GET')require('./metaConnectPage').send(res.status(400),{state:'error'});else res.status(400).json({error:'Meta connection failed. Request a new link in your authorized chat.'}); }};
+router.get('/connect',(req,res)=>require('./metaConnectPage').send(res,{management:req.query.mode==='manage'}));
 router.post('/start',require('./rateLimit').middleware('meta-start',10),wrap(async(req,res)=>{
   if (req.headers.origin!==meta.config().origin) throw Error('INVALID_ORIGIN');
   const started = await meta.begin(req.body.invite);
@@ -27,7 +23,7 @@ router.get('/callback',require('./rateLimit').middleware('meta-callback',30),wra
     await require('./metaConversation').recordStatus(clientId,'OAUTH_CALLBACK_RECEIVED');
     const verified=await require('./metaConversation').verify(clientId);
     const connected=verified.status==='CONNECTED';
-    res.type('html').send('<html lang="he" dir="rtl"><meta charset="utf-8"><h1>'+(connected?'החשבון אומת וחובר':'ההרשאה נקלטה בשרת')+'</h1><p>אפשר לחזור לשיחה ולכתוב ״בדוק את חיבור Meta״ להמשך אימות ובחירת חשבון. לא בוצע פרסום.</p></html>');
-  }else res.type('html').send('<html lang="he" dir="rtl"><meta charset="utf-8"><h1>Meta חובר בהצלחה</h1><p>חזור לצ׳אט ושלח /meta-accounts לבחירת חשבון. לא בוצע פרסום.</p></html>');
+    require('./metaConnectPage').send(res,{state:'done',title:connected?'החשבון אומת וחובר':'ההרשאה התקבלה',description:connected?'אפשר לחזור ל־WhatsApp ולהמשיך עם החשבון שחיברתם.':'חזרו ל־WhatsApp ובחרו את חשבון הפרסום הרצוי. הקמפיין ימתין לאישור שלכם בשיחה.'});
+  }else require('./metaConnectPage').send(res,{state:'done'});
 }));
 module.exports = router;

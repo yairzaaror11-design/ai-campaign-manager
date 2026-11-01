@@ -56,7 +56,7 @@ async function createInvite(clientId,{management=false}={}) {
   const value = random();
   await db.query(`INSERT INTO meta_login_secrets(secret_hash,client_id,kind,generation,expires_at,app_id,binding_hash) SELECT $1,id,'INVITE',meta_generation,NOW()+INTERVAL '10 minutes',$3,$4 FROM clients WHERE id=$2`,[hash(value),clientId,process.env.META_APP_ID,management?'MANAGEMENT':null]);
   // Fragment keeps the bearer invite out of request URLs and proxy logs.
-  return config().origin + '/auth/meta/connect#' + value;
+  return config().origin + '/auth/meta/connect'+(management?'?mode=manage':'')+'#' + value;
 }
 async function consume(value, kind, binding = null) {
   if (!/^[A-Za-z0-9_-]{43}$/.test(String(value))) throw Error('INVALID_LOGIN');
