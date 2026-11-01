@@ -7,7 +7,7 @@ router.use((req,res,next)=>{
   res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'});
   next();
 });
-const wrap = fn => async(req,res)=>{try { await fn(req,res); } catch { if(req.method==='GET')require('./metaConnectPage').send(res.status(400),{state:'error'});else res.status(400).json({error:'Meta connection failed. Request a new link in your authorized chat.'}); }};
+const wrap = fn => async(req,res)=>{try { await fn(req,res); } catch(error) { if(req.method==='GET')require('./metaConnectPage').send(res.status(400),{state:'error',...(error.message==='ADS_MANAGEMENT_REQUIRED'?{title:'Meta לא העניקה הרשאת ניהול',description:'חזרו לשיחה עם SCORPIO לבדיקת ההרשאות. פרטי העסק והתוכנית נשמרו; אין צורך להתחיל מחדש.'}:{})});else res.status(400).json({error:'Meta connection failed. Request a new link in your authorized chat.'}); }};
 router.get('/connect',(req,res)=>require('./metaConnectPage').send(res,{management:req.query.mode==='manage'}));
 router.post('/start',require('./rateLimit').middleware('meta-start',10),wrap(async(req,res)=>{
   if (req.headers.origin!==meta.config().origin) throw Error('INVALID_ORIGIN');

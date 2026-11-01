@@ -84,7 +84,11 @@ function statusReply(v){
 }
 async function offer(clientId,eventId){
  const v=await verify(clientId);
- if(['CONNECTED','ACCOUNT_SELECTION_REQUIRED'].includes(v.status))return statusResult(v);
+ if(['CONNECTED','ACCOUNT_SELECTION_REQUIRED'].includes(v.status)&&(!meta.unifiedLogin()||v.permissions.includes('ads_management')))return statusResult(v);
+ if(meta.unifiedLogin()){
+  await recordStatus(clientId,'CONNECTION_OFFERED');
+  return invite(clientId,eventId);
+ }
  return store.update(clientId,eventId,p=>{
   p.connection=move(p.connection,'CONNECTION_OFFERED');
   return{handled:true,reply:'כדי לבדוק נתוני פרסום נחבר את החשבון דרך Meta, בלי לשלוח סיסמה בצ׳אט. לשלוח קישור אישי לחיבור?',decisionKey:'connection_offer',audit:'META_CONNECTION_OFFERED'};
@@ -98,7 +102,7 @@ async function invite(clientId,eventId){
   return{handled:true,reply:'הבקשה לקישור נקלטה. אם הקישור לא התקבל אפשר לבקש קישור חדש.',audit:'META_OAUTH_INVITE_REQUESTED'};
  });
  if(!claimed)return claim;
- try {return{handled:true,reply:'קישור אישי לחיבור Meta, תקף לעשר דקות. אין להעביר לאחרים:\n'+await meta.createInvite(clientId),historyReply:'נשלח קישור אישי לחיבור Meta. כתובת הקישור לא נשמרה בהיסטוריית השיחה.'};}
+ try {return{handled:true,reply:(meta.unifiedLogin()?'חיבור חד־פעמי ל־Meta: מאשרים יחד גישה לדוחות, לניהול מודעות ולעמודים הדרושים. לאחר החיבור ממשיכים כאן ב־WhatsApp.\n':'קישור אישי לחיבור Meta.\n')+'הקישור תקף לעשר דקות ואין להעבירו לאחרים:\n'+await meta.createInvite(clientId),historyReply:'נשלח קישור אישי לחיבור Meta. כתובת הקישור לא נשמרה בהיסטוריית השיחה.'};}
  catch(error){await recordStatus(clientId,'CONNECTION_FAILED',{lastError:safeError(error)});return{handled:true,reply:'לא הצלחתי ליצור קישור כרגע. אפשר להמשיך בטיוטה ולנסות חיבור בהמשך.'};}
 }
 async function handle(clientId,text,analysis,eventId){
@@ -133,7 +137,8 @@ async function handle(clientId,text,analysis,eventId){
  if(analysis.intent==='yes'&&p?.connection?.status==='CONNECTION_OFFERED')return invite(clientId,eventId);
  if(text==='/meta-connect'||/^(?:שלח|שלחי) (?:לי )?קישור (?:חדש )?(?:לחיבור|למטא|Meta)/i.test(n)){
   if(text==='/meta-connect'){
-    const v=await verify(clientId);if(['CONNECTED','ACCOUNT_SELECTION_REQUIRED'].includes(v.status))return statusResult(v);
+    const v=await verify(clientId);if(['CONNECTED','ACCOUNT_SELECTION_REQUIRED'].includes(v.status)&&(!meta.unifiedLogin()||v.permissions.includes('ads_management')))return statusResult(v);
+    if(meta.unifiedLogin()&&['CONNECTED','ACCOUNT_SELECTION_REQUIRED'].includes(v.status))await recordStatus(clientId,'CONNECTION_OFFERED');
   }
   if(p?.connection?.status==='AWAITING_OAUTH'&&/חדש/.test(n))await recordStatus(clientId,'CONNECTION_OFFERED');
   return invite(clientId,eventId);

@@ -50,7 +50,8 @@ async function graph(path, token, params = {}) {
     throw Error(code===190?'META_TOKEN_EXPIRED':[10,200].includes(code)?'META_PERMISSION_REQUIRED':'META_REQUEST_FAILED');
   }
 }
-async function createInvite(clientId,{management=false}={}) {
+function unifiedLogin(){return !!process.env.META_MANAGEMENT_LOGIN_CONFIG_ID;}
+async function createInvite(clientId,{management=unifiedLogin()}={}) {
   if(management&&!/^\d+$/.test(process.env.META_MANAGEMENT_LOGIN_CONFIG_ID||''))throw Error('MANAGEMENT_LOGIN_CONFIG_REQUIRED');
   config();
   const value = random();
@@ -87,12 +88,18 @@ async function callback(state, browser, code) {
   const user = await graph('/me',data.access_token,{fields:'id'});
   const permissions = await graph('/me/permissions',data.access_token);
   if (!permissions.data?.some(p=>p.permission==='ads_read' && p.status==='granted')) throw Error('ADS_READ_REQUIRED');
+  if(unifiedLogin()&&!permissions.data?.some(p=>p.permission==='ads_management'&&p.status==='granted'))throw Error('ADS_MANAGEMENT_REQUIRED');
+  const prior=(await db.query('SELECT meta_ad_account_id FROM clients WHERE id=$1',[clientId])).rows[0]?.meta_ad_account_id;
+  let selected=null;
+  if(/^act_\d+$/.test(prior||'')){
+    try{const account=await graph('/'+prior,data.access_token,{fields:'id,account_status'});if(account.id===prior&&account.account_status===1)selected=prior;}catch{/* Revoked account access must not be preserved. */}
+  }
   const encrypted = encrypt(data.access_token,clientId);
   await db.transaction(async tx => {
     const locked = await tx('SELECT meta_generation FROM clients WHERE id=$1 FOR UPDATE',[clientId]);
     if (String(locked.rows[0]?.meta_generation)!==String(generation)) throw Error('CONNECTION_REVOKED');
     await tx(`INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,expires_at,app_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT(client_id) DO UPDATE SET meta_user_id=$2,token_ciphertext=$3,expires_at=$4,app_id=$5`,[clientId,user.id,encrypted,new Date(Date.now()+data.expires_in*1000),process.env.META_APP_ID]);
-    await tx('UPDATE clients SET meta_ad_account_id=NULL,meta_user_id=$2,meta_generation=meta_generation+1 WHERE id=$1',[clientId,user.id]);
+    await tx('UPDATE clients SET meta_ad_account_id=$3,meta_user_id=$2,meta_generation=meta_generation+1 WHERE id=$1',[clientId,user.id,selected]);
   });
   return clientId;
   }catch(error){
@@ -102,7 +109,7 @@ async function callback(state, browser, code) {
         const profile=await require('./marketingStore').load(clientId);
         if(profile?.connection?.status!=='DISCONNECTED'){
           await require('./metaConversation').recordStatus(clientId,'VERIFYING_ACCESS');
-          await require('./metaConversation').recordStatus(clientId,error.message==='ADS_READ_REQUIRED'?'MISSING_PERMISSIONS':'CONNECTION_FAILED',{lastError:error.message==='ADS_READ_REQUIRED'?'ADS_READ_REQUIRED':'OAUTH_CALLBACK_FAILED',lastCheckAt:new Date().toISOString()});
+          await require('./metaConversation').recordStatus(clientId,['ADS_READ_REQUIRED','ADS_MANAGEMENT_REQUIRED'].includes(error.message)?'MISSING_PERMISSIONS':'CONNECTION_FAILED',{lastError:['ADS_READ_REQUIRED','ADS_MANAGEMENT_REQUIRED'].includes(error.message)?error.message:'OAUTH_CALLBACK_FAILED',lastCheckAt:new Date().toISOString()});
         }
       }catch{/* The original failed login remains failed even if diagnostic persistence fails. */}
     }
@@ -182,4 +189,4 @@ async function tenantRead(path,params) {
   }
   return graph(path,c.token,params);
 }
-module.exports = {hash,encrypt,decrypt,config,createInvite,begin,callback,consume,credentials,accounts,selectAccount,disconnect,tenantRead,context,graph,renew,rotateStoredKeys};
+module.exports = {unifiedLogin,hash,encrypt,decrypt,config,createInvite,begin,callback,consume,credentials,accounts,selectAccount,disconnect,tenantRead,context,graph,renew,rotateStoredKeys};
