@@ -50,25 +50,28 @@ async function graph(path, token, params = {}) {
     throw Error(code===190?'META_TOKEN_EXPIRED':[10,200].includes(code)?'META_PERMISSION_REQUIRED':'META_REQUEST_FAILED');
   }
 }
-async function createInvite(clientId) {
+async function createInvite(clientId,{management=false}={}) {
+  if(management&&!/^\d+$/.test(process.env.META_MANAGEMENT_LOGIN_CONFIG_ID||''))throw Error('MANAGEMENT_LOGIN_CONFIG_REQUIRED');
   config();
   const value = random();
-  await db.query(`INSERT INTO meta_login_secrets(secret_hash,client_id,kind,generation,expires_at,app_id) SELECT $1,id,'INVITE',meta_generation,NOW()+INTERVAL '10 minutes',$3 FROM clients WHERE id=$2`,[hash(value),clientId,process.env.META_APP_ID]);
+  await db.query(`INSERT INTO meta_login_secrets(secret_hash,client_id,kind,generation,expires_at,app_id,binding_hash) SELECT $1,id,'INVITE',meta_generation,NOW()+INTERVAL '10 minutes',$3,$4 FROM clients WHERE id=$2`,[hash(value),clientId,process.env.META_APP_ID,management?'MANAGEMENT':null]);
   // Fragment keeps the bearer invite out of request URLs and proxy logs.
   return config().origin + '/auth/meta/connect#' + value;
 }
 async function consume(value, kind, binding = null) {
   if (!/^[A-Za-z0-9_-]{43}$/.test(String(value))) throw Error('INVALID_LOGIN');
-  const result = await db.query(`DELETE FROM meta_login_secrets WHERE secret_hash=$1 AND kind=$2 AND app_id=$4 AND expires_at>NOW() AND ($3::text IS NULL OR binding_hash=$3) RETURNING client_id,generation`,[hash(value),kind,binding && hash(binding),process.env.META_APP_ID]);
+  const result = await db.query(`DELETE FROM meta_login_secrets WHERE secret_hash=$1 AND kind=$2 AND app_id=$4 AND expires_at>NOW() AND ($3::text IS NULL OR binding_hash=$3) RETURNING client_id,generation,binding_hash`,[hash(value),kind,binding && hash(binding),process.env.META_APP_ID]);
   if (!result.rows.length) throw Error('INVALID_LOGIN');
   return result.rows[0];
 }
 async function begin(invite) {
   const cfg = config();
-  const {client_id:clientId,generation} = await consume(invite,'INVITE');
+  const {client_id:clientId,generation,binding_hash:purpose} = await consume(invite,'INVITE');
+  const loginConfig=purpose==='MANAGEMENT'?process.env.META_MANAGEMENT_LOGIN_CONFIG_ID:process.env.META_LOGIN_CONFIG_ID;
+  if(!/^\d+$/.test(loginConfig||''))throw Error('META_LOGIN_CONFIG_REQUIRED');
   const state = random(), browser = random();
   await db.query(`INSERT INTO meta_login_secrets(secret_hash,client_id,kind,binding_hash,generation,expires_at,app_id) VALUES($1,$2,'STATE',$3,$4,NOW()+INTERVAL '10 minutes',$5)`,[hash(state),clientId,hash(browser),generation,process.env.META_APP_ID]);
-  const params = new URLSearchParams({client_id:process.env.META_APP_ID,redirect_uri:cfg.redirect,response_type:'code',state,config_id:process.env.META_LOGIN_CONFIG_ID});
+  const params = new URLSearchParams({client_id:process.env.META_APP_ID,redirect_uri:cfg.redirect,response_type:'code',state,config_id:loginConfig});
   return {url:'https://www.facebook.com/'+cfg.version+'/dialog/oauth?'+params,browser};
 }
 async function callback(state, browser, code) {

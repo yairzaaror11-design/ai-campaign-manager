@@ -27,11 +27,22 @@ async function consumeApproval(phone,code) {
   if(!/^\d{6}$/.test(code)) return {ok:false,reason:'NOT_FOUND'};
   const client=await getOrCreateClient(phone);
   if(!await require('./rateLimit').take('approval:'+client.id,8,600)) return {ok:false,reason:'RATE_LIMITED'};
-  return db.transaction(async tx=>{
+  return consumeForClient(client,policy.codeDigest(client.id,code),false);
+}
+async function consumeButtonApproval(phone,actionId){
+ const client=await getOrCreateClient(phone);
+ const ctx=require('./whatsappDelivery').messageContext.getStore();
+ if(ctx?.approvedActionId!==actionId||String(require('./metaConnection').context.getStore())!==String(client.id))return{ok:false,reason:'NOT_FOUND'};
+ delete ctx.approvedActionId;
+ if(!await require('./rateLimit').take('approval:'+client.id,8,600))return{ok:false,reason:'RATE_LIMITED'};
+ return consumeForClient(client,actionId,true);
+}
+async function consumeForClient(client,selector,byAction){
+ return db.transaction(async tx=>{
     const result=await tx(`SELECT a.*,p.payload,p.status AS plan_status,p.plan_hash AS stored_hash,p.account_id,p.connection_generation,
        c.meta_ad_account_id,c.meta_generation
        FROM approvals a JOIN action_plans p ON p.id=a.action_id AND p.client_id=a.client_id
-       JOIN clients c ON c.id=a.client_id WHERE a.client_id=$1 AND a.code=$2 FOR UPDATE OF a,p,c`,[client.id,policy.codeDigest(client.id,code)]);
+       JOIN clients c ON c.id=a.client_id WHERE a.client_id=$1 AND ${byAction?'a.action_id':'a.code'}=$2 FOR UPDATE OF a,p,c`,[client.id,selector]);
     const r=result.rows[0];
     if(!r) return {ok:false,reason:'NOT_FOUND'};
     if(r.status!=='PENDING'||r.used_at||r.plan_status!=='PROPOSED') return {ok:false,reason:'ALREADY_USED'};
@@ -48,4 +59,4 @@ async function cancelPendingApprovals(phone) {
  const client=await getOrCreateClient(phone);
  await db.query("UPDATE approvals SET status='CANCELLED' WHERE client_id=$1 AND status='PENDING'",[client.id]);
 }
-module.exports={createApproval,consumeApproval,cancelPendingApprovals};
+module.exports={createApproval,consumeApproval,consumeButtonApproval,cancelPendingApprovals};

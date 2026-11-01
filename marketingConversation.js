@@ -99,6 +99,15 @@ async function hydrateLegacy(clientId,p){
 }
 async function handleMarketingMessage(clientId,text,eventId,options={}) {
   if(!enabled()) return {handled:false};
+  const launchProfile=await store.load(clientId);
+  if(text==='חבר הרשאת יצירת קמפיינים')return require('./metaConversation').handle(clientId,text,{},eventId);
+  const startLaunch=/^(המשך ליצירת הקמפיין|צור את הקמפיין במטא|הכן ליצירה ב־Meta)$/.test(text)||launchProfile?.launch?.stage!=='SETUP'&&launchProfile?.journey?.stage==='PLAN_REVIEW'&&!launchProfile?.journey?.detour&&/^(כן|מאשר|מאשרת)$/.test(text);
+  if(startLaunch)return require('./campaignSetup').start(clientId);
+  if(launchProfile?.launch?.stage==='SETUP'&&!text.startsWith('/')&&!/^(לא עכשיו|עצור|קמפיין חדש|אני רוצה קמפיין)$/.test(text)){
+   const current=await require('./metaConnection').credentials(clientId);
+   if(current.meta_ad_account_id!==launchProfile.launch.accountId){await store.update(clientId,null,p=>{delete p.launch;return{handled:false,changed:true};});return{handled:true,reply:'חשבון הפרסום השתנה. לפני יצירה נוודא שהתוכנית מתאימה לעסק של החשבון החדש. אפשר לכתוב ״המשך ליצירת הקמפיין״ לבדיקת הפרטים.'};}
+   return{handled:false};
+  }
   const entry=await require('./businessEntry').handle(clientId,text,eventId,options);if(entry)return entry;
   for(let attempt=0;attempt<2;attempt++){
     const existing=await store.load(clientId);

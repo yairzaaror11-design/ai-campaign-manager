@@ -11,8 +11,10 @@ async function transport(to,payload) {
 }
 async function sendWhatsAppMessage(to,text,options={}) {
  const delivery=require('./whatsappDelivery');
- if(options.leadingText)await delivery.enqueue(to,delivery.textPayload(options.leadingText));
- return delivery.enqueue(to,options.interactivePayload||delivery.textPayload(text));
+ const enqueueText=async body=>{let result;for(let i=0;i<body.length;i+=3800)result=await delivery.enqueue(to,delivery.textPayload(body.slice(i,i+3800)));return result;};
+ if(options.leadingText)await enqueueText(options.leadingText);
+ if(options.interactivePayload)return delivery.enqueue(to,options.interactivePayload);
+ return enqueueText(String(text));
 }
 const safeSend=sendWhatsAppMessage;
 module.exports={transport,sendWhatsAppMessage,safeSend};

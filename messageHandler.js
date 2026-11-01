@@ -40,9 +40,9 @@ function approvalInstruction(approval) {
   ].join('\n');
 }
 
-async function handleApproval(from, code) {
+async function handleApproval(from, code,actionId=null) {
 
-  const consumed = await consumeApproval(from, code);
+  const consumed = actionId?await require('./approvalEngine').consumeButtonApproval(from,actionId):await consumeApproval(from, code);
 
   if (!consumed.ok) {
     const messages = {
@@ -55,7 +55,15 @@ async function handleApproval(from, code) {
   }
 
   const result = await executeApprovedAction(from, consumed.approval.actionPlan);
-  await safeSend(from, result.message || 'האישור נקלט, אך הפעולה לא בוצעה.');
+  if(result.ok&&consumed.approval.actionPlan.intent==='CREATE_BUNDLE'){
+    const o=result.writeResult.objects,client=await getOrCreateClient(from);
+    try{
+    const next=await createApproval(from,require('./actionPlan').createActionPlan({intent:'ACTIVATE_BUNDLE',summary:'הפעלת הקמפיין שנוצר ואומת במצב מושהה',target:{accountId:consumed.approval.actionPlan.target.accountId,campaignId:o.campaignId},parameters:{adsetIds:o.adsetIds,adIds:o.adIds}}));
+    const summary='הקמפיין נוצר ב־Meta ואומת במצב מושהה.\n\n'+formatActionPlan(next.actionPlan);
+    const ui=await require('./conversationUi').prepareApproval(client.id,next,summary);await safeSend(from,ui.text,ui);return;
+    }catch{await safeSend(from,'הקמפיין נוצר ואומת במצב מושהה. לא הופעל פרסום. הכנת אישור ההפעלה לא הושלמה; אפשר לבקש אותו מחדש לאחר בדיקת החיבור.');return;}
+  }
+  await safeSend(from,result.ok?'הפעולה בוצעה ואומתה מול Meta.':result.message||'הפעולה לא בוצעה.');
 }
 
 async function handleMedia(from, message) {
@@ -90,12 +98,14 @@ async function processNaturalLanguage(from, text, prefix = '') {
   const result = await processWithGemini(text, history, {marketingContext});
   let reply = prefix ? `${prefix}\n\n${result.text}` : result.text;
 
-  for (const plan of result.actionPlans || []) {
+  let buttonApproval=null;
+  for (const plan of (result.actionPlans || []).slice(0,1)) {
     if (plan.missing?.length) continue;
     let approval;
     try {approval = await createApproval(from, plan);}
     catch {reply+='\nההצעה לא קיבלה קוד אישור: נדרש חשבון מחובר וכל פרטי הפעולה, הקהל, המטבע והתאריכים. לא בוצע שינוי.';continue;}
     reply += `\n\n${formatActionPlan(approval.actionPlan)}${approvalInstruction(approval)}`;
+    buttonApproval=approval;
   }
 
   await appendMessages(from, [
@@ -103,7 +113,7 @@ async function processNaturalLanguage(from, text, prefix = '') {
     { role: 'assistant', content: reply }
   ]);
 
-  await safeSend(from, reply);
+  if(buttonApproval){const client=await getOrCreateClient(from);const ui=await require('./conversationUi').prepareApproval(client.id,buttonApproval,reply);await safeSend(from,ui.text,ui);}else await safeSend(from,reply);
 }
 
 async function handleVoice(from, message) {
@@ -162,6 +172,9 @@ async function handleTenantMessage(message, contact) {
 }
 
 async function routeText(from, text, prefix = '') {
+  if(text.startsWith('/approve-current ')){await handleApproval(from,null,text.slice(17));return;}
+  if(text==='בטל את הפעולה הממתינה'){await cancelPendingApprovals(from);await safeSend(from,'הפעולה הממתינה בוטלה. מה נרצה לשנות?');return;}
+
   if(require('./conversationControl').isReset(text)){
     await resetSession(from);
     await cancelPendingApprovals(from);

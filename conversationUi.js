@@ -3,16 +3,17 @@ const crypto=require('node:crypto'),store=require('./marketingStore');
 const FOOTER='אפשר גם לכתוב או לשלוח הודעה קולית';
 function context(p){return JSON.stringify([p.planId,p.journey?.stage,p.journey?.pendingField,p.journey?.revision,p.journey?.inputMode,p.journey?.detour,p.connection?.status,p.connection?.account?.id,p.connection?.accountPage,p.connection?.accountQuery,JSON.stringify((p.connection?.accounts||[]).map(a=>a.id)),p.connection?.pendingQuestion,p.mediaContext?.assetId,p.mediaBudgetQuestion?.amount,p.businessImport?.foundAt,p.businessEntry?.awaitingConfirmation,p.crmFocus?.id,p.crmFocus?.version,JSON.stringify(p.crmMenu||[])]);}
 const choice=(title,text,description)=>({title,text,...(description?{description}:{})});
-const DECISIONS=["crm_leads","crm_status","business_entry","business_import","plan_review","media_variant", "budget_period", "media_action", "has_ad_account", "connected", "connection_offer", "account_selection", "businessGoal", "dailyBudget", "leadDestination", "offerMediaSeparate", "strategy_review", "creative_review", "welcome"];
+const DECISIONS=["management_connect","crm_leads","crm_status","business_entry","business_import","plan_review","media_variant", "budget_period", "media_action", "has_ad_account", "connected", "connection_offer", "account_selection", "businessGoal", "dailyBudget", "leadDestination", "offerMediaSeparate", "strategy_review", "creative_review", "welcome"];
 function choices(p,decisionKey){
  if(decisionKey==null)return [];
  if(!DECISIONS.includes(decisionKey))throw Error('INVALID_DECISION_KEY');
  const j=p.journey||{},pending=j.pendingField,connection=p.connection;
  if(decisionKey==='crm_leads'&&p.crmMenu?.length)return p.crmMenu.map((x,i)=>choice(`${i+1}. ${x.name.slice(0,16)}`,`פתח פנייה ${i+1}`));
  if(decisionKey==='crm_status'&&p.crmFocus)return[choice('חדשה','סמן כפנייה חדשה'),choice('בטיפול','סמן פנייה בטיפול'),choice('נקבעה פגישה','סמן שנקבעה פגישה'),choice('נסגרה עסקה','סמן שנסגרה עסקה'),choice('לא הבשילה','סמן שהפנייה לא הבשילה')];
+ if(decisionKey==='management_connect')return[choice('חיבור הרשאת יצירה','חבר הרשאת יצירת קמפיינים'),choice('להמשיך בטיוטה','לא עכשיו')];
  if(decisionKey==='business_entry')return[choice('אין לי קישור','אין לי קישור')];
  if(decisionKey==='business_import'&&p.businessEntry?.awaitingConfirmation)return[choice('הפרטים נכונים','הפרטים נכונים'),choice('לתקן פרטים','לתקן פרטים')];
- if(decisionKey==='plan_review'&&j.stage==='PLAN_REVIEW')return[choice('תצוגה והרשמה','תצוגה מקדימה'),choice('חיבור חשבון Meta','חבר חשבון מטא'),choice('לשנות פרטים','לא')];
+ if(decisionKey==='plan_review'&&j.stage==='PLAN_REVIEW')return[choice('תצוגה והרשמה','תצוגה מקדימה'),choice('המשך ליצירה ב־Meta','המשך ליצירת הקמפיין'),choice('לשנות פרטים','לא')];
  if(decisionKey==='media_variant'&&p.mediaVariants?.length)return p.mediaVariants.map((_,i)=>choice(`גרסה ${i+1}`,`בחרתי גרסה ${i+1}`));
  if(decisionKey==='budget_period'&&p.mediaBudgetQuestion)return[choice('תקציב יומי','זה תקציב יומי'),choice('לכל הקמפיין','זה לכל הקמפיין'),choice('מחיר המוצר','זה מחיר המוצר')];
  if(decisionKey==='media_action'&&p.mediaContext)return[
@@ -69,16 +70,25 @@ async function consume(clientId,message){
   const [,nonce,index]=id.split(':');const ui=p.ui;
   if(!ui||ui.nonce!==nonce||ui.context!==context(p)||ui.expiresAt<Date.now())return{handled:false};
   const c=ui.choices[Number(index)];if(!c)return{handled:false};
-  selected=c.text;if(c.kind==='budget_custom')p.journey.inputMode='budget_custom';delete p.ui;
+  selected=c.text;if(c.kind==='action_approval'){const ctx=require('./whatsappDelivery').messageContext.getStore();if(!ctx)return{handled:false};ctx.approvedActionId=c.actionId;selected='/approve-current '+c.actionId;}if(c.kind==='budget_custom')p.journey.inputMode='budget_custom';delete p.ui;
   return{handled:false,changed:true};
  });return selected;
 }
 async function refresh(clientId){
  const p=await store.load(clientId);
  const key=p?.ui?.decisionKey;
+ if(key==='action_approval')return{text:'האישור הזה כבר לא עדכני. אפשר לבקש הצעה חדשה לפני ביצוע.'};
  const reply='הבחירה הזו כבר לא עדכנית. הנה האפשרויות המעודכנות; אפשר גם לענות בכתיבה.';
  if(key&&choices(p,key).length)return prepare(clientId,reply,key);
  return {text:reply+' כדי להציג את חשבונות הפרסום אפשר לכתוב ״החשבונות שלי״.'};
 }
-module.exports={choices,payload,prepare,consume,context,refresh};
+async function prepareApproval(clientId,approval,summary){
+ const nonce=crypto.randomBytes(12).toString('hex');
+ const creating=approval.actionPlan.intent==='CREATE_BUNDLE';
+ const activating=approval.actionPlan.intent==='ACTIVATE_BUNDLE';
+ const items=[{title:creating?'אישור יצירה מושהית':activating?'אישור הפעלה':'אישור השינוי',kind:'action_approval',actionId:approval.actionId,text:'אישור פעולה'},choice('ביטול','בטל את הפעולה הממתינה')];
+ await store.update(clientId,null,p=>{p.ui={nonce,decisionKey:'action_approval',context:context(p),choices:items,expiresAt:new Date(approval.expiresAt).getTime()};return{handled:false,changed:true};});
+ return{text:summary,leadingText:summary,interactivePayload:payload(creating?'לאשר יצירה במצב מושהה לפי הסיכום? אין הפעלה בשלב זה.':activating?'לאשר הפעלה לפי הסיכום? ההפעלה עשויה להתחיל הוצאה מתקציב הפרסום.':'לאשר את השינוי המדויק שבסיכום?',items,nonce)};
+}
+module.exports={choices,payload,prepare,prepareApproval,consume,context,refresh};
 
