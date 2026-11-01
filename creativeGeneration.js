@@ -20,7 +20,7 @@ async function enrich(p,result,{writer}={}){
  const feedbackPending=j.pendingField==='creativeFeedback'&&j.creativeFeedback&&j.creativeFeedback!==j.draft.copyFeedback;
  if(!['creative_review','plan_review'].includes(result.decisionKey)&&!feedbackPending)return result;
  if(j.draft.copySource==='ai_draft'&&j.draft.copyFeedback===(j.creativeFeedback||null)&&!feedbackPending)return result;
- const f=facts.all(p),base=require('./campaignJourney').buildDraft(p);
+ const f=require('./offerPolicy').copyFacts(p,'paid'),base=require('./campaignJourney').buildDraft(p);
  // The deterministic builder defines which offer is complete enough for a draft.
  if(f.offer&&!base.creatives.some(c=>c.body.includes(f.offer))){delete f.offer;delete f.offerScope;delete f.offerCommitment;delete f.offerMediaSeparate;}
  const requiredTerms=f.offer?[f.offer,f.offerScope,f.offerCommitment,f.offerMediaSeparate===true?'תקציב המדיה משולם בנפרד.':f.offerMediaSeparate===false?'תנאי מימון המדיה דורשים אישור לפני פרסום.':null].filter(Boolean):[];
@@ -28,6 +28,7 @@ async function enrich(p,result,{writer}={}){
  try{
   const output=writer?await writer(input):JSON.parse((await require('./aiService').processMessage(JSON.stringify(input),[],{planningOnly:true,creativeDraft:true})).text);
   const creatives=validate(output,JSON.stringify(f),requiredTerms);
+  require('./offerPolicy').validateCopy(creatives,JSON.stringify(f));
   if(feedbackPending)facts.correctionsInvalidate(p,['creative_feedback']);
   j.pendingField=null;
   j.draft={...j.draft,revision:j.revision,stale:false,creatives,copySource:'ai_draft',copyFeedback:j.creativeFeedback||null,requiresApproval:true};

@@ -18,7 +18,7 @@ async function read(clientId){
  return result;
 }
 async function start(clientId){
- const p=await require('./marketingStore').load(clientId),d=p?.journey?.draft;
+ const p=await require('./marketingStore').load(clientId);if(p)require('./offerPolicy').sanitize(p);const d=p?.journey?.draft;
  if(!d||d.stale)return{handled:true,reply:'נכין קודם מודעה ותוכנית מעודכנות, כדי שתוכל לראות ולאשר בדיוק מה ייווצר.'};
  const v=await require('./metaConversation').verify(clientId);
  if(!v.canRead)return{handled:true,reply:require('./metaConversation').statusReply(v),decisionKey:v.status==='ACCOUNT_SELECTION_REQUIRED'?'account_selection':null};

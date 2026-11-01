@@ -75,8 +75,20 @@ async function handleMedia(from, message) {
     const assetId=await require('./mediaStore').saveMedia(client.id,media);
     await require('./marketingStore').update(client.id,null,p=>{
       p.mediaContext={assetId,type:media.type,caption:media.caption.slice(0,2000),receivedAt:new Date().toISOString()};delete p.mediaVariants;
+      require('./conversationFacts').correctionsInvalidate(p,['media_asset']);
+      if(p.socialInput&&media.caption&&!require('./conversationControl').hasControlContamination(media.caption))p.contentBrief={...(p.contentBrief||{}),subject:media.caption.slice(0,1000),source:'user_media_caption'};
       return{handled:false,changed:true,audit:'MEDIA_RECEIVED'};
     });
+    const profile=await require('./marketingStore').load(client.id);
+    if(profile?.socialInput&&require('./marketingConversation').enabled()){
+      if(!require('./conversationFacts').value(profile,'product')&&!require('./conversationFacts').value(profile,'businessType')){
+        await require('./marketingStore').update(client.id,null,p=>{delete p.socialInput;require('./campaignJourney').init(p);p.journey.stage='DISCOVERY';p.journey.pendingField='product';p.journey.requestedOutput='social';return{handled:false,changed:true};});
+        await safeSend(from,'מה רואים בקובץ ומה חשוב לך להדגיש? אכין מזה טיוטת פוסט.');return;
+      }
+      const event=require('./whatsappDelivery').messageContext.getStore()?.eventId;
+      const draft=await require('./marketingConversation').handleMarketingMessage(client.id,'פוסט מהקובץ ששלחתי',event?event+':media-draft':null);
+      if(draft.handled){const next=await require('./conversationUi').prepare(client.id,draft.reply,draft.decisionKey);await safeSend(from,next.text,next);return;}
+    }
     const reply=`מה נעשה עם ה${kind}?`+(media.type==='image'?'\nהעלאה ל-Meta תדרוש אישור נפרד.':'');
     const ui=await require('./conversationUi').prepare(client.id,reply,'media_action');
     await safeSend(from,ui.text,ui);
@@ -238,7 +250,9 @@ async function routeText(from, text, prefix = '') {
     await require('./marketingStore').update(client.id,null,async p=>{
       const item=p.mediaVariants?.[Number(text.at(-1))-1];if(!item)return{handled:false};
       let asset;try{asset=await require('./mediaStore').loadMedia(client.id,item.id);}catch{selected='expired';delete p.mediaVariants;return{handled:false,changed:true};}
-      p.mediaContext={assetId:asset.id,type:'image',caption:'',receivedAt:new Date().toISOString()};delete p.mediaVariants;selected=true;
+      p.mediaContext={assetId:asset.id,type:'image',caption:'',receivedAt:new Date().toISOString()};delete p.mediaVariants;
+      require('./conversationFacts').correctionsInvalidate(p,['media_asset']);
+      if(p.socialInput&&media.caption&&!require('./conversationControl').hasControlContamination(media.caption))p.contentBrief={...(p.contentBrief||{}),subject:media.caption.slice(0,1000),source:'user_media_caption'};selected=true;
       return{handled:false,changed:true,audit:'MEDIA_SELECTED'};
     });
     if(selected==='expired'){await safeSend(from,'התמונה כבר לא זמינה. אפשר לשלוח אותה שוב?');return;}

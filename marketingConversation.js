@@ -103,9 +103,10 @@ async function handleMarketingMessage(clientId,text,eventId,options={}) {
   const personal=await require('./personalConversation').handle(clientId,text,eventId);if(personal)return personal;
   const launchProfile=await store.load(clientId);
   if(text==='חבר הרשאת יצירת קמפיינים')return require('./metaConversation').handle(clientId,text,{},eventId);
-  const startLaunch=/^(המשך ליצירת הקמפיין|צור את הקמפיין במטא|הכן ליצירה ב־Meta)$/.test(text)||launchProfile?.launch?.stage!=='SETUP'&&launchProfile?.journey?.stage==='PLAN_REVIEW'&&!launchProfile?.journey?.detour&&launchProfile?.journey?.requestedOutput!=='social'&&/^(כן|מאשר|מאשרת)$/.test(text);
+  const startLaunch=/^(המשך ליצירת הקמפיין|צור את הקמפיין במטא|הכן ליצירה ב־Meta)$/.test(text)||launchProfile?.launch?.stage!=='SETUP'&&launchProfile?.journey?.stage==='PLAN_REVIEW'&&!launchProfile?.journey?.detour&&!launchProfile?.offerReview&&launchProfile?.journey?.requestedOutput!=='social'&&/^(כן|מאשר|מאשרת)$/.test(text);
+  if(startLaunch&&launchProfile?.offerReview)return store.update(clientId,null,p=>require('./offerPolicy').review(p));
   if(startLaunch)return require('./campaignSetup').start(clientId);
-  if(launchProfile?.launch?.stage==='SETUP'&&launchProfile?.journey?.requestedOutput!=='social'&&!require('./socialContent').requested(text)&&!text.startsWith('/')&&!/^(לא עכשיו|עצור|קמפיין חדש|אני רוצה קמפיין)$/.test(text)){
+  if(launchProfile?.launch?.stage==='SETUP'&&!launchProfile?.offerReview&&!['reject','ambiguous'].includes(require('./contentIntent').classify(text).kind)&&!require('./contentIntent').classify(text).correction&&launchProfile?.journey?.requestedOutput!=='social'&&!require('./socialContent').requested(text)&&!text.startsWith('/')&&!/^(לא עכשיו|עצור|קמפיין חדש|אני רוצה קמפיין)$/.test(text)){
    const current=await require('./metaConnection').credentials(clientId);
    if(current.meta_ad_account_id!==launchProfile.launch.accountId){await store.update(clientId,null,p=>{delete p.launch;return{handled:false,changed:true};});return{handled:true,reply:'חשבון הפרסום השתנה. לפני יצירה נוודא שהתוכנית מתאימה לעסק של החשבון החדש. אפשר לכתוב ״המשך ליצירת הקמפיין״ לבדיקת הפרטים.'};}
    return{handled:false};
@@ -125,7 +126,7 @@ async function handleMarketingMessage(clientId,text,eventId,options={}) {
       catch{return{handled:true,reply:'לא הצלחתי לקרוא את הדוח כרגע. אין לי נתונים שאפשר לדווח עליהם בביטחון.'};}
     }
     const metaIntent=['connect','connection_status','select_account','disconnect','renew','knowledge'].includes(analysis.intent)||text.startsWith('/meta-')||/להתחיל לפרסם (?:בפייסבוק|במטא)/.test(text)||(['yes','no'].includes(analysis.intent)&&snapshot.connection?.pendingQuestion==='hasAdAccount')||(analysis.intent==='yes'&&snapshot.connection?.status==='CONNECTION_OFFERED')||(snapshot.connection?.status==='ACCOUNT_SELECTION_REQUIRED'&&/^\d+$/.test(text));
-    if(metaIntent){if(options.onSlow&&analysis.intent!=='knowledge')await options.onSlow();return require('./metaConversation').handle(clientId,text,analysis,eventId);}
+    if(metaIntent&&!((snapshot.offerReview||snapshot.socialInput)&&['yes','no'].includes(analysis.intent))){if(options.onSlow&&analysis.intent!=='knowledge')await options.onSlow();return require('./metaConversation').handle(clientId,text,analysis,eventId);}
     const candidate=structuredClone(snapshot);
     let prepared=transition(candidate,text,{analysis});
     prepared=await require('./creativeGeneration').enrich(candidate,prepared,{writer:options.creativeWriter});
@@ -137,6 +138,8 @@ async function handleMarketingMessage(clientId,text,eventId,options={}) {
     }
     try{const saved=await store.update(clientId,eventId,p=>{
       if((p.version||0)!==(existing?.version||0))throw Error('STALE_CONVERSATION_ANALYSIS');
+      // Persist removed transient questions as well as added fields.
+      for(const key of Object.keys(p))if(!Object.hasOwn(candidate,key))delete p[key];
       Object.assign(p,candidate);
       const result=prepared;
       if(result.handled)result.audit=p.journey?.stage||'DIAGNOSTIC';

@@ -4,7 +4,7 @@ const j=require('../campaignJourney'),facts=require('../conversationFacts'),cont
 function complete(){
  const p={planId:'repair',answers:{}};j.init(p);
  for(const [field,value]of Object.entries({businessName:'יאיר דיגיטל',businessType:'פרסום',businessGoal:'מכירות',product:'ניהול קמפיינים ב-Meta',audience:'בעלי עסקים',geography:'כל הארץ',advantage:'שירות אישי',dailyBudget:{amount:100,currency:'ILS',period:'day'},leadDestination:'WhatsApp',offer:'14 יום ניהול במתנה',offerMediaSeparate:true,offerScope:'ניהול קמפיינים',offerCommitment:'ללא התחייבות'}))facts.write(p,field,value);
- return p;
+ p.offerSelections={paid:{hash:require('../offerPolicy').fingerprint(p,'paid'),confirmedAt:Date.now()}};return p;
 }
 test('reset requests never become pending answers or extracted business facts',()=>{
  for(const text of ['תמחק את השיחה אני רוצה להתחיל מחדש','מחק את השיחה','נתחיל מחדש','אני רוצה להתחיל מחדש','/reset']){

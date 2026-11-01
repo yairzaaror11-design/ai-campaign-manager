@@ -54,12 +54,12 @@ test('the 14-day offer requires media, scope and commitment terms before being c
  const p=complete();transition(p,'תכין מודעה');let r=transition(p,'14 יום של ניהול קמפיין במתנה');assert.equal(p.journey.pendingField,'offerMediaSeparate');
  r=transition(p,'כן');assert.equal(p.journey.pendingField,'offerScope');
  r=transition(p,'ניהול קמפיין במטא במשך 14 יום');assert.equal(p.journey.pendingField,'offerCommitment');
- r=transition(p,'ללא התחייבות');assert.equal(p.journey.stage,'CREATIVE_REVIEW');assert.match(r.reply,/תקציב המדיה משולם בנפרד/);assert.match(r.reply,/ללא התחייבות/);assert.match(r.reply,/14 יום/);
+ r=transition(p,'ללא התחייבות');assert.equal(r.decisionKey,'offer_use');r=transition(p,'ההצעה בתוקף לתוכן הזה');assert.equal(p.journey.stage,'CREATIVE_REVIEW');assert.match(r.reply,/תקציב המדיה משולם בנפרד/);assert.match(r.reply,/ללא התחייבות/);assert.match(r.reply,/14 יום/);
 });
 test('unknown offer terms are kept unknown and the gift is excluded from publishable draft copy',()=>{
  const p=complete();facts.write(p,'offer','14 יום של ניהול קמפיין במתנה');
- transition(p,'תכין מודעה');transition(p,'לא יודע');transition(p,'לא יודע');transition(p,'לא יודע');
- assert.equal(p.journey.stage,'CREATIVE_REVIEW');assert.ok(p.journey.draft.missing.includes('תקציב מדיה נפרד מההטבה'));
+ transition(p,'תכין מודעה');transition(p,'תשתמש בהצעה');transition(p,'לא יודע');transition(p,'לא יודע');transition(p,'לא יודע');
+ assert.equal(p.journey.stage,'CREATIVE_REVIEW');assert.equal(facts.read(p,'offerMediaSeparate').status,'unknown');
  assert.ok(p.journey.draft.creatives.every(a=>!a.body.includes('במתנה')));
 });
 test('a correction updates only its field, preserves history and invalidates preceding review',()=>{

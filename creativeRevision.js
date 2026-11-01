@@ -10,7 +10,7 @@ function revise(p,text){
  }
  const old=j.draft;
  if(!old||old.stale){j.pendingField=null;return require('./campaignJourney').advance(p,{target:'ad'});}
- const f=facts.all(p),product=f.product||f.businessType||'השירות של העסק';
+ const f=require('./offerPolicy').filteredFacts(p,'paid'),product=f.product||f.businessType||'השירות של העסק';
  const base=require('./campaignJourney').buildDraft(p);
  const offer=base.creatives[0].body;
  const round=(j.creativeEditRevision||0)+1;
