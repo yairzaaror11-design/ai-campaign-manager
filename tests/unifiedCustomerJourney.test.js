@@ -7,7 +7,7 @@ test('paid journey renders actual ads and plan without strategy and creative che
 });
 test('social draft needs no media budget or Meta connection, and cannot claim publication',()=>{
  const p=store.emptyProfile();let r=journey.transition(p,'תוכן לסושיאל');assert.equal(p.journey.pendingField,'businessType');
- r=journey.transition(p,'חנות פרחים');assert.equal(r.decisionKey,'social_review');assert.equal(p.journey.pendingField,null);assert.equal(facts.value(p,'dailyBudget'),null);assert.equal(p.socialContent.items.length,2);assert.match(r.reply,/פוסט/);assert.match(r.reply,/סטורי/);assert.match(r.reply,/טיוטות/);assert.equal(p.socialContent.status,'DRAFT');
+ r=journey.transition(p,'חנות פרחים');assert.equal(r.decisionKey,'social_review');assert.equal(p.journey.pendingField,null);assert.equal(facts.value(p,'dailyBudget'),null);assert.equal(p.socialContent.items.length,2);assert.match(r.reply,/פוסט/);assert.doesNotMatch(r.reply,/טיוטה לסטורי/);assert.match(r.reply,/טיוטה/);assert.equal(p.socialContent.status,'DRAFT');
 });
 test('switching to social and back retains paid draft, business, pause and restored state',()=>{
  const p=ready();journey.transition(p,'אני רוצה קמפיין');const id=p.journey.draft.id,budget=facts.value(p,'dailyBudget');
@@ -17,7 +17,7 @@ test('switching to social and back retains paid draft, business, pause and resto
 });
 test('both channels are explicit and calendar remains a proposal',()=>{
  const p=ready();journey.transition(p,'לשלב את שניהם');assert.equal(p.journey.track,'BOTH');assert.equal(p.journey.stage,'PLAN_REVIEW');
- social.prepare(p);const r=social.calendar(p);assert.equal(p.socialContent.calendar.length,3);assert.match(r.reply,/לא נקבע פרסום אוטומטי/);assert.equal(p.socialContent.status,'DRAFT');
+ social.prepare(p);const r=social.calendar(p);assert.equal(p.socialContent.calendar.length,3);assert.match(r.reply,/לוח לתכנון/);assert.doesNotMatch(r.reply,/תוזמן|פורסם/);assert.equal(p.socialContent.status,'DRAFT');
 });
 test('targeted business refinement does not force a long intake or reuse stale content',()=>{
  const p=ready();journey.transition(p,'אני רוצה קמפיין');social.prepare(p);
@@ -66,4 +66,16 @@ test('personal opening offers three customer tasks before asking for business de
   const p=await store.load(client.id);facts.write(p,'product','זרי פרחים');social.prepare(p);await social.sync(client.id,p.socialContent);await social.sync(client.id,p.socialContent);
   const drafts=await require('../workspaceService').list(client.id,'content');assert.equal(drafts.items.length,2);assert.ok(drafts.items.every(x=>x.payload.status==='DRAFT'));
  }finally{for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);await h.close();}
+});
+test('social preview shows one item, preserves offer terms and follows a story choice',()=>{
+ const p=ready();facts.write(p,'offer','התאמה אישית ללא תוספת');const r=social.prepare(p);
+ assert.match(r.reply,/טיוטה לפוסט/);assert.doesNotMatch(r.reply,/טיוטה לסטורי|כיוון חזותי|חיבור פרסום/);assert.match(r.reply,/התאמה אישית ללא תוספת/);
+ const story=journey.transition(p,'תראה את הסטורי');assert.match(story.reply,/טיוטה לסטורי/);assert.match(story.reply,/התאמה אישית ללא תוספת/);
+ assert.equal(p.socialContent.status,'DRAFT');assert.equal(p.journey.planApproved,false);
+});
+test('negative or ambiguous social requests never generate unwanted content',()=>{
+ const p=ready();assert.equal(social.requested('אני לא רוצה תוכן לסושיאל כרגע'),false);
+ const no=journey.transition(p,'אני לא רוצה תוכן לסושיאל כרגע');assert.match(no.reply,/נשאיר את התוכן/);assert.equal(p.socialContent,undefined);
+ const unclear=journey.transition(p,'לא אני רוצה תוכן לסושיאל כרגע');assert.equal(unclear.decisionKey,'social_intent');assert.equal(p.socialContent,undefined);
+ const positive=journey.transition(p,'לא, אני רוצה תוכן לסושיאל כרגע');assert.equal(positive.decisionKey,'social_review');assert.equal(p.socialContent.status,'DRAFT');
 });

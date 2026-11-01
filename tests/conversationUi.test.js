@@ -30,7 +30,7 @@ test('buttons are tenant-bound, context-bound, single-use and pass through the e
   voice.transcribeVoiceMessage=originalVoice;
   const message=(from,id,extra)=>({from,id,timestamp:String(Math.floor(Date.now()/1000)),...extra});
   await handler(message('972501006111','greet',{type:'audio',audio:{id:'mock-audio'}}));
-  assert.match(outputs.at(-1).text,/שמעתי/);
+  assert.doesNotMatch(outputs.at(-1).text,/שמעתי:/);assert.match(outputs.at(-1).text,/מה נרצה לעשות היום/);
   assert.equal(outputs.at(-1).options.interactivePayload.interactive.type,'button');
   const first=outputs.at(-1).options.interactivePayload.interactive.action.buttons[0].reply.id;
   const click=id=>({type:'interactive',interactive:{type:'button_reply',button_reply:{id,title:'אשר 123456'}}});

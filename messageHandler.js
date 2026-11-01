@@ -97,6 +97,11 @@ async function processNaturalLanguage(from, text, prefix = '') {
   }
   const result = await processWithGemini(text, history, {marketingContext});
   let reply = prefix ? `${prefix}\n\n${result.text}` : result.text;
+  if(configured()&&!(result.actionPlans||[]).length){
+    const client=await getOrCreateClient(from);
+    const personalized=await require('./marketingStore').update(client.id,null,p=>({handled:false,changed:!!p.person,reply:require('./personalConversation').decorate(p,reply,null)}));
+    reply=personalized.reply;
+  }
 
   let buttonApproval=null;
   for (const plan of (result.actionPlans || []).slice(0,1)) {
@@ -120,7 +125,7 @@ async function handleVoice(from, message) {
 
   try {
     const transcript = await transcribeVoiceMessage(message);
-    await routeText(from, transcript, `שמעתי: "${transcript}"`);
+    await routeText(from, transcript);
   } catch (error) {
     logger.error('Voice handling failed', { errorType: error?.name || 'Error' });
     await safeSend(

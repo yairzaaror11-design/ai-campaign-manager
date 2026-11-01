@@ -3,13 +3,15 @@
 const crypto=require('node:crypto'),facts=require('./conversationFacts');
 function requested(text){
  const n=String(text).trim();
+ if(/לא\s+(?:רוצה|רוצים|צריך|צריכה)\s+(?:כרגע\s+)?(?:תוכן|פוסט|סטורי)/.test(n))return false;
  if(/^(?:תוכן לסושיאל|נעבור לסושיאל|סושיאל|להכין תוכן לסושיאל)$/.test(n))return true;
  return /(?:תכין|תכיני|כתוב|כתבי|הכן|רוצה|צריך|צריכה).*(?:פוסט|סטורי|תוכן לסושיאל|לוח תוכן)|^(?:פוסט|סטורי) מהקובץ ששלחתי$/.test(n);
 }
 function combined(text){return /^(?:לשלב את שניהם|גם סושיאל וגם פניות|גם תוכן וגם קמפיין)$/.test(String(text).trim());}
 function render(p){
  const s=p.socialContent;
- return 'הכנתי תוכן לבדיקה:\n\n'+s.items.map((x,i)=>`${i+1}. ${x.format==='STORY'?'סטורי':'פוסט'}\n${x.headline}\n${x.body}\n${x.cta}\nכיוון חזותי: ${x.visual}`).join('\n\n')+'\n\nאפשר לשנות את הנוסח או להכין גרפיקה. לפרסום אוטומטי נדרש חיבור פרסום לסושיאל; כרגע אלה טיוטות מוכנות לעריכה.';
+ const item=s.items[s.focus===1?1:0];
+ return `טיוטה ל${item.format==='STORY'?'סטורי':'פוסט'}:\n\n${item.headline}\n${item.body}\n${item.cta}\n\nלהכין גרפיקה או לשנות את הנוסח?`;
 }
 function prepare(p,{feedback=null}={}){
  const f=facts.all(p),product=f.product||f.businessType;
@@ -26,9 +28,13 @@ function prepare(p,{feedback=null}={}){
 function calendar(p){
  if(!p.socialContent||p.socialContent.stale)return prepare(p);
  p.socialContent.calendar=[{day:1,item:0},{day:3,item:1},{day:5,item:0,task:'צילום או זווית נוספת לפני שימוש חוזר'}];
- return{handled:true,reply:'לוח תוכן מוצע לשבוע:\nיום 1 — פוסט היכרות עם השירות.\nיום 3 — סטורי שמזמין לפנייה.\nיום 5 — זווית נוספת עם צילום או נוסח חדש.\n\nזו הצעה לתכנון; לא נקבע פרסום אוטומטי. אפשר לשנות ימים או נוסח.',decisionKey:'social_review'};
+ return{handled:true,reply:'לשבוע הקרוב אני מציע:\nיום 1 — פוסט על השירות.\nיום 3 — סטורי שמזמין לפנייה.\nיום 5 — צילום או זווית חדשה.\n\nזה לוח לתכנון. נכין את הפוסט הראשון?',decisionKey:'social_review'};
 }
 function handle(p,text,analysis){
+ if(/לא\s+רוצה\s+(?:כרגע\s+)?(?:תוכן|פוסט|סטורי)/.test(text)){p.journey.requestedOutput=null;return{handled:true,reply:'בסדר, נשאיר את התוכן לסושיאל כרגע. מה בא לך לעשות במקום?',decisionKey:'journey_route'};}
+ if(/^לא\s+אני\s+רוצה\s+(?:כרגע\s+)?תוכן\s+לסושיאל/.test(text))return{handled:true,reply:'רק לוודא שהבנתי: להכין תוכן לסושיאל עכשיו, או לעבור למודעה שמביאה פניות?',decisionKey:'social_intent'};
+ if(/^(?:תראה|תראי|הצג|הציגי) (?:את ה)?סטורי$/.test(text)&&p.socialContent&&!p.socialContent.stale){p.socialContent.focus=1;return{handled:true,reply:render(p),decisionKey:'social_review'};}
+ if(text==='תראה את הפוסט'&&p.socialContent&&!p.socialContent.stale){p.socialContent.focus=0;return{handled:true,reply:render(p),decisionKey:'social_review'};}
  if(requested(text))return prepare(p);
  if(text==='לוח תוכן לשבוע')return calendar(p);
  if(text==='שינוי נוסח לסושיאל'&&p.socialContent){p.journey.socialFeedbackPending=true;return{handled:true,reply:'מה לשנות בתוכן? אפשר לבקש קצר יותר, סגנון אישי או לכתוב הנחיה משלך.'};}
@@ -44,7 +50,7 @@ async function enrich(p,result,{writer}={}){
  if(f.offer&&!base.creatives.some(c=>c.body.includes(f.offer))){delete f.offer;delete f.offerScope;delete f.offerCommitment;delete f.offerMediaSeparate;}
  const requiredTerms=f.offer?[f.offer,f.offerScope,f.offerCommitment,f.offerMediaSeparate===true?'תקציב המדיה משולם בנפרד.':null].filter(Boolean):[];
  try{
-  const input={facts:f,requiredTerms,feedback:s.feedback,formats:['POST','STORY'],instruction:'Prepare one organic social post and one short story. No paid-media budget is needed. No external publication occurs.'};
+  const input={facts:f,requiredTerms,feedback:s.feedback,formats:['POST','STORY'],instruction:'Prepare one concise organic social post and one short story. Aim for 35 words per body, plus all required offer terms verbatim. Focus on one concrete angle per item. No paid-media budget is needed. No external publication occurs.'};
   const output=writer?await writer(input):JSON.parse((await require('./aiService').processMessage(JSON.stringify(input),[],{planningOnly:true,creativeDraft:true})).text);
   const creatives=require('./creativeGeneration').validate(output,JSON.stringify(f),requiredTerms);
   s.items=s.items.map((item,i)=>({...item,...creatives[i]}));s.copySource='ai_draft';
