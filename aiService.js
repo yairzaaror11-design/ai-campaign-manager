@@ -5,8 +5,8 @@ function registerProvider(name,provider) {
  providers.set(name,provider);
 }
 async function processMessage(text,history=[],options={}) {
- if(typeof text!=='string'||!text.trim()||text.length>12000) throw Error('INVALID_AI_INPUT');
- const name=process.env.AI_PROVIDER || 'gemini';
+ if(typeof text!=='string'||!text.trim()||text.length>(options.taskPlanning&&options.planningOnly?60000:12000)) throw Error('INVALID_AI_INPUT');
+ const name=options.provider||process.env.AI_PROVIDER||'gemini';
  const provider=providers.get(name) || (name==='gemini'?require('./gemini').processWithGemini:name==='claude'?require('./claude').processWithClaude:null);
  if(!provider) throw Error('AI_PROVIDER_UNSUPPORTED');
  const response=await provider(text,history,options);

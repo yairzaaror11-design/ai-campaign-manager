@@ -2,6 +2,13 @@
 const meta=require('./metaConnection');
 async function verifyAction(plan,written) {
  const id=written.id || plan.target.campaignId;
+ if(plan.intent==='CREATE_LEAD_FORM'){
+  if(!/^\d+$/.test(String(id)))return{verified:false};
+  const {form}=await require('./metaLeadForms').inspect(meta.context.getStore(),plan.parameters.pageId,String(id));
+  const p=plan.parameters,questions=form.questions?.data||form.questions;
+  const matching=Array.isArray(questions)&&questions.length===p.questions.length&&p.questions.every((q,i)=>q.type===questions[i].type&&(q.type!=='CUSTOM'||q.key===questions[i].key&&q.label===questions[i].label));
+  return{verified:!!(['ACTIVE','DRAFT'].includes(form.status)&&form.name===p.name&&form.locale===p.locale&&form.privacy_policy_url===p.privacyPolicyUrl&&matching)};
+ }
  if(['CREATE_BUNDLE','ACTIVATE_BUNDLE'].includes(plan.intent)) {
    const objects=written.objects;
    if(!objects) return {verified:false};
@@ -13,7 +20,8 @@ async function verifyAction(plan,written) {
    if(plan.intent==='CREATE_BUNDLE') {
      const campaign=await meta.graph('/'+objects.campaignId,c.token,{fields:'id,name,objective'});
      if(campaign.name!==plan.parameters.name||campaign.objective!==plan.parameters.objective) return {verified:false};
-     const creative=await meta.graph('/'+objects.creativeId,c.token,{fields:'id,account_id'});
+     const creative=await meta.graph('/'+objects.creativeId,c.token,{fields:'id,account_id,object_story_spec'});
+     if(plan.parameters.formId&&creative.object_story_spec?.link_data?.call_to_action?.value?.lead_gen_form_id!==plan.parameters.formId)return{verified:false};
      if('act_'+creative.account_id!==plan.target.accountId) return {verified:false};
      for(let i=0;i<objects.adsetIds.length;i++) {
        const set=await meta.graph('/'+objects.adsetIds[i],c.token,{fields:'campaign_id,daily_budget'});
@@ -31,7 +39,7 @@ async function verifyAction(plan,written) {
  }
  if(!/^\d+$/.test(String(id))) return {verified:false};
  const c=await meta.credentials(meta.context.getStore());
- const fields=plan.intent==='CREATE_CREATIVE'?'id,account_id,name':plan.intent==='CREATE_AD'?'id,account_id,status,name,adset_id,creative':plan.intent==='CREATE_ADSET'?'id,account_id,status,name,campaign_id,daily_budget':'id,account_id,status,name,daily_budget,objective';
+ const fields=plan.intent==='CREATE_CREATIVE'?'id,account_id,name,object_story_spec':plan.intent==='CREATE_AD'?'id,account_id,status,name,adset_id,creative':plan.intent==='CREATE_ADSET'?'id,account_id,status,name,campaign_id,daily_budget':'id,account_id,status,name,daily_budget,objective';
  const object=await meta.graph('/'+id,c.token,{fields});
  let valid=String(object.id)===String(id)&&'act_'+object.account_id===plan.target.accountId;
  if(['CREATE_CAMPAIGN','CREATE_ADSET','CREATE_AD','PAUSE_CAMPAIGN'].includes(plan.intent)) valid=valid&&object.status==='PAUSED';
@@ -40,6 +48,7 @@ async function verifyAction(plan,written) {
  if(plan.intent==='CREATE_ADSET') valid=valid&&String(object.campaign_id)===plan.parameters.campaignId;
  if(plan.intent==='CREATE_AD') valid=valid&&String(object.adset_id)===plan.parameters.adsetId&&String(object.creative?.id)===plan.parameters.creativeId;
  if(['CHANGE_BUDGET','CREATE_ADSET'].includes(plan.intent)) valid=valid&&String(object.daily_budget)===String(plan.parameters.dailyBudgetMinor);
+ if(plan.intent==='CREATE_CREATIVE'&&plan.parameters.formId)valid=valid&&object.object_story_spec?.link_data?.call_to_action?.value?.lead_gen_form_id===plan.parameters.formId;
  if(plan.parameters.name) valid=valid&&object.name===plan.parameters.name;
  return {verified:!!valid,object};
 }

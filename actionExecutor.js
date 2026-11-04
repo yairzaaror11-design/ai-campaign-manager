@@ -3,13 +3,14 @@ const db=require('./db');
 const policy=require('./approvalPolicy');
 const meta=require('./metaConnection');
 const write=require('./metaWrite');
-const handlers={CREATE_BUNDLE:write.createBundle,ACTIVATE_BUNDLE:write.activateBundle,UPLOAD_IMAGE:write.uploadImage,CREATE_CAMPAIGN:write.createCampaign,CREATE_ADSET:write.createAdSet,CREATE_CREATIVE:write.createCreative,CREATE_AD:write.createAd,CHANGE_BUDGET:write.changeBudget,PAUSE_CAMPAIGN:write.pauseCampaign,RESUME_CAMPAIGN:write.resumeCampaign,EDIT_CAMPAIGN:write.editCampaign};
-async function executeApprovedAction(phone,plan) {
+const handlers={CREATE_LEAD_FORM:write.createLeadForm,CREATE_BUNDLE:write.createBundle,ACTIVATE_BUNDLE:write.activateBundle,UPLOAD_IMAGE:write.uploadImage,CREATE_CAMPAIGN:write.createCampaign,CREATE_ADSET:write.createAdSet,CREATE_CREATIVE:write.createCreative,CREATE_AD:write.createAd,CHANGE_BUDGET:write.changeBudget,PAUSE_CAMPAIGN:write.pauseCampaign,RESUME_CAMPAIGN:write.resumeCampaign,EDIT_CAMPAIGN:write.editCampaign};
+async function executeApprovedAction(phone,plan){if(process.env.READ_ONLY!=='false'||process.env.META_WRITES_ENABLED!=='true')return executeApprovedForClient(null,plan);const client=await require('./clientStore').getOrCreateClient(phone);return executeApprovedForClient(client.id,plan);}
+async function executeApprovedForClient(clientId,plan) {
   let claimedFor=null;
   if(process.env.READ_ONLY!=='false'||process.env.META_WRITES_ENABLED!=='true') return {ok:false,blocked:true,reason:'READ_ONLY',message:'האישור נקלט, אך כתיבה ל־Meta נעולה. לא בוצע שינוי.'};
   try {
     policy.strictPlan(plan);
-    const client=await require('./clientStore').getOrCreateClient(phone);
+    const client=(await db.query('SELECT id FROM clients WHERE id=$1',[clientId])).rows[0];if(!client)throw Error('CLIENT_NOT_FOUND');
     if(String(meta.context.getStore())!==String(client.id)||String(plan.tenantId)!==String(client.id)) throw Error('TENANT_CONTEXT_REQUIRED');
     // Commit the claim before external effects. Never retry an interrupted/uncertain write.
     const claimed=await db.query(`INSERT INTO meta_execution_attempts(action_id,client_id,status)
@@ -44,4 +45,4 @@ async function executeApprovedAction(phone,plan) {
     return {ok:false,blocked:true,reason:'APPROVAL_REJECTED',message:'הפעולה נחסמה. נדרש אישור חדש התואם לחשבון ולתוכנית.'};
   }
 }
-module.exports={executeApprovedAction};
+module.exports={executeApprovedAction,executeApprovedForClient};

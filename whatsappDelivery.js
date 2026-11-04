@@ -17,6 +17,7 @@ async function enqueue(to,payload) {
  if(!tenant||!context) throw Error('OUTBOUND_CONTEXT_REQUIRED');
  const client=await db.query('SELECT phone FROM clients WHERE id=$1',[tenant]);
  if(client.rows[0]?.phone!==to) throw Error('OUTBOUND_TENANT_MISMATCH');
+ if(!context.humanSupportNotice&&(await require('./humanSupport').current(tenant))?.bot_paused)throw Error('HUMAN_SUPPORT_PAUSED');
  const key=hash(context.eventId+':'+context.sequence++);
  const inserted=await db.query(`INSERT INTO whatsapp_outbox(id,client_id,dedupe_key,recipient,payload) VALUES($1,$2,$3,$4,$5::jsonb)
    ON CONFLICT(dedupe_key) DO NOTHING RETURNING id`,[crypto.randomUUID(),tenant,key,to,JSON.stringify(payload)]);

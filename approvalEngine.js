@@ -3,10 +3,11 @@ const crypto=require('node:crypto');
 const db=require('./db');
 const {getOrCreateClient}=require('./clientStore');
 const policy=require('./approvalPolicy');
-async function createApproval(phone,input) {
+async function createApproval(phone,input){if(!db.configured())throw Error('DATABASE_REQUIRED_FOR_APPROVALS');if(!input?.requiresApproval||input.missing?.length)throw Error('INCOMPLETE_ACTION');const client=await getOrCreateClient(phone);return createApprovalForClient(client.id,input);}
+async function createApprovalForClient(clientId,input) {
   if(!db.configured()) throw Error('DATABASE_REQUIRED_FOR_APPROVALS');
   if(!input?.requiresApproval || input.missing?.length) throw Error('INCOMPLETE_ACTION');
-  const client=await getOrCreateClient(phone);
+  const client=(await db.query('SELECT id,phone FROM clients WHERE id=$1',[clientId])).rows[0];if(!client)throw Error('CLIENT_NOT_FOUND');
   const plan=await policy.preparePlan(client.id,input);
   const hash=policy.planHash(plan);
   const code=String(crypto.randomInt(100000,1000000));
@@ -14,6 +15,7 @@ async function createApproval(phone,input) {
   const expiresAt=new Date(Date.now()+minutes*60000);
   await db.transaction(async tx=>{
     await tx('SELECT id FROM clients WHERE id=$1 FOR UPDATE',[client.id]);
+    if(plan.taskId){const task=(await tx('SELECT * FROM agent_tasks WHERE id=$1 AND client_id=$2',[plan.taskId,client.id])).rows[0];if(!task||task.status!=='RUNNING'||task.lease_token!==plan.taskCreationLease||new Date(task.lease_until)<=new Date()||!task.state.steps.some(s=>s.id===plan.taskStepId&&s.status==='RUNNING'))throw Error('TASK_NOT_ACTIVE');}
     await tx("UPDATE approvals SET status='SUPERSEDED' WHERE client_id=$1 AND status='PENDING'",[client.id]);
     const saved=await tx(`INSERT INTO action_plans(id,client_id,intent,payload,status,plan_hash,account_id,connection_generation)
       VALUES($1,$2,$3,$4::jsonb,'PROPOSED',$5,$6,$7) ON CONFLICT DO NOTHING RETURNING id`,[plan.id,client.id,plan.intent,JSON.stringify(plan),hash,plan.target.accountId,plan.connectionGeneration]);
@@ -29,6 +31,7 @@ async function consumeApproval(phone,code) {
   if(!await require('./rateLimit').take('approval:'+client.id,8,600)) return {ok:false,reason:'RATE_LIMITED'};
   return consumeForClient(client,policy.codeDigest(client.id,code),false);
 }
+async function consumeApprovalForClient(clientId,code){if(!/^\d{6}$/.test(code))return{ok:false,reason:'NOT_FOUND'};const client=(await db.query('SELECT id,phone FROM clients WHERE id=$1',[clientId])).rows[0];if(!client)return{ok:false,reason:'NOT_FOUND'};if(!await require('./rateLimit').take('approval:'+client.id,8,600))return{ok:false,reason:'RATE_LIMITED'};return consumeForClient(client,policy.codeDigest(client.id,code),false);}
 async function consumeButtonApproval(phone,actionId){
  const client=await getOrCreateClient(phone);
  const ctx=require('./whatsappDelivery').messageContext.getStore();
@@ -59,4 +62,4 @@ async function cancelPendingApprovals(phone) {
  const client=await getOrCreateClient(phone);
  await db.query("UPDATE approvals SET status='CANCELLED' WHERE client_id=$1 AND status='PENDING'",[client.id]);
 }
-module.exports={createApproval,consumeApproval,consumeButtonApproval,cancelPendingApprovals};
+module.exports={createApproval,createApprovalForClient,consumeApproval,consumeApprovalForClient,consumeButtonApproval,cancelPendingApprovals};

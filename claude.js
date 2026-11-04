@@ -8,7 +8,7 @@ function lowerSchema(value) {
 }
 async function processWithClaude(text,history=[],options={}) {
  if(!process.env.ANTHROPIC_API_KEY&&!options.client) throw Error('ANTHROPIC_API_KEY_REQUIRED');
- if(!process.env.CLAUDE_MODEL) throw Error('CLAUDE_MODEL_REQUIRED');
+ if(!options.model&&!process.env.CLAUDE_MODEL) throw Error('CLAUDE_MODEL_REQUIRED');
  const client=options.client || {create:async body=>{
    try {return (await axios.post('https://api.anthropic.com/v1/messages',body,{headers:{'x-api-key':process.env.ANTHROPIC_API_KEY,'anthropic-version':'2023-06-01'},timeout:30000,maxRedirects:0})).data;}
    catch {throw Error('AI_REQUEST_FAILED');}
@@ -16,7 +16,7 @@ async function processWithClaude(text,history=[],options={}) {
  const messages=[...history.slice(-12).map(m=>({role:m.role==='assistant'?'assistant':'user',content:String(m.content).slice(0,12000)})),{role:'user',content:text}];
  const plans=[];
  for(let round=0;round<6;round++) {
-   const response=await client.create({model:process.env.CLAUDE_MODEL,max_tokens:2048,system:require('./marketingPrompt').withMarketingContext(gemini.SYSTEM+(options.creativeDraft?'\n'+require('./creativeGeneration').SYSTEM:'')+(options.planningOnly?'\nPlanning conversation only. No tools or actions are available. Use supplied dashboard context to answer, explain and suggest; never claim to save, publish, send, book, delete or execute.':''),options.marketingContext),messages,
+   const response=await client.create({model:options.model||process.env.CLAUDE_MODEL,max_tokens:options.taskPlanning?4096:2048,system:options.taskPlanning?require('./taskPlanner').SYSTEM:require('./marketingPrompt').withMarketingContext(gemini.SYSTEM+(options.creativeDraft?'\n'+require('./creativeGeneration').SYSTEM:'')+(options.planningOnly?'\nPlanning conversation only. No tools or actions are available. Use supplied dashboard context to answer, explain and suggest; never claim to save, publish, send, book, delete or execute.':''),options.marketingContext),messages,
      ...(options.planningOnly?{}:{tools:gemini.functionDeclarations.map(f=>({name:f.name,description:f.description,input_schema:lowerSchema(f.parameters)}))})});
    const calls=(response.content || []).filter(p=>p.type==='tool_use');
    if(options.planningOnly&&calls.length)throw Error('PLANNING_TOOL_CALL_REJECTED');

@@ -35,3 +35,12 @@ test('Hebrew and explicit graphic requests route without turning campaign reques
  assert.equal(graphics.graphicPrompt('/graphic blue square banner'),'blue square banner');
  assert.equal(graphics.graphicPrompt('בנה קמפיין לידים'),null);
 });
+test('brand reference sets are bounded and preserve every supplied logo and photograph',()=>{
+ const logo={buffer:Buffer.alloc(20),mimeType:'image/png'},photo={buffer:Buffer.alloc(30),mimeType:'image/jpeg'};
+ assert.deepEqual(graphics.references({referenceImages:[logo,photo]}),[logo,photo]);
+ assert.deepEqual(graphics.references({referenceImage:logo}),[logo]);
+ assert.throws(()=>graphics.references({referenceImage:logo,referenceImages:[photo]}),/AMBIGUOUS/);
+ assert.throws(()=>graphics.references({referenceImages:Array(5).fill(logo)}),/INVALID_REFERENCE_IMAGES/);
+ assert.throws(()=>graphics.references({referenceImages:[{buffer:Buffer.alloc(1),mimeType:'text/html'}]}),/INVALID_REFERENCE_IMAGE/);
+ assert.throws(()=>graphics.references({referenceImages:[{...photo,buffer:Buffer.alloc(8*1024*1024)},{...photo,buffer:Buffer.alloc(8*1024*1024)}]}),/REFERENCE_IMAGES_TOO_LARGE/);
+});

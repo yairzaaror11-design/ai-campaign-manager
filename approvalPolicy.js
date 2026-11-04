@@ -14,12 +14,13 @@ function canonical(value) {
 }
 const planHash=plan=>crypto.createHash('sha256').update(canonical(plan)).digest('hex');
 const parameterKeys={
+ CREATE_LEAD_FORM:['name','pageId','locale','privacyPolicyUrl','questions'],
  UPLOAD_IMAGE:['mediaId'],
- CREATE_BUNDLE:['name','objective','specialAdCategories','dailyBudget','dailyBudgetMinor','currency','pageId','link','message','headline','imageHash','adSets'],
+ CREATE_BUNDLE:['name','objective','specialAdCategories','dailyBudget','dailyBudgetMinor','currency','pageId','link','message','headline','imageHash','formId','adSets'],
  ACTIVATE_BUNDLE:['adsetIds','adIds'],
  CREATE_CAMPAIGN:['name','objective','specialAdCategories'],
  CREATE_ADSET:['name','campaignId','dailyBudget','dailyBudgetMinor','currency','billingEvent','optimizationGoal','bidStrategy','targeting','promotedObject','startTime','endTime'],
- CREATE_CREATIVE:['name','pageId','link','message','headline','imageHash'],
+ CREATE_CREATIVE:['name','pageId','link','message','headline','imageHash','formId'],
  CREATE_AD:['name','adsetId','creativeId'],
  CHANGE_BUDGET:['dailyBudget','dailyBudgetMinor','currency'],
  PAUSE_CAMPAIGN:[],RESUME_CAMPAIGN:[],EDIT_CAMPAIGN:['name']
@@ -27,21 +28,24 @@ const parameterKeys={
 function strictPlan(plan) {
   const validation=validateActionPlan(plan);
   if(!validation.ok) throw Error('INVALID_ACTION_PLAN: '+validation.errors.join(', '));
+  if([plan.taskId,plan.taskStepId,plan.taskCreationLease].some(x=>x!==undefined)&&(!/^[a-f0-9-]{36}$/i.test(plan.taskId||'')||!/^[a-z][a-z0-9_]{0,39}$/.test(plan.taskStepId||'')||!/^[a-f0-9-]{36}$/i.test(plan.taskCreationLease||'')))throw Error('INVALID_TASK_BINDING');
   if(!/^act_\d+$/.test(plan.target?.accountId || '')) throw Error('ACCOUNT_REQUIRED');
   if(!parameterKeys[plan.intent] || Object.keys(plan.parameters || {}).some(k=>!parameterKeys[plan.intent].includes(k))) throw Error('UNSUPPORTED_ACTION_PARAMETERS');
   for(const k of ['accountId','campaignId']) if(plan.target[k]!==undefined&&typeof plan.target[k]!=='string') throw Error('INVALID_TARGET_TYPE');
   if(Object.keys(plan.target).some(k=>!['accountId','accountName','campaignId','campaignName'].includes(k))) throw Error('UNSUPPORTED_TARGET');
-  for(const k of ['campaignId','adsetId','creativeId','pageId']) if(plan.parameters[k]!==undefined && !/^\d+$/.test(plan.parameters[k])) throw Error('INVALID_OBJECT_ID');
+  for(const k of ['campaignId','adsetId','creativeId','pageId','formId']) if(plan.parameters[k]!==undefined && !/^\d+$/.test(plan.parameters[k])) throw Error('INVALID_OBJECT_ID');
   if(JSON.stringify(plan).length>16000) throw Error('PLAN_TOO_LARGE');
   if(plan.parameters.name && (typeof plan.parameters.name!=='string'||plan.parameters.name.length>200)) throw Error('INVALID_NAME');
+  if(plan.intent==='CREATE_LEAD_FORM')require('./metaLeadForms').validate(plan.parameters);
   if(plan.intent==='ACTIVATE_BUNDLE') {
     if(!/^\d+$/.test(plan.target.campaignId || '')) throw Error('CAMPAIGN_REQUIRED');
     for(const field of ['adsetIds','adIds']) if(!Array.isArray(plan.parameters[field])||!plan.parameters[field].length||plan.parameters[field].length>10||plan.parameters[field].some(id=>typeof id!=='string'||!/^\d+$/.test(id))) throw Error('BUNDLE_IDS_REQUIRED');
   }
   if(plan.intent==='CREATE_BUNDLE') {
     const p=plan.parameters;
+    if(p.formId&&(p.objective!=='OUTCOME_LEADS'||p.adSets?.some(set=>set.optimizationGoal!=='LEAD_GENERATION'||set.promotedObject?.page_id!==p.pageId)))throw Error('FORM_DELIVERY_MISMATCH');
     strictPlan({...plan,intent:'CREATE_CAMPAIGN',parameters:{name:p.name,objective:p.objective,specialAdCategories:p.specialAdCategories}});
-    strictPlan({...plan,intent:'CREATE_CREATIVE',parameters:{name:p.name,pageId:p.pageId,link:p.link,message:p.message,headline:p.headline,imageHash:p.imageHash}});
+    strictPlan({...plan,intent:'CREATE_CREATIVE',parameters:{name:p.name,pageId:p.pageId,link:p.link,message:p.message,headline:p.headline,imageHash:p.imageHash,...(p.formId?{formId:p.formId}:{})}});
     if(!Array.isArray(p.adSets)||p.adSets.length<1||p.adSets.length>5) throw Error('ADSETS_REQUIRED');
     let total=0;
     for(const set of p.adSets) {

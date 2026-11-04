@@ -63,6 +63,7 @@ async function start() {
   let stopJobs=async()=>{};
   try {
     await initializeDatabase();
+    require('./taskEvaluation').start();
     if(process.env.WHATSAPP_WORKER_IN_WEB!=='false') stopJobs=startBackgroundJobs();
   } catch (error) {
     logger.error('Database initialization failed; refusing to start without persistent memory', {

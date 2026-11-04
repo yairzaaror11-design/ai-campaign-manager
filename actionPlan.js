@@ -2,6 +2,7 @@ const crypto = require('crypto');
 
 const WRITE_INTENTS = new Set([
   'CREATE_CAMPAIGN',
+  'CREATE_LEAD_FORM',
   'CREATE_ADSET',
   'CREATE_AD',
   'CREATE_CREATIVE',
@@ -51,6 +52,7 @@ function formatActionPlan(plan) {
     ...(p.pageId?['עמוד Facebook: '+p.pageId]:[]),
     ...(p.imageHash?['תמונה ב־Meta: '+p.imageHash]:[]),
     ...(p.mediaId?['התמונה שנשלחה: '+p.mediaId]:[]),
+    ...(plan.intent==='CREATE_LEAD_FORM'?['דף: '+p.pageId,'שפת הטופס: '+p.locale,'מדיניות פרטיות: '+p.privacyPolicyUrl,'שדות ושאלות: '+JSON.stringify(p.questions)]:[]),
     'מטרה: '+(p.objective || plan.review?.objective || 'לפי הקמפיין הקיים'),
     'קהל: '+(p.adSets ? JSON.stringify(p.adSets) : p.targeting ? JSON.stringify(p.targeting) : 'ללא שינוי קהל'),
     ...(plan.review?.adSets ? ['פרטי קהל, תקציב ביחידות משנה ותאריכים ב־'+plan.review.currency+': '+JSON.stringify(plan.review.adSets)] : []),
@@ -59,7 +61,7 @@ function formatActionPlan(plan) {
     'התחלה: '+(p.startTime || 'ללא שינוי'),
     'סיום: '+(p.endTime || 'ללא שינוי'),
     'גרסת פעולה: '+require('./approvalPolicy').planHash(plan).slice(0,12),
-    plan.intent==='ACTIVATE_BUNDLE'||plan.intent==='RESUME_CAMPAIGN'?'אישור זה מפעיל פרסום ועשוי להתחיל הוצאה.':plan.intent.startsWith('CREATE_')?'היצירה במצב מושהה. הפעלה דורשת אישור נפרד.':'האישור חל רק על הפעולה המדויקת שלמעלה.'
+    plan.intent==='CREATE_LEAD_FORM'?'אישור זה יוצר טופס; לא תופעל מודעה.':plan.intent==='ACTIVATE_BUNDLE'||plan.intent==='RESUME_CAMPAIGN'?'אישור זה מפעיל פרסום ועשוי להתחיל הוצאה.':plan.intent.startsWith('CREATE_')?'היצירה במצב מושהה. הפעלה דורשת אישור נפרד.':'האישור חל רק על הפעולה המדויקת שלמעלה.'
   ].join('\n');
 }
 

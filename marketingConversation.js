@@ -111,6 +111,7 @@ async function handleMarketingMessage(clientId,text,eventId,options={}) {
    if(current.meta_ad_account_id!==launchProfile.launch.accountId){await store.update(clientId,null,p=>{delete p.launch;return{handled:false,changed:true};});return{handled:true,reply:'חשבון הפרסום השתנה. לפני יצירה נוודא שהתוכנית מתאימה לעסק של החשבון החדש. אפשר לכתוב ״המשך ליצירת הקמפיין״ לבדיקת הפרטים.'};}
    return{handled:false};
   }
+  const task=await require('./taskAgent').maybeHandle(clientId,{message:text,requestId:'whatsapp:'+eventId,channel:'WHATSAPP'},options);if(task)return task;
   const entry=await require('./businessEntry').handle(clientId,text,eventId,options);if(entry)return entry;
   for(let attempt=0;attempt<2;attempt++){
     const existing=await store.load(clientId);

@@ -15,10 +15,13 @@ async function post(plan,path,data) {
     const pages=await meta.graph('/me/accounts',permit.token,{fields:'id',limit:100});
     if(!pages.data?.some(p=>p.id===plan.parameters.pageId)) throw Error('PAGE_NOT_GRANTED');
   }
+  let token=permit.token;
+  if(plan.intent==='CREATE_LEAD_FORM')token=(await require('./metaLeadForms').pageAccess(permit.clientId,plan.parameters.pageId)).token;
+  if(plan.parameters.formId)await require('./metaLeadForms').inspect(permit.clientId,plan.parameters.pageId,plan.parameters.formId);
   try {
     return (await axios.post('https://graph.facebook.com/'+meta.config().version+path,
       new URLSearchParams(Object.entries(data).filter(([,v])=>v!==undefined).map(([k,v])=>[k,typeof v==='object'?JSON.stringify(v):String(v)])),
-      {headers:{Authorization:'Bearer '+permit.token},params:{appsecret_proof:require('crypto').createHmac('sha256',process.env.META_APP_SECRET).update(permit.token).digest('hex')},maxRedirects:0,timeout:15000})).data;
+      {headers:{Authorization:'Bearer '+token},params:{appsecret_proof:require('crypto').createHmac('sha256',process.env.META_APP_SECRET).update(token).digest('hex')},maxRedirects:0,timeout:15000})).data;
   } catch {throw Error('META_WRITE_UNCERTAIN');}
 }
 async function uploadImage(plan) {
@@ -32,6 +35,10 @@ async function uploadImage(plan) {
  if(!image?.hash) throw Error('META_IMAGE_RESPONSE_UNCERTAIN');
  return {id:image.hash,kind:'image'};
 }
+async function createLeadForm(plan){
+ const p=require('./metaLeadForms').validate(plan.parameters);
+ return post(plan,'/'+p.pageId+'/leadgen_forms',{name:p.name,locale:p.locale,privacy_policy:{url:p.privacyPolicyUrl},questions:p.questions});
+}
 async function createCampaign(plan) {
  const p=plan.parameters;
  return post(plan,'/'+plan.target.accountId+'/campaigns',{name:p.name,objective:p.objective,status:'PAUSED',special_ad_categories:p.specialAdCategories || []});
@@ -42,7 +49,7 @@ async function createAdSet(plan) {
 }
 async function createCreative(plan) {
  const p=plan.parameters;
- return post(plan,'/'+plan.target.accountId+'/adcreatives',{name:p.name,object_story_spec:{page_id:p.pageId,link_data:{link:p.link,message:p.message,name:p.headline,image_hash:p.imageHash}}});
+ return post(plan,'/'+plan.target.accountId+'/adcreatives',{name:p.name,object_story_spec:{page_id:p.pageId,link_data:{link:p.link,message:p.message,name:p.headline,image_hash:p.imageHash,...(p.formId?{call_to_action:{type:'SIGN_UP',value:{lead_gen_form_id:p.formId}}}:{})}}});
 }
 async function createAd(plan) {
  const p=plan.parameters;
@@ -87,4 +94,4 @@ async function activateBundle(plan) {
  for(const id of [...adIds,...adsetIds,campaignId]) await post(plan,'/'+id,{status:'ACTIVE'});
  return {id:campaignId,objects:{campaignId,adsetIds,adIds}};
 }
-module.exports={createBundle,activateBundle,uploadImage,createCampaign,createAdSet,createCreative,createAd,changeBudget,pauseCampaign,resumeCampaign,editCampaign};
+module.exports={createLeadForm,createBundle,activateBundle,uploadImage,createCampaign,createAdSet,createCreative,createAd,changeBudget,pauseCampaign,resumeCampaign,editCampaign};

@@ -66,6 +66,12 @@ async function handleApproval(from, code,actionId=null) {
   await safeSend(from,result.ok?'הפעולה בוצעה ואומתה מול Meta.':result.message||'הפעולה לא בוצעה.');
 }
 
+async function deliverTaskReply(from,clientId,result){
+ for(const mediaId of result.mediaIds||[]){const asset=await require('./mediaStore').loadMedia(clientId,mediaId);await require('./whatsappDelivery').enqueue(from,{type:'image',image:{id:asset.whatsapp_media_id,caption:'תוצר שהוכן למשימה, לבדיקה שלך.'}});}
+ if(result.task?.status==='WAITING_APPROVAL'){const task=await require('./taskAgent').active(clientId),step=task?.state.steps.find(s=>s.status==='WAITING_APPROVAL');if(step){const a=step.result.approval,approval={actionId:a.actionId,actionPlan:a.plan,code:require('./metaConnection').decrypt(a.codeCiphertext,clientId),expiresAt:a.expiresAt};const ui=await require('./conversationUi').prepareApproval(clientId,approval,formatActionPlan(a.plan));await safeSend(from,ui.text,ui);return;}}
+ await safeSend(from,result.reply);
+}
+
 async function handleMedia(from, message) {
   const kind=message.type==='image'?'תמונה':'סרטון';
   await notifyProcessing(from,`קיבלתי את ה${kind}.`);
@@ -79,6 +85,7 @@ async function handleMedia(from, message) {
       if(p.socialInput&&media.caption&&!require('./conversationControl').hasControlContamination(media.caption))p.contentBrief={...(p.contentBrief||{}),subject:media.caption.slice(0,1000),source:'user_media_caption'};
       return{handled:false,changed:true,audit:'MEDIA_RECEIVED'};
     });
+    if(require('./taskAgent').enabled()&&await require('./taskAgent').active(client.id)){const result=await require('./taskAgent').send(client.id,{message:'קובץ מצורף: '+kind+' '+(media.caption||''),requestId:'media:'+require('./whatsappDelivery').messageContext.getStore()?.eventId,channel:'WHATSAPP'});await deliverTaskReply(from,client.id,result);return;}
     const profile=await require('./marketingStore').load(client.id);
     if(profile?.socialInput&&require('./marketingConversation').enabled()){
       if(!require('./conversationFacts').value(profile,'product')&&!require('./conversationFacts').value(profile,'businessType')){
@@ -156,7 +163,8 @@ async function handleTenantMessage(message, contact) {
     return;
   }
 
-  await getOrCreateClient(from, contact?.profile?.name || null);
+  const botClient=await getOrCreateClient(from,contact?.profile?.name||null);
+  if(require('./taskAgent').enabled()){const support=require('./humanSupport'),body=message.type==='text'?String(message.text?.body||'').trim():'';if(!['/meta-delete-data-confirm','/notifications-off'].includes(body)){if(support.humanRequested(body)){await support.request(botClient.id,{reason:body,channel:'WHATSAPP',eventId:message.id});await require('./whatsappDelivery').messageContext.run({...require('./whatsappDelivery').messageContext.getStore(),humanSupportNotice:true},()=>safeSend(from,'הבקשה נשמרה למענה אנושי והבוט הושהה. עדיין לא הוגדר זמן מענה. לחזרה כתבו ״המשך עם הבוט״.'));return;}const paused=await support.current(botClient.id);if(paused?.bot_paused){if(support.resumeRequested(body)){await support.resume(botClient.id,paused.id,paused.version);await safeSend(from,'המענה האוטומטי חודש. אפשר להמשיך במשימה.');}else await support.append(botClient.id,paused.id,{body:body||'התקבל קובץ בזמן ההשהיה',eventId:message.id});return;}}}
 
   if (['image', 'video'].includes(message.type)) {
     await handleMedia(from, message);
@@ -189,6 +197,7 @@ async function handleTenantMessage(message, contact) {
 }
 
 async function routeText(from, text, prefix = '') {
+  if(text.startsWith('/approve-current ')&&configured()&&require('./taskAgent').enabled()){const c=await getOrCreateClient(from),task=await require('./taskAgent').active(c.id),id=text.slice(17),pending=task?.state.steps.find(x=>x.status==='WAITING_APPROVAL'&&x.result?.approval?.actionId===id),ctx=require('./whatsappDelivery').messageContext.getStore();if(pending&&ctx?.approvedActionId===id){delete ctx.approvedActionId;const r=await require('./taskAgent').send(c.id,{message:'אשר '+require('./metaConnection').decrypt(pending.result.approval.codeCiphertext,c.id),requestId:'task-button:'+ctx.eventId,channel:'WHATSAPP'});await deliverTaskReply(from,c.id,r);return;}}
   if(text.startsWith('/approve-current ')){await handleApproval(from,null,text.slice(17));return;}
   if(text==='בטל את הפעולה הממתינה'){await cancelPendingApprovals(from);await safeSend(from,'הפעולה הממתינה בוטלה. מה נרצה לשנות?');return;}
 
@@ -197,6 +206,7 @@ async function routeText(from, text, prefix = '') {
     await cancelPendingApprovals(from);
     if(configured()){
       const client=await getOrCreateClient(from);
+      await require('./taskAgent').cancel(client.id);
       await require('./marketingStore').restart(client.id);
     }
     await safeSend(from,'איפסתי את פרטי השיחה והטיוטה וביטלתי אישורי פעולה ממתינים. חיבור Meta נשמר. מה העסק עושה, ובאיזה שם הוא פועל?');
@@ -244,6 +254,10 @@ async function routeText(from, text, prefix = '') {
 
     try {const client=await getOrCreateClient(from);await safeSend(from,await require('./reportService').campaignReport(client.id,text.split(' ')[1] || 'last_7d'));}
     catch {await safeSend(from,'לא ניתן להפיק דוח כרגע. בדוק שחיבור Meta והחשבון הנבחר בתוקף.');}return;
+  }
+  if(configured()&&require('./taskAgent').enabled()){
+   const c=await getOrCreateClient(from),r=await require('./taskAgent').maybeHandle(c.id,{message:text,requestId:'whatsapp:'+require('./whatsappDelivery').messageContext.getStore()?.eventId,channel:'WHATSAPP'});
+   if(r){await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:r.reply}]);await deliverTaskReply(from,c.id,r);return;}
   }
   if(configured()&&/^בחרתי גרסה [1-3]$/.test(text)){
     const client=await getOrCreateClient(from);let selected=false;

@@ -8,6 +8,10 @@ function retentionDays() {
 async function maintain() {
  return db.transaction(async tx=>{
   const days=retentionDays();
+  await tx("DELETE FROM agent_task_turns WHERE created_at<NOW()-($1::integer*INTERVAL '1 day')",[days]);
+  await tx("DELETE FROM agent_tasks WHERE updated_at<NOW()-($1::integer*INTERVAL '1 day')",[days]);
+  await tx("DELETE FROM support_messages WHERE created_at<NOW()-($1::integer*INTERVAL '1 day')",[days]);
+  await tx("UPDATE support_cases SET context='[]'::jsonb,reason='הקשר הפנייה הוסר לפי מדיניות השמירה' WHERE created_at<NOW()-($1::integer*INTERVAL '1 day')",[days]);
   await tx("DELETE FROM worker_heartbeats WHERE last_success_at<NOW()-INTERVAL '1 day'");
   await tx('DELETE FROM portal_login_tickets WHERE expires_at<NOW()');
   await tx('DELETE FROM portal_sessions WHERE expires_at<NOW()');

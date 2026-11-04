@@ -15,4 +15,5 @@ async function loadMedia(clientId,id) {
  if(!result.rows.length) throw Error('MEDIA_EXPIRED_OR_NOT_OWNED');
  return result.rows[0];
 }
-module.exports={saveMedia,listMedia,loadMedia};
+async function readMedia(clientId,id){const asset=await loadMedia(clientId,id);return require('./mediaHandler').receiveWhatsAppMedia({type:asset.media_type,[asset.media_type]:{id:asset.whatsapp_media_id}});}
+module.exports={saveMedia,listMedia,loadMedia,readMedia};
