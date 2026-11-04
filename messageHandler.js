@@ -85,6 +85,7 @@ async function handleMedia(from, message) {
       if(p.socialInput&&media.caption&&!require('./conversationControl').hasControlContamination(media.caption))p.contentBrief={...(p.contentBrief||{}),subject:media.caption.slice(0,1000),source:'user_media_caption'};
       return{handled:false,changed:true,audit:'MEDIA_RECEIVED'};
     });
+    const unifiedMedia=await require('./conversationController').media(client.id,{message:'קובץ מצורף: '+kind+' '+(media.caption||''),requestId:'media:'+require('./whatsappDelivery').messageContext.getStore()?.eventId,channel:'WHATSAPP'});if(unifiedMedia){await deliverTaskReply(from,client.id,unifiedMedia);return;}
     if(require('./taskAgent').enabled()&&await require('./taskAgent').active(client.id)){const result=await require('./taskAgent').send(client.id,{message:'קובץ מצורף: '+kind+' '+(media.caption||''),requestId:'media:'+require('./whatsappDelivery').messageContext.getStore()?.eventId,channel:'WHATSAPP'});await deliverTaskReply(from,client.id,result);return;}
     const profile=await require('./marketingStore').load(client.id);
     if(profile?.socialInput&&require('./marketingConversation').enabled()){
@@ -164,7 +165,7 @@ async function handleTenantMessage(message, contact) {
   }
 
   const botClient=await getOrCreateClient(from,contact?.profile?.name||null);
-  if(require('./taskAgent').enabled()){const support=require('./humanSupport'),body=message.type==='text'?String(message.text?.body||'').trim():'';if(!['/meta-delete-data-confirm','/notifications-off'].includes(body)){if(support.humanRequested(body)){await support.request(botClient.id,{reason:body,channel:'WHATSAPP',eventId:message.id});await require('./whatsappDelivery').messageContext.run({...require('./whatsappDelivery').messageContext.getStore(),humanSupportNotice:true},()=>safeSend(from,'הבקשה נשמרה למענה אנושי והבוט הושהה. עדיין לא הוגדר זמן מענה. לחזרה כתבו ״המשך עם הבוט״.'));return;}const paused=await support.current(botClient.id);if(paused?.bot_paused){if(support.resumeRequested(body)){await support.resume(botClient.id,paused.id,paused.version);await safeSend(from,'המענה האוטומטי חודש. אפשר להמשיך במשימה.');}else await support.append(botClient.id,paused.id,{body:body||'התקבל קובץ בזמן ההשהיה',eventId:message.id});return;}}}
+  if(require('./taskAgent').enabled()||await require('./conversationController').owns(botClient.id)){const support=require('./humanSupport'),body=message.type==='text'?String(message.text?.body||'').trim():'';if(!['/meta-delete-data-confirm','/notifications-off'].includes(body)){if(support.humanRequested(body)){await support.request(botClient.id,{reason:body,channel:'WHATSAPP',eventId:message.id});await require('./whatsappDelivery').messageContext.run({...require('./whatsappDelivery').messageContext.getStore(),humanSupportNotice:true},()=>safeSend(from,'הבקשה נשמרה למענה אנושי והבוט הושהה. עדיין לא הוגדר זמן מענה. לחזרה כתבו ״המשך עם הבוט״.'));return;}const paused=await support.current(botClient.id);if(paused?.bot_paused){if(support.resumeRequested(body)){await support.resume(botClient.id,paused.id,paused.version);await safeSend(from,'המענה האוטומטי חודש. אפשר להמשיך במשימה.');}else await support.append(botClient.id,paused.id,{body:body||'התקבל קובץ בזמן ההשהיה',eventId:message.id});return;}}}
 
   if (['image', 'video'].includes(message.type)) {
     await handleMedia(from, message);
@@ -178,8 +179,9 @@ async function handleTenantMessage(message, contact) {
 
   if(message.type==='interactive'){
     const client=await getOrCreateClient(from);
+    if(await require('./conversationController').owns(client.id)&&!require('./conversationController').acceptsInteractive(await require('./marketingStore').load(client.id))){await safeSend(from,'התפריט הזה שייך למסלול הקודם. כתוב מה תרצה שנכין ואמשיך מהבקשה הנוכחית.');return;}
     const selected=await require('./conversationUi').consume(client.id,message);
-    if(!selected){const fresh=await require('./conversationUi').refresh(client.id);await safeSend(from,fresh.text,fresh);return;}
+    if(!selected){if(await require('./conversationController').owns(client.id)){await safeSend(from,'הכפתור הזה שייך להצעה קודמת. כתוב מה תרצה לעשות ואמשיך מהבקשה הנוכחית.');return;}const fresh=await require('./conversationUi').refresh(client.id);await safeSend(from,fresh.text,fresh);return;}
     await routeText(from,selected);return;
   }
 
@@ -197,8 +199,8 @@ async function handleTenantMessage(message, contact) {
 }
 
 async function routeText(from, text, prefix = '') {
-  if(text.startsWith('/approve-current ')&&configured()&&require('./taskAgent').enabled()){const c=await getOrCreateClient(from),task=await require('./taskAgent').active(c.id),id=text.slice(17),pending=task?.state.steps.find(x=>x.status==='WAITING_APPROVAL'&&x.result?.approval?.actionId===id),ctx=require('./whatsappDelivery').messageContext.getStore();if(pending&&ctx?.approvedActionId===id){delete ctx.approvedActionId;const r=await require('./taskAgent').send(c.id,{message:'אשר '+require('./metaConnection').decrypt(pending.result.approval.codeCiphertext,c.id),requestId:'task-button:'+ctx.eventId,channel:'WHATSAPP'});await deliverTaskReply(from,c.id,r);return;}}
-  if(text.startsWith('/approve-current ')){await handleApproval(from,null,text.slice(17));return;}
+  if(text.startsWith('/approve-current ')&&configured()&&(require('./taskAgent').enabled()||process.env.UNIFIED_CONVERSATION_ENABLED==='true')){const c=await getOrCreateClient(from),task=await require('./taskAgent').active(c.id),id=text.slice(17),pending=task?.state.steps.find(x=>x.status==='WAITING_APPROVAL'&&x.result?.approval?.actionId===id),ctx=require('./whatsappDelivery').messageContext.getStore();if(pending&&ctx?.approvedActionId===id){delete ctx.approvedActionId;const r=await require('./taskAgent').send(c.id,{message:'אשר '+require('./metaConnection').decrypt(pending.result.approval.codeCiphertext,c.id),requestId:'task-button:'+ctx.eventId,channel:'WHATSAPP'},{deferPlanning:!require('./taskAgent').enabled()});await deliverTaskReply(from,c.id,r);return;}}
+  if(text.startsWith('/approve-current ')){if(configured()&&await require('./conversationController').owns((await getOrCreateClient(from)).id)){await safeSend(from,'האישור הזה אינו שייך למשימה הנוכחית. לא בוצעה פעולה. אפשר לבקש להכין את הפעולה מחדש לבדיקה.');return;}await handleApproval(from,null,text.slice(17));return;}
   if(text==='בטל את הפעולה הממתינה'){await cancelPendingApprovals(from);await safeSend(from,'הפעולה הממתינה בוטלה. מה נרצה לשנות?');return;}
 
   if(require('./conversationControl').isReset(text)){
@@ -209,8 +211,15 @@ async function routeText(from, text, prefix = '') {
       await require('./taskAgent').cancel(client.id);
       await require('./marketingStore').restart(client.id);
     }
-    await safeSend(from,'איפסתי את פרטי השיחה והטיוטה וביטלתי אישורי פעולה ממתינים. חיבור Meta נשמר. מה העסק עושה, ובאיזה שם הוא פועל?');
+    await safeSend(from,process.env.UNIFIED_CONVERSATION_ENABLED==='true'?'איפסתי את המשימה וביטלתי אישורים ממתינים. חיבור Meta נשמר. מה תרצה שנכין עכשיו?':'איפסתי את פרטי השיחה והטיוטה וביטלתי אישורי פעולה ממתינים. חיבור Meta נשמר. מה העסק עושה, ובאיזה שם הוא פועל?');
     return;
+  }
+  if(configured()){
+    const client=await getOrCreateClient(from);
+    const controller=require('./conversationController');
+    const result=await controller.handle(client.id,{message:text,requestId:'whatsapp:'+require('./whatsappDelivery').messageContext.getStore()?.eventId,channel:'WHATSAPP'});
+    if(result?.delegateApproval){await handleApproval(from,result.delegateApproval);return;}
+    if(result){await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:result.historyReply||result.reply}]);if(result.decisionKey){const ui=await require('./conversationUi').prepare(client.id,result.reply,result.decisionKey);await safeSend(from,ui.text,ui);}else await deliverTaskReply(from,client.id,result);return;}
   }
   if(configured()){
     const client=await getOrCreateClient(from);

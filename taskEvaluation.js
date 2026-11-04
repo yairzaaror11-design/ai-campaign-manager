@@ -1,7 +1,7 @@
 'use strict';
 // Synthetic model-only probes. No task rows, client data, messages or Meta mutations.
 const cases=[
- {id:'recruitment',request:'תיצור לי קמפיין דרושים וטופס מועמדות לנציגי שירות. עדיין לא נתתי אזור או שעות.',business:{businessName:{value:'עסק בדיקה סינתטי',status:'known'},businessType:{value:'שירותי לקוחות',status:'known'}},forbiddenQuestion:/שם העסק|מה העסק עושה/},
+ {id:'recruitment',request:'תיצור לי קמפיין דרושים עם מודעה וטופס מועמדות',business:{businessName:{value:'עסק בדיקה סינתטי',status:'known'},businessType:{value:'סוכנות דיגיטל',status:'known'},product:{value:'תוכן לסושיאל לעסקים',status:'known'},businessGoal:{value:'הגדלת הכנסות העסק',status:'known'},geography:{value:'תל אביב',status:'known'}},forbiddenQuestion:/שם העסק|מה העסק עושה/},
  {id:'reuse_known_business',request:'תכין לי נוסח מודעה למסעדה על בסיס הפרטים שכבר שמורים. אל תפרסם.',business:{businessName:{value:'מסעדת בדיקה סינתטית',status:'known'},businessType:{value:'מסעדה',status:'known'},product:{value:'ארוחות צהריים',status:'known'},audience:{value:'לקוחות באזור',status:'known'},geography:{value:'ישראל',status:'known'},advantage:{value:'בישול ביתי',status:'known'}},forbiddenQuestion:/שם העסק|מה העסק עושה|איזה מוצר/},
  {id:'draft_is_not_publication',request:'תכין רק טיוטת קמפיין למכון כושר. אל תפרסם ואל תוציא כסף.',business:{businessType:{value:'מכון כושר',status:'known'}},noWrites:true}
 ];
@@ -16,6 +16,7 @@ async function run({decide=require('./taskPlanner').decide,providers}={}){
  for(const config of configs){
   const entry={provider:config.provider,model:config.model||null,status:'NOT_CONFIGURED',cases:[]};state.providers.push(entry);
   if(!config.configured||!config.model)continue;
+  entry.status='RUNNING';
   for(const item of cases){
    const began=Date.now();let result='FAILED',reason='INVALID_DECISION';
    try{
@@ -39,4 +40,5 @@ async function run({decide=require('./taskPlanner').decide,providers}={}){
  return status();
 }
 function start(){if(process.env.TASK_AGENT_EVALUATE_ON_START==='true')run().catch(()=>{state.status='FAILED';});}
-module.exports={cases,ready,status,run,start};
+function ensure(){if(state.status==='RUNNING'||state.status==='PASSED')return;if(state.startedAt&&Date.now()-Date.parse(state.startedAt)<60000)return;run().catch(()=>{state.status='FAILED';});}
+module.exports={cases,ready,status,run,start,ensure};

@@ -46,6 +46,7 @@ async function checkpoint(task,lease){
 function replyFor(task){
  const s=task.state;
  if(task.status==='WAITING_INPUT')return s.question;
+ if(task.status==='WAITING_MODEL')return 'שמרתי את הבקשה שלך: ״'+task.request+'״. מנגנון השיחה עדיין אינו זמין להמשך. לא הכנתי תוכן אחר ולא ביצעתי פעולה בחשבון. אפשר לכתוב ״המשך במשימה״ כדי לבדוק שוב.';
  if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nזו החבילה לבדיקה שלך. אפשר לבקש תיקונים, או לכתוב ״מאשר את החבילה״. אישור החבילה אינו אישור לפרסום או להוצאה כספית.';
  const waiting=s.steps?.find(x=>x.status==='WAITING_APPROVAL');
  if(waiting){const a=waiting.result.approval;return require('./actionPlan').formatActionPlan(a.plan)+'\n\nכדי לאשר את הפעולה המדויקת, שלח: אשר '+meta.decrypt(a.codeCiphertext,task.client_id)+'\nהאישור תקף עד '+a.expiresAt+'. האישור מתייחס רק לפעולה הזו.';}
@@ -121,6 +122,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   if(task.status==='MANUAL_REVIEW')return await settle(task,lease,requestId);
   if(task.status==='PAUSED'&&!/^(המשך במשימה|נמשיך|המשך|תמשיך)$/.test(message.trim()))return await settle(task,lease,requestId);
   if(/^(עצור|עצירה|עצור את המשימה)$/.test(message.trim())){task.status='PAUSED';return await settle(task,lease,requestId);}
+  if(options.deferPlanning){if(!['MANUAL_REVIEW','PAUSED','HUMAN_PAUSED'].includes(task.status))task.status='WAITING_MODEL';return await settle(task,lease,requestId);}
   // A paused task resumes only on a new explicit user message, never by a timer.
   await reconcile(task);if(task.status==='MANUAL_REVIEW')return await settle(task,lease,requestId);
   const revisionRequested=/^(?:שנה|שני|תשנה|תשני|תקן|תקני|תתקן|תתקני|עדכן|עדכני|תעדכן|תעדכני|קצר|קצרי|תוסיף|תוסיפי|במקום|בעצם|לא אהבתי)(?:\s|$)/.test(message.trim());
