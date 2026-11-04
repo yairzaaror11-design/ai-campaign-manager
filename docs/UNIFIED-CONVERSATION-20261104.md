@@ -13,3 +13,5 @@ Regression coverage includes the exact recruitment request with a stale digital-
 Rollout requires UNIFIED_CONVERSATION_ENABLED=true. TASK_AGENT_PILOT_ONLY keeps the audience restricted to the configured authorized phones. An enabled unified controller with a failed model probe must report controller=unified/planningReady=false in health and keep ownership; it must never report or use a legacy conversation as recovery.
 
 Real WhatsApp acceptance remains required. No synthetic production webhook or outbound test is used. This change does not claim complete Ads Manager coverage or make a campaign-specific spending decision.
+
+Task context is also rebuilt from business background only: historical drafts, journey stages, pending old questions, prior campaign goals, budgets, lead destinations and unconfirmed offers are excluded. Stable business identity, product, brand, media and connection information remain available. Regression checks assert both the removed old goal and the preserved business information.

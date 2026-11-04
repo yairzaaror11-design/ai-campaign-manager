@@ -154,7 +154,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    delete task.state.reviewHash;delete task.state.revising;
   }
   task.status='RUNNING';await checkpoint(task,lease);
-  const known=await require('./marketingStore').context(clientId)||{};
+  const known=planner.businessContext(await require('./marketingStore').context(clientId));
   for(let round=0;round<16;round++){
    if((task.state.plannerCalls||0)>=64||!await require('./rateLimit').take('task-planner:'+clientId,60,3600)){task.status='BLOCKED';task.state.reason='המשימה הגיעה למגבלת התכנון כדי לעצור לולאה או עלות לא צפויה';return await settle(task,lease,requestId);}
    task.state.plannerCalls=(task.state.plannerCalls||0)+1;await checkpoint(task,lease);

@@ -16,7 +16,7 @@ test('one WhatsApp conversation owner preserves recruitment through a cold start
  });
  delete require.cache[require.resolve('../messageHandler')];
  const client=await require('../clientStore').getOrCreateClient('972500066112');
- await require('../marketingStore').update(client.id,null,p=>{const facts=require('../conversationFacts');facts.write(p,'businessType','שירותי דיגיטל',{evidence:'שירותי דיגיטל'});facts.write(p,'product','תוכן לסושיאל',{evidence:'תוכן לסושיאל'});p.journey={schemaVersion:2,stage:'CREATIVE_REVIEW',requestedOutput:'ad',revision:1,draft:{creatives:[{headline:'להגדיל את ההכנסות',body:'תוכן לסושיאל לעסקים בתל אביב'}]}};return{handled:false,changed:true};});
+ await require('../marketingStore').update(client.id,null,p=>{const facts=require('../conversationFacts');facts.write(p,'businessType','שירותי דיגיטל',{evidence:'שירותי דיגיטל'});facts.write(p,'product','תוכן לסושיאל',{evidence:'תוכן לסושיאל'});facts.write(p,'businessGoal','הגדלת הכנסות',{evidence:'הגדלת הכנסות'});p.journey={schemaVersion:2,stage:'CREATIVE_REVIEW',requestedOutput:'ad',revision:1,draft:{creatives:[{headline:'להגדיל את ההכנסות',body:'תוכן לסושיאל לעסקים בתל אביב'}]}};return{handled:false,changed:true};});
  const handler=require('../messageHandler').handleIncomingMessage;
  const send=(id,body)=>handler({id,from:'972500066112',timestamp:String(Math.floor(Date.now()/1000)),type:'text',text:{body}});
  const request='תיצור לי קמפיין דרושים עם מודעה וטופס מועמדות';
@@ -24,7 +24,7 @@ test('one WhatsApp conversation owner preserves recruitment through a cold start
   await send('unified-1',request);
   assert.equal(planned,0);assert.match(sent.at(-1),/שמרתי את הבקשה/);assert.match(sent.at(-1),/קמפיין דרושים/);assert.doesNotMatch(sent.at(-1),/תוכן לסושיאל|להגדיל את ההכנסות|נכין תוכנית/);
   const saved=await require('../taskAgent').current(client.id);assert.equal(saved.request,request);assert.equal(saved.status,'WAITING_MODEL');
-  ready=true;await send('unified-2','המשך במשימה');assert.equal(planned,1);assert.match(sent.at(-1),/לאיזו משרה ובאיזה אזור/);assert.equal(contexts[0].request,request);
+  ready=true;await send('unified-2','המשך במשימה');assert.equal(planned,1);assert.match(sent.at(-1),/לאיזו משרה ובאיזה אזור/);assert.equal(contexts[0].request,request);assert.equal(contexts[0].knownBusiness.localDraft,undefined);assert.equal(contexts[0].knownBusiness.pendingQuestion,undefined);assert.equal(contexts[0].knownBusiness.facts.businessGoal,undefined);assert.equal(contexts[0].knownBusiness.facts.product.value,'תוכן לסושיאל');
   await send('unified-3','למה צריך אזור?');assert.equal(planned,2);assert.equal(contexts[1].request,request);assert.equal((await require('../taskAgent').current(client.id)).id,saved.id);
   assert.equal((await h.db.query('SELECT COUNT(*)::int AS n FROM action_plans')).rows[0].n,0);
   assert.equal((await h.db.query('SELECT COUNT(*)::int AS n FROM meta_execution_attempts')).rows[0].n,0);
