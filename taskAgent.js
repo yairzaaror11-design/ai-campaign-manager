@@ -192,12 +192,25 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   task.status='RUNNING';await checkpoint(task,lease);
   const known=planner.businessContext(await require('./marketingStore').context(clientId));
   if(task.state.newGoal){delete known.facts.product;known.rule+=' The owner explicitly switched goals. Do not reuse a prior product or campaign.';}
+  let initialRepairs=0;
   for(let round=0;round<16;round++){
    if((task.state.plannerCalls||0)>=64||!await require('./rateLimit').take('task-planner:'+clientId,60,3600)){task.status='BLOCKED';task.state.reason='המשימה הגיעה למגבלת התכנון כדי לעצור לולאה או עלות לא צפויה';return await settle(task,lease,requestId);}
    task.state.plannerCalls=(task.state.plannerCalls||0)+1;await checkpoint(task,lease);
-   const decision=await planner.decide(contextFor(task,known),options);
-   if(!decision||typeof decision!=='object'||!decision.next)throw Error('INVALID_TASK_DECISION');
-   if(!task.state.steps.length)task.state.steps=validatePlan(decision.plan,task.request);
+   const context=contextFor(task,known);
+   if(initialRepairs&&!task.state.steps.length)context.plannerFeedback={code:task.state.lastError,instruction:'No plan has been accepted. Return a complete valid ordered plan of 1..12 supported steps and one next operation against that plan. No external action has been performed by this planning attempt.'};
+   let decision;
+   try{
+    decision=await planner.decide(context,options);
+    if(!decision||typeof decision!=='object'||!decision.next)throw Error('INVALID_TASK_DECISION');
+    if(!task.state.steps.length)task.state.steps=validatePlan(decision.plan,task.request);
+   }catch(error){
+    // One model-only correction before any step is accepted; never retry an executor.
+    if(!task.state.steps.length&&initialRepairs<1&&(['INVALID_TASK_PLAN','INVALID_TASK_DECISION','TASK_PLAN_MISSING_OUTCOME'].includes(error.message)||error instanceof SyntaxError)){
+     initialRepairs++;task.state.lastError=error instanceof SyntaxError?'INVALID_TASK_JSON':error.message;await checkpoint(task,lease);continue;
+    }
+    throw error;
+   }
+   delete task.state.lastError;
    // Later model plans are ignored. Only validated next operations may advance the authoritative persisted plan.
    const n=decision.next;
    if(n.op==='review'){

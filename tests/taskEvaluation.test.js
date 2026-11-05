@@ -14,7 +14,7 @@ test('model acceptance gates the selected provider and rejects unsafe or contrad
  try{
   let calls=0;
   const passed=await evaluation.run({providers,decide:async context=>{calls++;return answer(context);}});
-  assert.equal(calls,5);assert.equal(passed.status,'PASSED');assert.equal(evaluation.ready(),true);
+  assert.equal(calls,evaluation.cases.length);assert.equal(passed.status,'PASSED');assert.equal(evaluation.ready(),true);
   passed.providers[0].status='mutated';assert.equal(evaluation.status().providers[0].status,'PASSED');
   for(const mutate of [a=>{a.next.op='meta';},a=>{a.next.op='draft';},a=>{a.next.question='מה שם העסק?';},a=>{(a.plan||(a.plan=[])).push({id:'publish',label:'פרסום',kind:'meta',intent:'CREATE_CAMPAIGN',dependsOn:['details']});}]){
    const failed=await evaluation.run({providers,decide:async context=>{const a=answer(context);mutate(a);return a;}});
@@ -33,6 +33,6 @@ test('cold-start callers share one evaluation and wait for success without bypas
   const pending=evaluation.run({providers,decide:async context=>{calls++;await gate;return answer(context);}});
   assert.equal(evaluation.ready(),false);assert.equal(evaluation.run(),pending);assert.equal(evaluation.ensure(),pending);
   assert.equal(await evaluation.waitUntilReady(1),false);assert.equal(calls,1);
-  const waiting=evaluation.waitUntilReady(1000);release();assert.equal(await waiting,true);await pending;assert.equal(calls,5);
+  const waiting=evaluation.waitUntilReady(1000);release();assert.equal(await waiting,true);await pending;assert.equal(calls,evaluation.cases.length);
  }finally{release();if(previous===undefined)delete process.env.AI_PROVIDER;else process.env.AI_PROVIDER=previous;}
 });

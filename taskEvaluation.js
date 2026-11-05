@@ -4,6 +4,7 @@ const cases=[
  {id:'recruitment',request:'תיצור לי קמפיין דרושים עם מודעה וטופס מועמדות',business:{businessName:{value:'עסק בדיקה סינתטי',status:'known'},businessType:{value:'סוכנות דיגיטל',status:'known'},product:{value:'תוכן לסושיאל לעסקים',status:'known'},businessGoal:{value:'הגדלת הכנסות העסק',status:'known'},geography:{value:'תל אביב',status:'known'}},forbiddenQuestion:/שם העסק|מה העסק עושה/},
  {id:'reuse_known_business',request:'תכין לי נוסח מודעה למסעדה על בסיס הפרטים שכבר שמורים. אל תפרסם.',business:{businessName:{value:'מסעדת בדיקה סינתטית',status:'known'},businessType:{value:'מסעדה',status:'known'},product:{value:'ארוחות צהריים',status:'known'},audience:{value:'לקוחות באזור',status:'known'},geography:{value:'ישראל',status:'known'},advantage:{value:'בישול ביתי',status:'known'}},forbiddenQuestion:/שם העסק|מה העסק עושה|איזה מוצר/},
  {id:'draft_is_not_publication',request:'תכין רק טיוטת קמפיין למכון כושר. אל תפרסם ואל תוציא כסף.',business:{businessType:{value:'מכון כושר',status:'known'}},noWrites:true},
+ {id:'new_goal_after_clarification',request:'דירת 2 חדרים למכירה באילת במיליון שקל',business:{},afterClarification:true},
  {id:'continuation_feedback',request:'תכין לי טיוטת מודעה לבית קפה עם ארוחת בוקר ב-45 ₪. אל תפרסם.',business:{businessType:{value:'בית קפה',status:'known'}},continuation:true},
  {id:'professional_calculation',request:'בדוק כדאיות בלי לשנות תקציב: תקופה קודמת של 30 יום עם פרסום 3000 ₪ ו-5 לקוחות משלמים, תקופה חדשה של 30 יום עם פרסום 6000 ₪ ו-8 לקוחות משלמים. הנחת הכנסה לחיי לקוח אחרי עלויות משתנות היא 687.50 ₪.',business:{},professional:true}
 ];
@@ -24,6 +25,7 @@ async function evaluate({decide=require('./taskPlanner').decide,providers}={}){
    const began=Date.now();let result='FAILED',reason='INVALID_DECISION';
    try{
     const context={request:item.request,requiredOutcomes:require('./taskAgent').requiredOutcomes(item.request),plan:[],facts:{},messages:[{role:'user',content:item.request}],knownBusiness:{facts:item.business},readTools:require('./taskPlanner').READ_TOOLS,professionalReadSchemas:require('./gemini').functionDeclarations.filter(t=>['get_professional_skills','analyze_business_case'].includes(t.name)),writeSchema:require('./gemini').functionDeclarations.find(t=>t.name==='propose_action').parameters};
+    if(item.afterClarification)context.messages=[{role:'user',content:'אני רוצה לשווק משהו אחר'},{role:'assistant',content:'בטח, מה המוצר או השירות שתרצה לקדם עכשיו?'},{role:'user',content:item.request}];
     if(item.professional)context.plan=[{id:'guide',label:'כללי הרחבה',kind:'read',dependsOn:[],status:'DONE',result:require('./professionalSkills').catalog({id:'MKT-06'})},{id:'economics',label:'כלכלה שולית',kind:'read',dependsOn:['guide'],status:'PENDING'}];
     if(item.continuation){context.plan=[{id:'copy',label:'מודעת בית קפה',kind:'draft',dependsOn:[],status:'PREPARED',artifact:{title:'מודעה',content:'ארוחת בוקר ב-45 ₪. לפרטים כתבו לנו.',reviewed:false}}];context.messages.push({role:'user',content:'שנה את הכותרת ל־קפה טרי ליד הבית, בלי לשנות את ההצעה.'});}
     const answer=await decide(context,{provider:config.provider,model:config.model});
