@@ -10,6 +10,15 @@ function newGoal(message){
 }
 const goalQuestion='בטח, מה המוצר או השירות שתרצה לקדם עכשיו?';
 function vagueGoal(message){return generalRecommendation(message)||/^(?:(?:אני\s+)?(?:רוצה|צריך|צריכה)|בוא(?:י)?|בואו)\s+(?:לשווק|לקדם|לפרסם)\s+(?:משהו|מוצר|שירות)\s+אחר[.!?؟]*$/u.test(message.trim())||/^(?:בוא(?:י)?\s+)?(?:נתחיל|נעבור ל|נפתח)\s*(?:משימה|בקשה)\s+חדש(?:ה)?[.!?؟]*$/u.test(message.trim());}
+function changedDeliverable(message,task){
+ if(!task||message.trim()===task.request.trim()||! /^(?:תכין|תכיני|תיצור|תיצרי|צור|צרי|בנה|בני|תקים|תעשה|תעשי|הכן)(?:\s|$)/u.test(message.trim()))return false;
+ const family=value=>/דרושים|מועמדות|גיוס עובדים/u.test(value)?'recruitment':/דיר[הת]|נכס|נדל[״"]?ן/u.test(value)?'property':/לעסק|לקוחות חדשים/u.test(value)?'business':null;
+ const old=family(task.request),next=family(message);
+ const outcomes=requiredOutcomes(message),steps=task.state.steps||[];
+ // Explicit creation in a different domain, or a newly requested outcome that
+ // the immutable old plan cannot fulfill. Follow-up details/revisions stay put.
+ return !!(old&&next&&old!==next)||outcomes.some(o=>steps.length?!steps.some(s=>s.kind==='meta'&&o.intents.includes(s.intent)):!requiredOutcomes(task.request).some(prior=>prior.intents.some(i=>o.intents.includes(i))));
+}
 const enabled=()=>process.env.TASK_AGENT_ENABLED==='true'&&(process.env.TASK_AGENT_REQUIRE_EVAL!=='true'||require('./taskEvaluation').ready());
 function text(value,max=2000){if(typeof value!=='string'||!value.trim()||value.length>max)throw Error('INVALID_TASK_TEXT');return value.trim();}
 function safe(value,limit=4000){
@@ -100,7 +109,7 @@ async function claim(clientId,{message,requestId,channel,taskRevision}){
   let task=prior?(await tx('SELECT * FROM agent_tasks WHERE id=$1 AND client_id=$2 FOR UPDATE',[prior.task_id,clientId])).rows[0]:(await tx("SELECT * FROM agent_tasks WHERE client_id=$1 AND status NOT IN ('COMPLETE','CANCELLED') FOR UPDATE",[clientId])).rows[0];
   if(taskRevision!==undefined&&(!Number.isInteger(taskRevision)||taskRevision!==task?.revision))throw Error('TASK_STALE');
   if(task?.lease_until&&new Date(task.lease_until)>new Date())return{cached:{handled:true,reply:'אני עדיין עובד על המשימה. ההתקדמות נשמרת; לא התחלתי עותק נוסף.',task:view(task),busy:true,externalActionsExecuted:false}};
-  const replacing=!prior&&newGoal(message);
+  const replacing=!prior&&(newGoal(message)||changedDeliverable(message,task));
   if(replacing&&task){
    // Never discard uncertain external effects or override an in-flight lease.
    let uncertain=task.status==='MANUAL_REVIEW'||task.state.steps.some(s=>s.status==='RUNNING'&&['image','meta'].includes(s.kind));
@@ -195,24 +204,36 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   task.status='RUNNING';await checkpoint(task,lease);
   const known=planner.businessContext(await require('./marketingStore').context(clientId));
   if(task.state.newGoal){delete known.facts.product;known.rule+=' The owner explicitly switched goals. Do not reuse a prior product or campaign.';}
-  let initialRepairs=0;
+  let initialRepairs=0,decisionRepairs=0,decisionFeedback=null;
   for(let round=0;round<16;round++){
    if((task.state.plannerCalls||0)>=64||!await require('./rateLimit').take('task-planner:'+clientId,60,3600)){task.status='BLOCKED';task.state.reason='המשימה הגיעה למגבלת התכנון כדי לעצור לולאה או עלות לא צפויה';return await settle(task,lease,requestId);}
    task.state.plannerCalls=(task.state.plannerCalls||0)+1;await checkpoint(task,lease);
    const context=contextFor(task,known);
    if(initialRepairs&&!task.state.steps.length)context.plannerFeedback=planner.initialFeedback(task.state.lastError);
+   if(decisionFeedback)context.plannerFeedback=decisionFeedback;
    let decision;
    try{
     decision=await planner.decide(context,options);
     if(!decision||typeof decision!=='object'||!decision.next)throw Error('INVALID_TASK_DECISION');
     if(!task.state.steps.length)task.state.steps=validatePlan(decision.plan,task.request);
+    const n=decision.next;
+    if(!['review','finish'].includes(n.op)){
+     const step=task.state.steps.find(s=>s.id===n.stepId);
+     if(!step||step.status==='STALE'||step.status==='DONE'&&!(step.kind==='read'&&n.op==='read'&&step.lastReadTurn!==requestId)&&!(task.state.revising&&step.kind==='collect'&&n.op==='collect')||step.status==='WAITING_APPROVAL'||!dependenciesReady(task,step))throw Error('TASK_STEP_NOT_READY');
+     if(n.op!=='blocked'&&OPS[n.op]!==step.kind)throw Error('TASK_OPERATION_MISMATCH');
+    }
    }catch(error){
     // One model-only correction before any step is accepted; never retry an executor.
     if(!task.state.steps.length&&initialRepairs<1&&planner.repairableInitial(error)){
      initialRepairs++;task.state.lastError=error instanceof SyntaxError?'INVALID_TASK_JSON':error.message;await checkpoint(task,lease);continue;
     }
+    if(decisionRepairs<1&&['TASK_STEP_NOT_READY','TASK_OPERATION_MISMATCH'].includes(error.message)){
+     decisionRepairs++;decisionFeedback={code:error.message,instruction:'The proposed next step was rejected BEFORE execution. Keep the existing plan, step IDs, facts and completed effects unchanged. Select a dependency-ready step of the matching kind; use review for prepared artifacts, or blocked on a ready step when access is missing. Never repeat completed writes or infer approval.'};
+     task.state.lastError=error.message;await checkpoint(task,lease);continue;
+    }
     throw error;
    }
+   decisionFeedback=null;
    delete task.state.lastError;
    // Later model plans are ignored. Only validated next operations may advance the authoritative persisted plan.
    const n=decision.next;
