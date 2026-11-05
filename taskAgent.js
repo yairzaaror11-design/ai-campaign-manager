@@ -45,6 +45,10 @@ async function checkpoint(task,lease){
 }
 function replyFor(task){
  const s=task.state;
+ if(task.status==='COMPLETE'&&s.steps?.every(step=>step.kind==='read')){
+  const analysis=[...s.steps].reverse().find(step=>step.result?.source==='OWNER_REPORTED_NOT_VERIFIED'&&step.result?.operation);
+  if(analysis)return require('./businessCase').format(analysis.result);
+ }
  if(task.status==='WAITING_INPUT')return s.question;
  if(task.status==='WAITING_MODEL')return 'שמרתי את הבקשה שלך: ״'+task.request+'״. מנגנון השיחה עדיין אינו זמין להמשך. לא הכנתי תוכן אחר ולא ביצעתי פעולה בחשבון. אפשר לכתוב ״המשך במשימה״ כדי לבדוק שוב.';
  if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nזו החבילה לבדיקה שלך. אפשר לבקש תיקונים, או לכתוב ״מאשר את החבילה״. אישור החבילה אינו אישור לפרסום או להוצאה כספית.';
@@ -107,7 +111,7 @@ async function reconcile(task){
  }
 }
 function contextFor(task,known){
- return{request:task.request,requiredOutcomes:requiredOutcomes(task.request),lastError:task.state.lastError||null,pendingQuestion:task.state.question||null,plan:task.state.steps.map(s=>({...s,result:s.result?.approval?{awaitingExactApproval:true}:safe(s.result,1500)})),facts:task.state.facts,messages:task.state.messages.slice(-6),knownBusiness:known,readTools:planner.READ_TOOLS,writeSchema:require('./gemini').functionDeclarations.find(t=>t.name==='propose_action').parameters,notes:'Only DONE is completed. PREPARED drafts await local review; WAITING_APPROVAL Meta actions have not executed.'};
+ return{request:task.request,requiredOutcomes:requiredOutcomes(task.request),lastError:task.state.lastError||null,pendingQuestion:task.state.question||null,plan:task.state.steps.map(s=>({...s,result:s.result?.approval?{awaitingExactApproval:true}:safe(s.result,1500)})),facts:task.state.facts,messages:task.state.messages.slice(-6),knownBusiness:known,readTools:planner.READ_TOOLS,professionalReadSchemas:require('./gemini').functionDeclarations.filter(t=>['get_professional_skills','analyze_business_case'].includes(t.name)),writeSchema:require('./gemini').functionDeclarations.find(t=>t.name==='propose_action').parameters,notes:'Only DONE is completed. PREPARED drafts await local review; WAITING_APPROVAL Meta actions have not executed.'};
 }
 function dependenciesReady(task,step){return step.dependsOn.every(id=>{const dep=task.state.steps.find(s=>s.id===id);return dep.status==='DONE'||step.kind!=='meta'&&dep.status==='PREPARED';});}
 async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={},options={}){
@@ -206,7 +210,15 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    }else if(n.op==='read'){
     if(!planner.READ_TOOLS.includes(n.tool)||!n.args||typeof n.args!=='object'||JSON.stringify(n.args).length>2000)throw Error('TASK_READ_TOOL_REJECTED');
     step.status='RUNNING';await checkpoint(task,lease);
-    step.result=safe(await (options.readTool||require('./gemini').runTool)(n.tool,n.args));step.status='DONE';step.lastReadTurn=requestId;
+    const scope={clientId,taskId:task.id,revision:task.revision,sources:[task.request,...task.state.messages.filter(m=>m.role==='user').map(m=>m.content)]};
+    try{step.result=safe(await require('./professionalContext').run(scope,()=> (options.readTool||require('./gemini').runTool)(n.tool,n.args)));}
+    catch(error){
+     const question=n.tool==='analyze_business_case'?require('./businessCase').inputQuestion(error.message):null;
+     if(!question)throw error;
+     step.status='PENDING';step.result={status:'NEEDS_INPUT',reason:error.message};task.state.lastError=error.message;task.state.question=question;task.status='WAITING_INPUT';return await settle(task,lease,requestId);
+    }
+    step.status='DONE';step.lastReadTurn=requestId;
+    if(n.tool==='analyze_business_case'&&step.result?.status==='NEEDS_INPUT'){step.status='PENDING';task.status='WAITING_INPUT';task.state.question=step.result.nextQuestion;return await settle(task,lease,requestId);}
    }else if(n.op==='image'){
     const prompt=text(n.prompt);
     if(n.referenceMediaId&&n.referenceMediaIds)throw Error('AMBIGUOUS_REFERENCE_IMAGES');
