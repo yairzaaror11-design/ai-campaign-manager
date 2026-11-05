@@ -41,6 +41,10 @@ async function enqueueInboundEvents(events, suppliedTx = null) {
   if (!Array.isArray(events) || events.length === 0) return { inserted: 0 };
   const work = async tx => {
     let inserted = 0;
+    // Serialize sequence allocation/commit with consumers for each sender.
+    // Sorted acquisition avoids deadlocks in batches containing multiple senders.
+    const senders=[...new Set(events.map(e=>String(e.payload?.message?.from||'')))].sort();
+    for(const sender of senders)await tx('SELECT pg_advisory_xact_lock(hashtextextended($1,874223007))',[sender]);
     for (const event of events) {
       const result = await tx(
         `INSERT INTO whatsapp_inbound_events (event_id, payload)
@@ -61,6 +65,7 @@ async function claimNextInboundEvent() {
     const selected = await tx(
       `SELECT e.event_id,e.payload FROM whatsapp_inbound_events e
        WHERE e.status='PENDING' AND e.available_at<=NOW()
+       AND NOT EXISTS(SELECT 1 FROM whatsapp_inbound_events earlier WHERE earlier.status='PENDING' AND earlier.ingest_order<e.ingest_order AND earlier.payload->'message'->>'from'=e.payload->'message'->>'from')
        AND NOT EXISTS(SELECT 1 FROM whatsapp_inbound_events busy WHERE busy.status='PROCESSING' AND busy.payload->'message'->>'from'=e.payload->'message'->>'from')
        ORDER BY e.ingest_order
        FOR UPDATE SKIP LOCKED

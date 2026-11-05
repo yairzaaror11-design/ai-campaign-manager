@@ -19,6 +19,7 @@ router.use('/app/api',require('./rateLimit').middleware('portal-api',120),async(
  try{req.portal=await auth.authenticate(req,{write:!['GET','HEAD'].includes(req.method)});next();}catch(e){res.status(e.message==='PORTAL_CSRF'?403:401).json({error:'צריך להיכנס דרך קישור אישי מה-WhatsApp.'});}
 });
 const endpoint=handler=>async(req,res)=>{try{await require('./metaConnection').context.run(String(req.portal.clientId),()=>handler(req,res));}catch(e){res.status(['LEAD_NOT_FOUND_OR_STALE','WORKSPACE_STALE','WORKSPACE_REQUEST_CONFLICT'].includes(e.message)?409:400).json({error:e.message==='LEAD_NOT_FOUND_OR_STALE'?'הפנייה עודכנה במקום אחר. רעננו ונסו שוב.':e.message==='WORKSPACE_STALE'?'הפרטים עודכנו במקביל. רעננו את המסך לפני עריכה נוספת.':e.message==='WORKSPACE_REQUEST_CONFLICT'?'הבקשה הזו כבר נשמרה עם פרטים אחרים. פתחו מחדש את הטופס.':'לא ניתן להשלים את הפעולה. בדקו את הפרטים ונסו שוב.'});}};
+router.use('/app/api/authority',require('./authorityRoutes'));
 router.get('/app/api/dashboard',endpoint(async(req,res)=>{
  const id=req.portal.clientId,p=await require('./marketingStore').load(id);
  const account=(await db.query('SELECT display_name,email,consent_version FROM customer_accounts WHERE client_id=$1',[id])).rows[0]||null;
@@ -95,5 +96,10 @@ router.patch('/app/api/workspace/:kind/:id',endpoint(async(req,res)=>res.json(aw
 router.post('/app/api/brand',endpoint(async(req,res)=>res.json(await require('./workspaceService').saveBrand(req.portal.clientId,req.body))));
 router.get('/app/api/agent',endpoint(async(req,res)=>res.json(await require('./portalAgent').history(req.portal.clientId))));
 router.post('/app/api/agent',require('./rateLimit').middleware('portal-agent',30),endpoint(async(req,res)=>res.json(await require('./portalAgent').send(req.portal.clientId,req.body))));
+router.get('/app/api/agent/media/:id',endpoint(async(req,res)=>{
+ const asset=await require('./mediaStore').loadMedia(req.portal.clientId,req.params.id);if(asset.media_type!=='image')return res.sendStatus(415);
+ const image=await require('./mediaStore').readMedia(req.portal.clientId,asset.id);if(!['image/png','image/jpeg','image/webp'].includes(image.mimeType))return res.sendStatus(415);
+ res.type(image.mimeType).send(image.buffer);
+}));
 
 module.exports=router;

@@ -70,8 +70,11 @@ function replyFor(task){
  return 'ההתקדמות נשמרה, אבל לא הצלחתי להשלים את הצעד הבא כרגע. אפשר לנסות שוב; פעולה חיצונית לא תבוצע מחדש אם תוצאתה אינה ודאית.';
 }
 async function settle(task,lease,requestId){
+ const reply=task.customReply||replyFor(task);
+ const contextReply=task.status==='WAITING_APPROVAL'?'הוכנה פעולה לבדיקה; נדרש אישור נפרד לפעולה זו.':reply;
+ task.state.messages=[...(task.state.messages||[]),{role:'assistant',content:contextReply.slice(0,2000),...(contextReply.length>2000?{truncated:true}:{})}].slice(-12);
  await checkpoint(task,lease);
- const result={handled:true,reply:task.customReply||replyFor(task),mediaIds:task.newMedia||[],task:view(task),externalActionsExecuted:view(task).externalActionsExecuted};
+ const result={handled:true,reply,mediaIds:task.newMedia||[],task:view(task),externalActionsExecuted:view(task).externalActionsExecuted};
  await db.transaction(async tx=>{
   const row=await tx('SELECT lease_token FROM agent_tasks WHERE id=$1 AND client_id=$2 FOR UPDATE',[task.id,task.client_id]);if(row.rows[0]?.lease_token!==lease)throw Error('TASK_LEASE_LOST');
   const storedResult=task.status==='WAITING_APPROVAL'?{...result,reply:undefined,replyCiphertext:meta.encrypt(result.reply,task.client_id)}:result;
@@ -113,7 +116,7 @@ async function claim(clientId,{message,requestId,channel,taskRevision}){
   else for(const s of task.state.steps||[])if(s.status==='RUNNING')s.status='PENDING';
   const lease=crypto.randomUUID();
   await tx("UPDATE agent_tasks SET lease_token=$2,lease_until=NOW()+INTERVAL '5 minutes',state=$3::jsonb,status=$4 WHERE id=$1",[task.id,lease,JSON.stringify(task.state),task.status]);
-  if(!prior)await tx('INSERT INTO agent_task_turns(client_id,request_id,task_id,fingerprint) VALUES($1,$2,$3,$4)',[clientId,requestId,task.id,fingerprint]);
+  if(!prior)await tx('INSERT INTO agent_task_turns(client_id,request_id,task_id,fingerprint,channel,input_text) VALUES($1,$2,$3,$4,$5,$6)',[clientId,requestId,task.id,fingerprint,channel,/^אשר\s+\d{6}$/.test(message)?'נמסר אישור לפעולה':message]);
   return{task,lease};
  });
 }
@@ -274,7 +277,20 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     const plan={...require('./actionPlan').createActionPlan(n.proposal),taskId:task.id,taskStepId:step.id,taskCreationLease:lease};
     step.status='RUNNING';await checkpoint(task,lease);
     const a=await require('./approvalEngine').createApprovalForClient(clientId,plan);
-    step.result={approval:{actionId:a.actionId,planHash:require('./approvalPolicy').planHash(a.actionPlan),plan:a.actionPlan,codeCiphertext:meta.encrypt(a.code,clientId),expiresAt:a.expiresAt}};step.status='WAITING_APPROVAL';task.status='WAITING_APPROVAL';return await settle(task,lease,requestId);
+    step.result={approval:{actionId:a.actionId,planHash:require('./approvalPolicy').planHash(a.actionPlan),plan:a.actionPlan,codeCiphertext:meta.encrypt(a.code,clientId),expiresAt:a.expiresAt}};step.status='WAITING_APPROVAL';task.status='WAITING_APPROVAL';
+    if(require('./scopedAuthority').enabled()){
+     await checkpoint(task,lease);
+     if(await require('./scopedAuthority').approveIfCovered(clientId,a.actionPlan)){
+      const outcome=await require('./actionExecutor').executeApprovedForClient(clientId,a.actionPlan);
+      if(!outcome.ok){
+       if(outcome.blocked){task.status='BLOCKED';task.state.reason=outcome.message||'הכתיבה לחשבון חסומה';}
+       else task.status='MANUAL_REVIEW';
+       return await settle(task,lease,requestId);
+      }
+      await reconcile(task);task.status='RUNNING';await checkpoint(task,lease);continue;
+     }
+    }
+    return await settle(task,lease,requestId);
    }
    await checkpoint(task,lease);
   }

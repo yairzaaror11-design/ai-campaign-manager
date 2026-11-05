@@ -10,6 +10,8 @@ async function owns(clientId){
 async function handle(clientId,input,options={}){
  if(!await owns(clientId))return null;
  const message=input.message.trim(),eventId=input.requestId;
+ const skills=require('./skillStatus');
+ if(skills.requested(message))return skills.reply();
  const active=await tasks.active(clientId);
  if(/^אשר\s+\d{6}$/.test(message)&&!active)return{handled:true,reply:'אין פעולה ממתינה במשימה הנוכחית. לא אשתמש באישור מתוכנית קודמת. אפשר לבקש להכין את הפעולה מחדש לבדיקה.'};
  // Only explicit infrastructure commands may reach their existing adapters.
@@ -22,6 +24,7 @@ async function handle(clientId,input,options={}){
  const personal=await require('./personalConversation').handle(clientId,message,eventId);if(personal)return personal;
  if(!active&&analysis.intent==='greeting')return{handled:true,reply:'היי! מה תרצה שנכין או ננהל היום? אפשר לבקש קמפיין, מודעה או טופס ולצרף תמונות של העסק.'};
  if(!active&&analysis.intent==='capabilities')return{handled:true,reply:'אפשר להכין מודעה, עיצוב וטופס לידים, לבדוק נתוני קמפיינים ולהציע פעולות בחשבון המחובר. אברר רק מה שחסר לבקשה ואציג את התוצרים לבדיקה. יצירה ב־Meta והפעלה דורשות אישורים נפרדים.'};
+ if(!skills.check().ok)return{handled:true,externalActionsExecuted:false,reply:'בדיקת החיבור של היכולות נכשלה. לא אבצע משימות חדשות עד לתיקון החיבור.'};
  if(!tasks.needsGoalClarification(message)&&!tasks.enabled()&&process.env.TASK_AGENT_ENABLED==='true'&&process.env.TASK_AGENT_REQUIRE_EVAL==='true')await require('./taskEvaluation').waitUntilReady();
  return tasks.send(clientId,{...input,message:message==='/start'?'היי':message},{...options,deferPlanning:!tasks.enabled()});
 }
