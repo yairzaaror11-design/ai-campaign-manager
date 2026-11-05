@@ -19,10 +19,12 @@ function businessContext(known={}){
  const historicalCampaign=new Set(['businessGoal','dailyBudget','leadDestination','successCriteria','offer','offerMediaSeparate','offerScope','offerCommitment']);
  return{facts:Object.fromEntries(Object.entries(facts).filter(([key])=>!historicalCampaign.has(key))),brand,person,connection,media,rule:'Business background only. No prior campaign, draft, pending question, budget or goal is current-task authority. Ask for current-task details when missing.'};
 }
+function initialFeedback(code){return{code,instruction:'No plan has been accepted. Return a complete valid ordered plan of 1..12 supported steps and one next operation against that plan. No external action has been performed by this planning attempt.'};}
+function repairableInitial(error){return ['INVALID_TASK_PLAN','INVALID_TASK_DECISION','TASK_PLAN_MISSING_OUTCOME'].includes(error.message)||error instanceof SyntaxError;}
 async function decide(context,{planner,provider,model}={}){
  const input={...context,planningPhase:context.plan?.length?'CONTINUE_EXISTING_PLAN':'INITIAL_PLAN_REQUIRED'};
  if(planner)return planner(input);
- const result=await require('./aiService').processMessage(JSON.stringify(input),[],{planningOnly:true,taskPlanning:true,provider,model});
+ const result=await require('./aiService').processMessage(JSON.stringify(input),[],{planningOnly:true,taskPlanning:true,taskPlanningSchema:require('./taskPlanningSchema').responseSchema(input),provider,model});
  return JSON.parse(result.text.replace(/^```(?:json)?\s*|\s*```$/g,''));
 }
-module.exports={SYSTEM,READ_TOOLS,decide,businessContext};
+module.exports={SYSTEM,READ_TOOLS,decide,businessContext,initialFeedback,repairableInitial};

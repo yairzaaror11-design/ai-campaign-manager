@@ -28,7 +28,16 @@ async function evaluate({decide=require('./taskPlanner').decide,providers}={}){
     if(item.afterClarification)context.messages=[{role:'user',content:'אני רוצה לשווק משהו אחר'},{role:'assistant',content:'בטח, מה המוצר או השירות שתרצה לקדם עכשיו?'},{role:'user',content:item.request}];
     if(item.professional)context.plan=[{id:'guide',label:'כללי הרחבה',kind:'read',dependsOn:[],status:'DONE',result:require('./professionalSkills').catalog({id:'MKT-06'})},{id:'economics',label:'כלכלה שולית',kind:'read',dependsOn:['guide'],status:'PENDING'}];
     if(item.continuation){context.plan=[{id:'copy',label:'מודעת בית קפה',kind:'draft',dependsOn:[],status:'PREPARED',artifact:{title:'מודעה',content:'ארוחת בוקר ב-45 ₪. לפרטים כתבו לנו.',reviewed:false}}];context.messages.push({role:'user',content:'שנה את הכותרת ל־קפה טרי ליד הבית, בלי לשנות את ההצעה.'});}
-    const answer=await decide(context,{provider:config.provider,model:config.model});
+    const options={provider:config.provider,model:config.model};
+    let answer;
+    try{
+     answer=await decide(context,options);
+     if(!context.plan.length){if(!answer?.next)throw Error('INVALID_TASK_DECISION');require('./taskAgent').validatePlan(answer.plan,item.request);}
+    }catch(error){
+     if(context.plan.length||!require('./taskPlanner').repairableInitial(error))throw error;
+     // Match the runtime's single model-only correction, with all final checks below unchanged.
+     answer=await decide({...context,plannerFeedback:require('./taskPlanner').initialFeedback(error instanceof SyntaxError?'INVALID_TASK_JSON':error.message)},options);
+    }
     if(item.professional){
      const n=answer.next;
      if(n?.op!=='read'||n.stepId!=='economics'||n.tool!=='analyze_business_case'||n.args?.operation!=='scaling')throw Error('PROFESSIONAL_TOOL_NOT_USED');

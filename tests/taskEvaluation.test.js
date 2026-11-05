@@ -36,3 +36,11 @@ test('cold-start callers share one evaluation and wait for success without bypas
   const waiting=evaluation.waitUntilReady(1000);release();assert.equal(await waiting,true);await pending;assert.equal(calls,evaluation.cases.length);
  }finally{release();if(previous===undefined)delete process.env.AI_PROVIDER;else process.env.AI_PROVIDER=previous;}
 });
+test('acceptance exercises the same bounded initial-plan correction and still requires every final case to pass',async()=>{
+ const previous=process.env.AI_PROVIDER;process.env.AI_PROVIDER='gemini';let malformed=true,calls=0;
+ try{
+  const recovered=await evaluation.run({providers,decide:async context=>{calls++;if(malformed){malformed=false;return{next:{op:'ask',stepId:'details',question:'פרט חסר?'}};}return answer(context);}});
+  assert.equal(recovered.status,'PASSED');assert.equal(calls,evaluation.cases.length+1);
+  const failed=await evaluation.run({providers,decide:async context=>context.plan.length?answer(context):{next:{op:'finish'}}});assert.equal(failed.status,'FAILED');assert.equal(evaluation.ready(),false);
+ }finally{if(previous===undefined)delete process.env.AI_PROVIDER;else process.env.AI_PROVIDER=previous;}
+});

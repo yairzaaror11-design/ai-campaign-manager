@@ -225,7 +225,7 @@ async function processWithGemini(text, history = [], options = {}) {
     history: toGeminiHistory(history),
     config: {
       systemInstruction: options.taskPlanning?require('./taskPlanner').SYSTEM:require('./marketingPrompt').withMarketingContext(SYSTEM+(options.creativeDraft?'\n'+require('./creativeGeneration').SYSTEM:'')+(options.planningOnly?'\nPlanning conversation only: answer and suggest using supplied facts and dashboard data. You have no tools. Never claim to save, publish, send, schedule, delete or execute anything. Explain what the user can do in the current screen. Missing capabilities must be stated plainly.':''),options.marketingContext),
-      ...(options.taskPlanning?{responseMimeType:'application/json'}:{}),
+      ...(options.taskPlanning?{responseMimeType:'application/json',...(options.taskPlanningSchema?{responseJsonSchema:options.taskPlanningSchema}:{})}:{}),
       ...(options.planningOnly?{}:{tools: [{ functionDeclarations }]}),
       maxOutputTokens: Math.max(128, Math.min(options.taskPlanning?4096:2048, options.taskPlanning?4096:options.creativeDraft?2048:(Number(process.env.GEMINI_MAX_OUTPUT_TOKENS) || 1024))),
       httpOptions: { timeout: Math.max(3000, Math.min(30000, options.taskPlanning?30000:(Number(process.env.GEMINI_TIMEOUT_MS) || 12000))) }
