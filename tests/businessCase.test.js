@@ -17,6 +17,14 @@ test('scaling uses marginal CAC and the stated lifetime assumption without promi
  const r=run('scaling',{oldAdSpend:3000,newAdSpend:6000,oldNewCustomers:5,newNewCustomers:8,expectedIncomePerCustomer:'687.50'},'הוצאה קודמת 3000 ₪ עם 5 לקוחות; הוצאה חדשה 6000 ₪ עם 8 לקוחות. הנחת הכנסה לחיי לקוח אחרי עלויות: 687.50 ₪.');
  assert.equal(value(r,'oldAverageCac'),'600.00');assert.equal(value(r,'newAverageCac'),'750.00');assert.equal(value(r,'marginalCac'),'1000.00');assert.equal(value(r,'estimatedOldLifetimeBalanceBeforeOtherCosts'),'437.50');assert.equal(value(r,'estimatedNewLifetimeBalanceBeforeOtherCosts'),'-500.00');assert.equal(value(r,'estimatedIncrementalLifetimeBalanceBeforeOtherCosts'),'-937.50');assert.equal(r.causalConclusion,false);assert.equal(r.requiresApprovalForChanges,true);
 });
+test('period labels require exact owner wording; unknown stays explicit and invalid metadata has a recoverable question',()=>{
+ const source='הוצאה קודמת 3000 ₪ עם 5 לקוחות, הוצאה חדשה 6000 ₪ עם 8 לקוחות. כל תקופה של 30 יום.';
+ const values={oldAdSpend:3000,newAdSpend:6000,oldNewCustomers:5,newNewCustomers:8};
+ assert.throws(()=>run('scaling',values,source,{period:{value:'שתי תקופות של חודש',evidence:source}}),/BUSINESS_PERIOD_NOT_CONFIRMED/);
+ assert.match(engine.inputQuestion('BUSINESS_PERIOD_NOT_CONFIRMED'),/לאיזו תקופה/);
+ const exact=run('scaling',values,source,{period:{value:'30 יום',evidence:'כל תקופה של 30 יום'}});assert.equal(exact.period,'30 יום');assert.equal(value(exact,'marginalCac'),'1000.00');
+ const unknown=run('scaling',values,source);assert.equal(unknown.period,'UNKNOWN');assert.equal(value(unknown,'marginalCac'),'1000.00');assert.match(unknown.limitations.join(' '),/טווח הזמן/);
+});
 test('campaign comparison reports point estimates but cannot manufacture statistical or causal winners',()=>{
  const r=run('campaign_comparison',{spendA:800,leadsA:20,customersA:4,spendB:800,leadsB:25,customersB:2},'A: הוצאה 800 ₪, 20 פניות, 4 לקוחות. B: הוצאה 800 ₪, 25 פניות, 2 לקוחות.');
  assert.equal(value(r,'cplA'),'40.00');assert.equal(value(r,'cplB'),'32.00');assert.equal(value(r,'cacA'),'200.00');assert.equal(value(r,'cacB'),'400.00');assert.equal(r.causalConclusion,false);assert.match(r.limitations.join(' '),/לא נקבע מנצח/);

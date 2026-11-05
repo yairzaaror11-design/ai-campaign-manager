@@ -140,6 +140,7 @@ function format(result){
  }
 }
 function inputQuestion(code){
+ if(code==='BUSINESS_PERIOD_NOT_CONFIRMED')return 'לאיזו תקופה מתייחסים הנתונים שתרצה להשוות?';
  if(['BUSINESS_CURRENCY_NOT_CONFIRMED','BUSINESS_CURRENCY_AMBIGUOUS','BUSINESS_CURRENCY_MISMATCH'].includes(code))return 'באיזה מטבע נמסר כל סכום שתרצה להשוות?';
  if(['BUSINESS_EVIDENCE_REQUIRED','BUSINESS_VALUE_NOT_IN_EVIDENCE'].includes(code))return 'לא הצלחתי להתאים בביטחון את הנתונים לחישוב. אפשר למסור את הסכומים והתקופה שתרצה להשוות?';
  if(['BUSINESS_NUMBER_PRECISION','INVALID_BUSINESS_NUMBER','BUSINESS_NUMBER_LIMIT'].includes(code))return 'אפשר למסור את המספר המדויק, ולסכום כספי גם מטבע ועד שתי ספרות אחרי הנקודה?';
