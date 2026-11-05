@@ -81,6 +81,17 @@ test('WhatsApp inbound events are deduplicated, durably claimed, and never auto-
 
     // Independent PostgreSQL transactions race for the same sender; only its oldest event may run.
     await enqueueInboundEvents(rapidIds.map((id,i)=>({eventId:id,payload:{message:{id,from:i<2?'972555000003':'972555000004'},contact:{}}})));
+    // Deterministically reproduce SKIP LOCKED skipping a sender's first row.
+    // A second worker must not claim the next message while its predecessor is locked.
+    const locker=new (require('pg').Client)({connectionString:process.env.TEST_DATABASE_URL,ssl:false,connectionTimeoutMillis:5000});
+    await locker.connect();
+    try{
+      await locker.query('BEGIN');
+      await locker.query('SELECT event_id FROM whatsapp_inbound_events WHERE event_id=$1 FOR UPDATE',[rapidIds[0]]);
+      const independent=await claimNextInboundEvent();
+      assert.equal(independent?.event_id,rapidIds[2]);
+      await query("UPDATE whatsapp_inbound_events SET status='DONE' WHERE event_id=$1",[rapidIds[2]]);
+    }finally{await locker.query('ROLLBACK');await locker.end();}
     const racing=(await Promise.all([claimNextInboundEvent(),claimNextInboundEvent(),claimNextInboundEvent()])).filter(Boolean);
     assert.equal(racing.filter(r=>r.payload.message.from==='972555000003').length,1);
     assert.ok(racing.some(r=>r.event_id===rapidIds[0]));assert.ok(!racing.some(r=>r.event_id===rapidIds[1]));
