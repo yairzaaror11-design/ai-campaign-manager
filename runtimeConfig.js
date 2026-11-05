@@ -1,5 +1,7 @@
 'use strict';
 function validateRuntime() {
+ if(process.env.SCOPED_AUTOMATION_ENABLED!==undefined&&!['true','false'].includes(process.env.SCOPED_AUTOMATION_ENABLED))throw Error('INVALID_BOOLEAN_SCOPED_AUTOMATION_ENABLED');
+ if(process.env.UNIFIED_PORTAL_AGENT_ENABLED!==undefined&&!['true','false'].includes(process.env.UNIFIED_PORTAL_AGENT_ENABLED))throw Error('INVALID_BOOLEAN_UNIFIED_PORTAL_AGENT_ENABLED');
  for(const flag of ['UNIFIED_CONVERSATION_ENABLED','TASK_AGENT_ENABLED','TASK_AGENT_REQUIRE_EVAL','TASK_AGENT_PILOT_ONLY','TASK_AGENT_EVALUATE_ON_START','READ_ONLY','META_WRITES_ENABLED','WHATSAPP_SEND_ENABLED','WHATSAPP_WORKER_IN_WEB','REQUIRE_WORKER_HEARTBEAT','GRAPHICS_ENABLED','BUSINESS_LINK_ONBOARDING_ENABLED','PUBLIC_ONBOARDING_ENABLED','BILLING_ENABLED']) if(process.env[flag]!==undefined&&!['true','false'].includes(process.env[flag])) throw Error('INVALID_BOOLEAN_'+flag);
  require('./maintenance').retentionDays();
  if(process.env.NODE_ENV!=='production') return;

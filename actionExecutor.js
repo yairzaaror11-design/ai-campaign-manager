@@ -26,7 +26,12 @@ async function executeApprovedForClient(clientId,plan) {
         if(!verified.verified) throw Error('POST_WRITE_VERIFICATION_FAILED');
         return {id:written.id || plan.target.campaignId,...(written.objects?{objects:written.objects}:{}),verified:true};
       });
-    } catch {
+    } catch (error) {
+      if(error.message==='SCOPED_AUTHORITY_REVOKED_OR_STALE'){
+        await db.query("UPDATE meta_execution_attempts SET status='BLOCKED',updated_at=NOW() WHERE action_id=$1 AND client_id=$2",[plan.id,client.id]);
+        await db.query("UPDATE action_plans SET status='BLOCKED',updated_at=NOW() WHERE id=$1 AND client_id=$2",[plan.id,client.id]);
+        return{ok:false,blocked:true,reason:'SCOPED_AUTHORITY_BLOCKED',message:'מסגרת ההרשאה השתנתה או בוטלה. הפעולה נחסמה לפני ביצוע שינוי בפלטפורמה.'};
+      }
       await db.query("UPDATE meta_execution_attempts SET status='MANUAL_REVIEW',updated_at=NOW() WHERE action_id=$1 AND client_id=$2",[plan.id,client.id]);
       await db.query("UPDATE action_plans SET status='MANUAL_REVIEW',updated_at=NOW() WHERE id=$1 AND client_id=$2",[plan.id,client.id]);
       return {ok:false,reason:'MANUAL_REVIEW',message:'הפעולה דורשת בדיקה ידנית. אין לנסות שוב לפני בירור המצב ב־Meta.'};

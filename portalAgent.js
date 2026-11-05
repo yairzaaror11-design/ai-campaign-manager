@@ -4,12 +4,27 @@ const crypto=require('node:crypto'),store=require('./marketingStore');
 const SCREENS=['pages','onboarding','home','brand','products','creative','content','campaign','landing','research','integrations','sales','leads','pipeline','customers','tasks','scripts','automations','whatsapp','bot','finance','profitability','expenses','forecasts','advisor','calendar','bookings','services','team','calendar-settings','agent','account','users','billing','help','support'];
 const ACTIONS={campaign:{screen:'campaign',label:'פתיחת תוכנית הקמפיין'},brand:{screen:'brand',label:'פרטי המותג'},leads:{screen:'leads',label:'ניהול לידים'},content:{screen:'content',label:'יצירת טיוטת פוסט'},tasks:{screen:'tasks',label:'ניהול משימות'},integrations:{screen:'integrations',label:'בדיקת חיבורים'}};
 function actions(screen){return [ACTIONS[['leads','pipeline','sales','customers'].includes(screen)?'leads':['brand','products','research'].includes(screen)?'brand':screen==='content'?'content':'campaign'],ACTIONS.tasks,ACTIONS.integrations];}
+function replay(result,clientId){if(!result.replyCiphertext)return result;const copy={...result,reply:require('./metaConnection').decrypt(result.replyCiphertext,clientId)};delete copy.replyCiphertext;return copy;}
 async function send(clientId,{message,screen,requestId}={}){
  if(typeof message!=='string'||!message.trim()||message.length>2000||!SCREENS.includes(screen)||!require('./workspaceService').uuid(requestId))throw Error('INVALID_AGENT_MESSAGE');
  const fingerprint=crypto.createHash('sha256').update(JSON.stringify({message,screen})).digest('hex');
  const snapshot=await store.load(clientId)||store.emptyProfile();
  const prior=snapshot.portalChat?.requests?.find(x=>x.id===requestId);
- if(prior){if(prior.fingerprint!==fingerprint)throw Error('WORKSPACE_REQUEST_CONFLICT');return prior.result;}
+ if(prior){if(prior.fingerprint!==fingerprint)throw Error('WORKSPACE_REQUEST_CONFLICT');return replay(prior.result,clientId);}
+ if(await require('./unifiedPortalAgent').owns(clientId)){
+  const response=await require('./unifiedPortalAgent').send(clientId,{message:message.trim(),screen,requestId});
+  if(response.busy)return response;
+  return store.update(clientId,null,p=>{
+   const chat=p.portalChat||{messages:[],requests:[]},cached=chat.requests.find(x=>x.id===requestId);
+   if(cached){if(cached.fingerprint!==fingerprint)throw Error('WORKSPACE_REQUEST_CONFLICT');return replay(cached.result,clientId);}
+   const approval=response.task?.status==='WAITING_APPROVAL',now=new Date().toISOString();
+   chat.messages=[...chat.messages,{role:'user',content:/^אשר\s+\d{6}$/.test(message.trim())?'נמסר אישור לפעולה':message,screen,at:now,requestId},{role:'assistant',content:approval?'הוכנה פעולה לבדיקה; נדרש אישור נפרד לפעולה זו.':response.reply,media:response.media,screen,at:now,requestId}].slice(-24);
+   const final={...response,handled:false,changed:true,audit:'UNIFIED_PORTAL_AGENT'};
+   const saved=approval?{...final,reply:undefined,replyCiphertext:require('./metaConnection').encrypt(response.reply,clientId)}:final;
+   chat.requests=[...chat.requests,{id:requestId,fingerprint,result:saved}].slice(-12);p.portalChat=chat;
+   return final;
+  });
+ }
  const candidate=structuredClone(snapshot);
  const prepared=await prepareReply(clientId,candidate,message,screen);
  return store.update(clientId,null,p=>{
@@ -49,5 +64,5 @@ async function prepareReply(clientId,p,message,screen){
   }
  return reply;
 }
-async function history(clientId){const p=await store.load(clientId);return {messages:p?.portalChat?.messages||[]};}
+async function history(clientId){if(await require('./unifiedPortalAgent').owns(clientId))return require('./unifiedPortalAgent').history(clientId);const p=await store.load(clientId);return {messages:p?.portalChat?.messages||[]};}
 module.exports={SCREENS,actions,send,history};

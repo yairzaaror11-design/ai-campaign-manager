@@ -28,6 +28,7 @@ SUPPORTED WRITE INTENTS:
 ${[...require('./actionPlan').WRITE_INTENTS].join(', ')}.`;
 
 const functionDeclarations = [
+  {name:'get_authorization_status',description:'Read server-recorded scoped authority and remaining quotas for the current tenant. This never grants, approves, expands or revokes access and does not prove provider eligibility. Spending and activation still need exact separate approval.',parameters:{type:'OBJECT',properties:{}}},
   {name:'get_professional_skills',description:'Read the professional marketing engine catalogue or one source-linked guide. Each is explicitly partial read-only advice, not proof of a live connector. Use the matching guide before strategy, funnel, scaling, creative, industry or experiment advice.',parameters:{type:'OBJECT',properties:{id:{type:'STRING',enum:require('./professionalSkills').SKILLS.map(s=>s.id)},query:{type:'STRING'}}}},
   {name:'analyze_business_case',description:'Calculate business economics, marginal CAC, experiments, capacity, cohorts or long-cycle pipeline using deterministic code. Every numeric value MUST be quoted from an actual owner message in this task; currency must be explicit. Never supply example/default/model-invented numbers. Missing inputs return one question. This never changes budgets or imports CRM/payment data.',parameters:{type:'OBJECT',properties:{operation:{type:'STRING',enum:Object.keys(require('./businessCase').OPS)},fields:{type:'ARRAY',items:{type:'OBJECT',properties:{key:{type:'STRING',enum:Object.keys(require('./businessCase').TYPES)},value:{type:'STRING'},evidence:{type:'STRING'}},required:['key','value','evidence']}},currency:{type:'OBJECT',properties:{value:{type:'STRING',enum:['ILS','USD','EUR','GBP']},evidence:{type:'STRING'}},required:['value','evidence']},period:{type:'OBJECT',description:'Optional exact owner quotation about the period. Omit if no exact quotation is available; never summarize or combine two periods into a new label.',properties:{value:{type:'STRING',description:'Exact contiguous substring of period.evidence, copied verbatim from an actual user message; for example 30 יום only when those exact words occur.'},evidence:{type:'STRING',description:'Verbatim contiguous quotation from a user message containing the exact period.value, at most 300 characters.'}},required:['value','evidence']}},required:['operation','fields']}},
   {name:'get_marketing_diagnosis',description:'Analyze verified current-tenant Meta performance with the deterministic marketing brain. Read only: recommendations never execute changes. Use target values only if explicitly supplied by the owner.',parameters:{type:'OBJECT',properties:{date_preset:{type:'STRING'},target_cpl:{type:'NUMBER'},review_spend_limit:{type:'NUMBER'}}}},
@@ -154,6 +155,11 @@ const functionDeclarations = [
 ];
 
 async function runTool(name, args = {}) {
+  if(name==='get_authorization_status'){
+    const tenant=require('./metaConnection').context.getStore();if(!tenant)throw Error('TENANT_CONTEXT_REQUIRED');
+    const status=await require('./scopedAuthority').list(tenant);
+    return{enabled:status.enabled,spendingAuthorized:false,source:'SERVER_AUTHORIZATION_RECORD_NOT_PROVIDER_ACCESS',mandates:status.mandates.filter(m=>m.status==='ACTIVE'&&!m.expired).slice(0,10).map(m=>({id:m.id,label:m.policy.label,accountId:m.policy.accountId,intents:m.policy.intents,expiresAt:m.policy.expiresAt,remainingActions:m.remainingActions}))};
+  }
   if(name==='get_professional_skills')return require('./professionalSkills').catalog(args);
   if(name==='analyze_business_case')return require('./businessCase').analyze(args);
   if(name==='get_meta_capabilities')return require('./botCapabilities').describe();

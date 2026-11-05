@@ -492,3 +492,5 @@ body{--department-hover:color-mix(in srgb,var(--department-primary) 86%,black);-
 @property --section-accent{syntax:'<color>';inherits:true;initial-value:#0756F5}
 @media(min-width:961px){body.shell-ready{transition:--section-dark 250ms ease-out,--section-accent 250ms ease-out}}
 @media(min-width:961px) and (prefers-reduced-motion:reduce){body.shell-ready{transition:none}}
+
+.authority-summary{white-space:pre-line}
