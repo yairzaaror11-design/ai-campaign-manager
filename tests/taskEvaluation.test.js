@@ -3,6 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const evaluation=require('../taskEvaluation');
 const providers=[{provider:'gemini',model:'synthetic-test',configured:true}];
 function answer(context){
+ if(context.plan.some(s=>s.id==='recruitment_copy'))return{next:{op:'draft',stepId:'recruitment_copy',title:'דרוש איש מכירות',content:'מגייסים איש מכירות בכל הארץ. להגשת מועמדות השאירו פרטים בטופס.',formDraft:{title:'טופס מועמדות',questions:['שם מלא','טלפון','מה הניסיון הרלוונטי שלך במכירות?']}}};
  if(context.plan.some(s=>s.id==='economics'))return{next:{op:'read',stepId:'economics',tool:'analyze_business_case',args:{operation:'scaling',fields:Object.entries({oldAdSpend:'3000',newAdSpend:'6000',oldNewCustomers:'5',newNewCustomers:'8',expectedIncomePerCustomer:'687.50'}).map(([key,value])=>({key,value,evidence:context.request})),currency:{value:'ILS',evidence:'₪'}}}};
  if(context.plan.length)return{next:{op:'draft',stepId:'copy',title:'קפה טרי ליד הבית',content:'ארוחת בוקר ב-45 ₪. לפרטים כתבו לנו.'}};
  const plan=[{id:'details',label:'פרטים חסרים',kind:'collect',dependsOn:[]}];

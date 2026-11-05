@@ -6,7 +6,8 @@ const cases=[
  {id:'draft_is_not_publication',request:'תכין רק טיוטת קמפיין למכון כושר. אל תפרסם ואל תוציא כסף.',business:{businessType:{value:'מכון כושר',status:'known'}},noWrites:true},
  {id:'new_goal_after_clarification',request:'דירת 2 חדרים למכירה באילת במיליון שקל',business:{},afterClarification:true},
  {id:'continuation_feedback',request:'תכין לי טיוטת מודעה לבית קפה עם ארוחת בוקר ב-45 ₪. אל תפרסם.',business:{businessType:{value:'בית קפה',status:'known'}},continuation:true},
- {id:'professional_calculation',request:'בדוק כדאיות בלי לשנות תקציב: תקופה קודמת של 30 יום עם פרסום 3000 ₪ ו-5 לקוחות משלמים, תקופה חדשה של 30 יום עם פרסום 6000 ₪ ו-8 לקוחות משלמים. הנחת הכנסה לחיי לקוח אחרי עלויות משתנות היא 687.50 ₪.',business:{},professional:true}
+ {id:'professional_calculation',request:'בדוק כדאיות בלי לשנות תקציב: תקופה קודמת של 30 יום עם פרסום 3000 ₪ ו-5 לקוחות משלמים, תקופה חדשה של 30 יום עם פרסום 6000 ₪ ו-8 לקוחות משלמים. הנחת הכנסה לחיי לקוח אחרי עלויות משתנות היא 687.50 ₪.',business:{},professional:true},
+ {id:'recruitment_grounded_package',request:'תכין לי קמפיין דרושים עם מודעה וטופס מועמדות, בלי לפרסם',business:{businessName:{value:'עסק בדיקה סינתטי',status:'known'}},recruitmentPackage:true}
 ];
 let state={status:'NOT_RUN',providers:[]};
 let inFlight=null;
@@ -28,6 +29,12 @@ async function evaluate({decide=require('./taskPlanner').decide,providers}={}){
     if(item.afterClarification)context.messages=[{role:'user',content:'אני רוצה לשווק משהו אחר'},{role:'assistant',content:'בטח, מה המוצר או השירות שתרצה לקדם עכשיו?'},{role:'user',content:item.request}];
     if(item.professional)context.plan=[{id:'guide',label:'כללי הרחבה',kind:'read',dependsOn:[],status:'DONE',result:require('./professionalSkills').catalog({id:'MKT-06'})},{id:'economics',label:'כלכלה שולית',kind:'read',dependsOn:['guide'],status:'PENDING'}];
     if(item.continuation){context.plan=[{id:'copy',label:'מודעת בית קפה',kind:'draft',dependsOn:[],status:'PREPARED',artifact:{title:'מודעה',content:'ארוחת בוקר ב-45 ₪. לפרטים כתבו לנו.',reviewed:false}}];context.messages.push({role:'user',content:'שנה את הכותרת ל־קפה טרי ליד הבית, בלי לשנות את ההצעה.'});}
+    if(item.recruitmentPackage){
+     context.plan=[{id:'details',label:'פרטי משרה',kind:'collect',dependsOn:[],status:'DONE'},{id:'recruitment_copy',label:'מודעה וטופס לבדיקה',kind:'draft',dependsOn:['details'],status:'PREPARED',artifact:{title:'טיוטה קודמת',content:'החברה מתרחבת; ניסיון B2B יתרון.',reviewed:false}},{id:'form',label:'טופס',kind:'meta',intent:'CREATE_LEAD_FORM',dependsOn:['recruitment_copy'],status:'PENDING'},{id:'campaign',label:'קמפיין',kind:'meta',intent:'CREATE_BUNDLE',dependsOn:['form'],status:'PENDING'}];
+     context.facts={role:{value:'איש מכירות',evidence:'גיוס איש מכירות בכל הארץ'},geography:{value:'בכל הארץ',evidence:'גיוס איש מכירות בכל הארץ'}};
+     context.messages.push({role:'user',content:'גיוס איש מכירות בכל הארץ'},{role:'assistant',content:'החברה מתרחבת; ניסיון B2B יתרון.'},{role:'user',content:'תקן את הטיוטה לפי הפרטים שמסרתי בלבד וצרף את שאלות טופס המועמדות. אל תוסיף תנאים או דרישות שלא מסרתי.'});
+     context.plannerFeedback=require('./taskDraftReview').feedback();
+    }
     const options={provider:config.provider,model:config.model};
     let answer;
     try{
@@ -38,7 +45,12 @@ async function evaluate({decide=require('./taskPlanner').decide,providers}={}){
      // Match the runtime's single model-only correction, with all final checks below unchanged.
      answer=await decide({...context,plannerFeedback:require('./taskPlanner').initialFeedback(error instanceof SyntaxError?'INVALID_TASK_JSON':error.message)},options);
     }
-    if(item.professional){
+    if(item.recruitmentPackage){
+     const n=answer.next,copy=String(n?.title||'')+' '+String(n?.content||'');
+     if(n?.op!=='draft'||n.stepId!=='recruitment_copy'||typeof n.content!=='string'||n.content.length>6000)throw Error('RECRUITMENT_PACKAGE_NOT_REVISED');
+     require('./taskDraftReview').formDraft(n.formDraft);
+     if(!/מכירות/u.test(copy)||!/כל הארץ|פריסה ארצית/u.test(copy)||/מתרחב|B2B|טלפוני|דרישות סף|שכר בסיס/u.test(copy))throw Error('UNSUPPORTED_RECRUITMENT_CLAIM');
+    }else if(item.professional){
      const n=answer.next;
      if(n?.op!=='read'||n.stepId!=='economics'||n.tool!=='analyze_business_case'||n.args?.operation!=='scaling')throw Error('PROFESSIONAL_TOOL_NOT_USED');
      const id='synthetic-model-probe';

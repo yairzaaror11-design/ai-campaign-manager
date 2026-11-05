@@ -18,7 +18,7 @@ test('a standalone recruitment request replaces the old property plan and repair
    if(!c.plan.length)return{plan,next:{op:'ask',stepId:'role',question:'לאיזו משרה ובאיזה אזור מגייסים?'}};
    if(failOnce){failOnce=false;return{next:{op:'draft',stepId:'property_copy',title:'wrong',content:'must not run'}};}
    if(c.plannerFeedback){assert.equal(c.plannerFeedback.code,'TASK_STEP_NOT_READY');return{next:{op:'collect',stepId:'role',facts:[{key:'role',value:'מעצב גרפי',evidence:'מעצב גרפי בתל אביב'}]}};}
-   return{next:c.plan[1].status==='PREPARED'?{op:'review'}:{op:'draft',stepId:'recruitment_copy',title:'דרוש מעצב גרפי',content:'דרוש מעצב גרפי בתל אביב. לשליחת מועמדות השאירו פרטים.'}};
+   return{next:c.plan[1].status==='PREPARED'?{op:'review'}:{op:'draft',stepId:'recruitment_copy',title:'דרוש מעצב גרפי',content:'דרוש מעצב גרפי בתל אביב. לשליחת מועמדות השאירו פרטים.',formDraft:{title:'טופס מועמדות',questions:['שם מלא','טלפון ליצירת קשר','מה הניסיון הרלוונטי שלך בעיצוב?']}}};
   };
   const start=await send(request,'recruitment',planner);assert.notEqual(start.task.id,old.task.id);assert.equal(start.task.request,request);assert.match(start.reply,/לאיזו משרה/);
   assert.equal((await h.db.query('SELECT status FROM agent_tasks WHERE id=$1',[old.task.id])).rows[0].status,'CANCELLED');
