@@ -22,7 +22,7 @@ async function handle(clientId,input,options={}){
  const personal=await require('./personalConversation').handle(clientId,message,eventId);if(personal)return personal;
  if(!active&&analysis.intent==='greeting')return{handled:true,reply:'היי! מה תרצה שנכין או ננהל היום? אפשר לבקש קמפיין, מודעה או טופס ולצרף תמונות של העסק.'};
  if(!active&&analysis.intent==='capabilities')return{handled:true,reply:'אפשר להכין מודעה, עיצוב וטופס לידים, לבדוק נתוני קמפיינים ולהציע פעולות בחשבון המחובר. אברר רק מה שחסר לבקשה ואציג את התוצרים לבדיקה. יצירה ב־Meta והפעלה דורשות אישורים נפרדים.'};
- if(!tasks.enabled())require('./taskEvaluation').ensure();
+ if(!tasks.needsGoalClarification(message)&&!tasks.enabled()&&process.env.TASK_AGENT_ENABLED==='true'&&process.env.TASK_AGENT_REQUIRE_EVAL==='true')await require('./taskEvaluation').waitUntilReady();
  return tasks.send(clientId,{...input,message:message==='/start'?'היי':message},{...options,deferPlanning:!tasks.enabled()});
 }
 async function media(clientId,input){

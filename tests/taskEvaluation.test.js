@@ -26,3 +26,13 @@ test('model acceptance gates the selected provider and rejects unsafe or contrad
   assert.equal(JSON.stringify(sanitized).includes('private provider'),false);
  }finally{if(previous===undefined)delete process.env.AI_PROVIDER;else process.env.AI_PROVIDER=previous;}
 });
+test('cold-start callers share one evaluation and wait for success without bypassing the gate',async()=>{
+ const previous=process.env.AI_PROVIDER;process.env.AI_PROVIDER='gemini';
+ let release,calls=0;const gate=new Promise(resolve=>{release=resolve;});
+ try{
+  const pending=evaluation.run({providers,decide:async context=>{calls++;await gate;return answer(context);}});
+  assert.equal(evaluation.ready(),false);assert.equal(evaluation.run(),pending);assert.equal(evaluation.ensure(),pending);
+  assert.equal(await evaluation.waitUntilReady(1),false);assert.equal(calls,1);
+  const waiting=evaluation.waitUntilReady(1000);release();assert.equal(await waiting,true);await pending;assert.equal(calls,5);
+ }finally{release();if(previous===undefined)delete process.env.AI_PROVIDER;else process.env.AI_PROVIDER=previous;}
+});

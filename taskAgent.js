@@ -3,6 +3,13 @@ const crypto=require('node:crypto'),db=require('./db'),meta=require('./metaConne
 const hash=value=>crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const KINDS=['collect','read','draft','image','meta'];
 const OPS={ask:'collect',collect:'collect',read:'read',draft:'draft',image:'image',meta:'meta'};
+const generalRecommendation=message=>/^(?:אז\s+)?מה\s+(?:אתה\s+)?(?:ממליץ\s+(?:לי\s+)?לשווק|כדאי\s+לי\s+לשווק)[?؟!.]*$/u.test(message.trim());
+function newGoal(message){
+ const m=message.trim().replace(/[.!?؟]+$/u,'').trim();
+ return generalRecommendation(m)||/^(?:(?:אני\s+)?(?:רוצה|צריך|צריכה)|בוא(?:י)?|בואו)\s+(?:לשווק|לקדם|לפרסם)\s+(?:משהו|מוצר|שירות)\s+אחר(?:\s|$)/u.test(m)||/^(?:בוא(?:י)?\s+)?(?:נתחיל|נעבור ל|נפתח)\s*(?:משימה|בקשה|קמפיין)\s+חדש(?:ה)?(?:\s|$)/u.test(m);
+}
+const goalQuestion='בטח, מה המוצר או השירות שתרצה לקדם עכשיו?';
+function vagueGoal(message){return generalRecommendation(message)||/^(?:(?:אני\s+)?(?:רוצה|צריך|צריכה)|בוא(?:י)?|בואו)\s+(?:לשווק|לקדם|לפרסם)\s+(?:משהו|מוצר|שירות)\s+אחר[.!?؟]*$/u.test(message.trim())||/^(?:בוא(?:י)?\s+)?(?:נתחיל|נעבור ל|נפתח)\s*(?:משימה|בקשה)\s+חדש(?:ה)?[.!?؟]*$/u.test(message.trim());}
 const enabled=()=>process.env.TASK_AGENT_ENABLED==='true'&&(process.env.TASK_AGENT_REQUIRE_EVAL!=='true'||require('./taskEvaluation').ready());
 function text(value,max=2000){if(typeof value!=='string'||!value.trim()||value.length>max)throw Error('INVALID_TASK_TEXT');return value.trim();}
 function safe(value,limit=4000){
@@ -50,7 +57,7 @@ function replyFor(task){
   if(analysis)return require('./businessCase').format(analysis.result);
  }
  if(task.status==='WAITING_INPUT')return s.question;
- if(task.status==='WAITING_MODEL')return 'שמרתי את הבקשה שלך: ״'+task.request+'״. מנגנון השיחה עדיין אינו זמין להמשך. לא הכנתי תוכן אחר ולא ביצעתי פעולה בחשבון. אפשר לכתוב ״המשך במשימה״ כדי לבדוק שוב.';
+ if(task.status==='WAITING_MODEL')return 'יש כרגע עיכוב בחיבור למודל. הבקשה נשמרה; אפשר לנסות שוב עוד מעט, או לכתוב מה תרצה להכין במקום. לא בוצעה פעולה בחשבון.';
  if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nזו החבילה לבדיקה שלך. אפשר לבקש תיקונים, או לכתוב ״מאשר את החבילה״. אישור החבילה אינו אישור לפרסום או להוצאה כספית.';
  const waiting=s.steps?.find(x=>x.status==='WAITING_APPROVAL');
  if(waiting){const a=waiting.result.approval;return require('./actionPlan').formatActionPlan(a.plan)+'\n\nכדי לאשר את הפעולה המדויקת, שלח: אשר '+meta.decrypt(a.codeCiphertext,task.client_id)+'\nהאישור תקף עד '+a.expiresAt+'. האישור מתייחס רק לפעולה הזו.';}
@@ -90,7 +97,17 @@ async function claim(clientId,{message,requestId,channel,taskRevision}){
   let task=prior?(await tx('SELECT * FROM agent_tasks WHERE id=$1 AND client_id=$2 FOR UPDATE',[prior.task_id,clientId])).rows[0]:(await tx("SELECT * FROM agent_tasks WHERE client_id=$1 AND status NOT IN ('COMPLETE','CANCELLED') FOR UPDATE",[clientId])).rows[0];
   if(taskRevision!==undefined&&(!Number.isInteger(taskRevision)||taskRevision!==task?.revision))throw Error('TASK_STALE');
   if(task?.lease_until&&new Date(task.lease_until)>new Date())return{cached:{handled:true,reply:'אני עדיין עובד על המשימה. ההתקדמות נשמרת; לא התחלתי עותק נוסף.',task:view(task),busy:true,externalActionsExecuted:false}};
-  if(!task){task={id:crypto.randomUUID(),client_id:clientId,request:message,status:'READY',revision:1,state:{steps:[],facts:{},messages:[]}};await tx('INSERT INTO agent_tasks(id,client_id,request,state) VALUES($1,$2,$3,$4::jsonb)',[task.id,clientId,message,JSON.stringify(task.state)]);}
+  const replacing=!prior&&newGoal(message);
+  if(replacing&&task){
+   // Never discard uncertain external effects or override an in-flight lease.
+   let uncertain=task.status==='MANUAL_REVIEW'||task.state.steps.some(s=>s.status==='RUNNING'&&['image','meta'].includes(s.kind));
+   for(const step of task.state.steps){const id=step.result?.approval?.actionId;if(!id)continue;const attempt=(await tx('SELECT status FROM meta_execution_attempts WHERE client_id=$1 AND action_id=$2',[clientId,id])).rows[0];if(attempt&&attempt.status!=='VERIFIED')uncertain=true;}
+   if(uncertain)return{cached:{handled:true,reply:'אפשר לעבור לבקשה חדשה, אבל קודם צריך לברר את תוצאת הפעולה הקודמת כדי שלא לבצע אותה פעמיים. המשימה נשמרה לבדיקה.',task:view(task),externalActionsExecuted:false}};
+   for(const step of task.state.steps){const id=step.result?.approval?.actionId;if(!id)continue;await tx("UPDATE approvals SET status='CANCELLED' WHERE client_id=$1 AND action_id=$2 AND status='PENDING'",[clientId,id]);await tx("UPDATE action_plans SET status='CANCELLED' WHERE client_id=$1 AND id=$2 AND status='PROPOSED'",[clientId,id]);}
+   await tx("UPDATE agent_tasks SET status='CANCELLED',lease_token=NULL,lease_until=NULL,revision=revision+1,updated_at=NOW() WHERE id=$1 AND client_id=$2",[task.id,clientId]);
+   task=null;
+  }
+  if(!task){task={id:crypto.randomUUID(),client_id:clientId,request:message,status:'READY',revision:1,state:{steps:[],facts:{},messages:[],...(replacing?{newGoal:true,awaitingGoal:vagueGoal(message)}:{})}};await tx('INSERT INTO agent_tasks(id,client_id,request,state) VALUES($1,$2,$3,$4::jsonb)',[task.id,clientId,message,JSON.stringify(task.state)]);}
   if(!prior)task.state.messages=[...(task.state.messages||[]),{role:'user',content:message}].slice(-12);
   if((task.state.steps||[]).some(s=>s.status==='RUNNING'&&['image','meta'].includes(s.kind)))task.status='MANUAL_REVIEW';
   else for(const s of task.state.steps||[])if(s.status==='RUNNING')s.status='PENDING';
@@ -126,6 +143,12 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   if(task.status==='MANUAL_REVIEW')return await settle(task,lease,requestId);
   if(task.status==='PAUSED'&&!/^(המשך במשימה|נמשיך|המשך|תמשיך)$/.test(message.trim()))return await settle(task,lease,requestId);
   if(/^(עצור|עצירה|עצור את המשימה)$/.test(message.trim())){task.status='PAUSED';return await settle(task,lease,requestId);}
+  if(task.state.awaitingGoal){
+   const first=task.state.messages.length===1;
+   if(first||/^(?:כן|לא|אוקיי|בסדר|המשך|תמשיך|המשך במשימה|היי|תודה|מאשר את החבילה|אשר\s+\d{6})[.!?]*$/u.test(message.trim())){task.status='WAITING_INPUT';task.state.question=goalQuestion;return await settle(task,lease,requestId);}
+   task.request=message.trim();delete task.state.awaitingGoal;delete task.state.question;
+   await db.query('UPDATE agent_tasks SET request=$4 WHERE id=$1 AND client_id=$2 AND lease_token=$3',[task.id,clientId,lease,task.request]);
+  }
   if(options.deferPlanning){if(!['MANUAL_REVIEW','PAUSED','HUMAN_PAUSED'].includes(task.status))task.status='WAITING_MODEL';return await settle(task,lease,requestId);}
   // A paused task resumes only on a new explicit user message, never by a timer.
   await reconcile(task);if(task.status==='MANUAL_REVIEW')return await settle(task,lease,requestId);
@@ -168,6 +191,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   }
   task.status='RUNNING';await checkpoint(task,lease);
   const known=planner.businessContext(await require('./marketingStore').context(clientId));
+  if(task.state.newGoal){delete known.facts.product;known.rule+=' The owner explicitly switched goals. Do not reuse a prior product or campaign.';}
   for(let round=0;round<16;round++){
    if((task.state.plannerCalls||0)>=64||!await require('./rateLimit').take('task-planner:'+clientId,60,3600)){task.status='BLOCKED';task.state.reason='המשימה הגיעה למגבלת התכנון כדי לעצור לולאה או עלות לא צפויה';return await settle(task,lease,requestId);}
    task.state.plannerCalls=(task.state.plannerCalls||0)+1;await checkpoint(task,lease);
@@ -260,4 +284,4 @@ async function maybeHandle(clientId,input,options={}){
  if(!task&&!/^(?:תיצור|תיצרי|צור|צרי|תכין|תכיני|בנה|בני|אני רוצה|אני צריך|אני צריכה|רוצה|תעשה|תעשי|תייצר|תייצרי|צריך|צריכה|create|build|generate)|לגייס עובדים|קמפיין דרושים/i.test(input.message.trim()))return null;
  return send(clientId,input,options);
 }
-module.exports={enabled,requiredOutcomes,validatePlan,view,current,active,send,maybeHandle,cancel};
+module.exports={enabled,requiredOutcomes,validatePlan,view,current,active,send,maybeHandle,cancel,needsGoalClarification:vagueGoal};

@@ -15,3 +15,13 @@ Rollout requires UNIFIED_CONVERSATION_ENABLED=true. TASK_AGENT_PILOT_ONLY keeps 
 Real WhatsApp acceptance remains required. No synthetic production webhook or outbound test is used. This change does not claim complete Ads Manager coverage or make a campaign-specific spending decision.
 
 Task context is also rebuilt from business background only: historical drafts, journey stages, pending old questions, prior campaign goals, budgets, lead destinations and unconfirmed offers are excluded. Stable business identity, product, brand, media and connection information remain available. Regression checks assert both the removed old goal and the preserved business information.
+
+## November 5: changing goals and cold-start recovery
+
+Owner screenshots and read-only task-turn metadata showed that new messages at 14:13–14:14 UTC were attached to a stalled real-estate task and returned WAITING_MODEL. A later health read showed the selected model acceptance passed; no startup-gate bypass is required.
+
+Explicit requests to market a different product or start a new task, and the standalone question “מה אתה ממליץ לי לשווק?”, now replace the active goal atomically under the client/task locks. Only that task's pending approvals and proposed actions are cancelled. Stored history and verified past effects remain; cancellation never undoes external changes. Live leases, uncertain image/Meta steps and unverified execution attempts prevent replacement pending review. Normal revision requests stay on the same task.
+
+When the new product is unspecified the backend asks one short question immediately, even while the model is warming up. The answer becomes the new request; old task messages, economics and the old product are excluded. Bare approvals and pause/resume controls cannot become product details. Replayed inbound event IDs return their recorded response without creating another task.
+
+The controller waits up to 45 seconds for the existing single-flight model evaluation on an incoming user turn, then rechecks readiness before planning. The acceptance gate, tenant isolation, exact write approvals and unknown-result protections remain enabled. A real provider outage still returns a short honest temporary-error response without quoting the old campaign or sending the user through a magic continuation phrase. This introduces no scheduled execution or outbound tests.

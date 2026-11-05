@@ -8,9 +8,10 @@ const cases=[
  {id:'professional_calculation',request:'בדוק כדאיות בלי לשנות תקציב: תקופה קודמת של 30 יום עם פרסום 3000 ₪ ו-5 לקוחות משלמים, תקופה חדשה של 30 יום עם פרסום 6000 ₪ ו-8 לקוחות משלמים. הנחת הכנסה לחיי לקוח אחרי עלויות משתנות היא 687.50 ₪.',business:{},professional:true}
 ];
 let state={status:'NOT_RUN',providers:[]};
+let inFlight=null;
 const ready=()=>state.status==='PASSED';
 function status(){return structuredClone(state);}
-async function run({decide=require('./taskPlanner').decide,providers}={}){
+async function evaluate({decide=require('./taskPlanner').decide,providers}={}){
  if(state.status==='RUNNING')return status();
  state={status:'RUNNING',startedAt:new Date().toISOString(),providers:[]};
  const selected=process.env.AI_PROVIDER||'gemini';
@@ -55,6 +56,17 @@ async function run({decide=require('./taskPlanner').decide,providers}={}){
  require('./logger').logger.info('Task manager model acceptance completed',{result:state.status,providers:state.providers.map(p=>({provider:p.provider,status:p.status,cases:p.cases}))});
  return status();
 }
-function start(){if(process.env.TASK_AGENT_EVALUATE_ON_START==='true')run().catch(()=>{state.status='FAILED';});}
-function ensure(){if(state.status==='RUNNING'||state.status==='PASSED')return;if(state.startedAt&&Date.now()-Date.parse(state.startedAt)<60000)return;run().catch(()=>{state.status='FAILED';});}
-module.exports={cases,ready,status,run,start,ensure};
+function run(options){
+ if(inFlight)return inFlight;
+ inFlight=evaluate(options).catch(()=>{state.status='FAILED';return status();}).finally(()=>{inFlight=null;});
+ return inFlight;
+}
+function start(){if(process.env.TASK_AGENT_EVALUATE_ON_START==='true')void run();}
+function ensure(){if(inFlight)return inFlight;if(state.status==='PASSED')return Promise.resolve(status());if(state.startedAt&&Date.now()-Date.parse(state.startedAt)<60000)return Promise.resolve(status());return run();}
+async function waitUntilReady(timeoutMs=45000){
+ if(ready())return true;
+ let timer;
+ try{await Promise.race([ensure(),new Promise(resolve=>{timer=setTimeout(resolve,timeoutMs);})]);return ready();}
+ finally{clearTimeout(timer);}
+}
+module.exports={cases,ready,status,run,start,ensure,waitUntilReady};
