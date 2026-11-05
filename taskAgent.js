@@ -50,7 +50,7 @@ function replyFor(task){
  if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nזו החבילה לבדיקה שלך. אפשר לבקש תיקונים, או לכתוב ״מאשר את החבילה״. אישור החבילה אינו אישור לפרסום או להוצאה כספית.';
  const waiting=s.steps?.find(x=>x.status==='WAITING_APPROVAL');
  if(waiting){const a=waiting.result.approval;return require('./actionPlan').formatActionPlan(a.plan)+'\n\nכדי לאשר את הפעולה המדויקת, שלח: אשר '+meta.decrypt(a.codeCiphertext,task.client_id)+'\nהאישור תקף עד '+a.expiresAt+'. האישור מתייחס רק לפעולה הזו.';}
- if(task.status==='COMPLETE')return 'השלמתי את כל השלבים בתוכנית שנבדקה. '+((s.steps||[]).some(x=>x.kind==='meta')?'הפעולות החיצוניות המסומנות כהושלמו אומתו מול Meta.':'התוצרים הוכנו ואושרו; לא בוצעה פעולה חיצונית.')+'\n'+(s.steps||[]).filter(x=>x.artifact).map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n');
+ if(task.status==='COMPLETE')return 'השלמתי את כל השלבים בתוכנית שנבדקה. '+((s.steps||[]).some(x=>x.kind==='meta')?'הפעולות החיצוניות המסומנות כהושלמו אומתו מול Meta.':'התוצרים הוכנו ואושרו; לא בוצעה פעולה חיצונית.')+(s.steps.some(x=>x.result?.privateDraft)?' טיוטת דף הנחיתה נשמרה בדשבורד שלך ולא פורסמה.':'')+'\n'+(s.steps||[]).filter(x=>x.artifact).map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n');
  if(task.status==='CANCELLED')return 'המשך העבודה על המשימה בוטל והאישורים הממתינים בוטלו. פעולות שכבר בוצעו אינן מתבטלות אוטומטית.';
  if(task.status==='MANUAL_REVIEW')return 'המשימה נעצרה לבדיקה: לא ניתן לקבוע בביטחון אם פעולה הושלמה. לא אבצע אותה שוב עד לבירור התוצאה.';
  if(task.status==='PAUSED')return 'עצרתי את המשימה. ההתקדמות נשמרה; אפשר לכתוב ״המשך במשימה״.';
@@ -150,7 +150,16 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   if(task.status==='WAITING_REVIEW'&&/^(כן|לא|מאשר|מאשרת|אוקיי)$/.test(message.trim()))return await settle(task,lease,requestId);
   if(task.status==='WAITING_REVIEW'&&/^(מאשר את החבילה|מאשרת את החבילה)$/.test(message.trim())){
    if(task.state.reviewHash!==hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash])))throw Error('TASK_REVIEW_CHANGED');
-   for(const step of task.state.steps)if(step.status==='PREPARED'){step.status='DONE';step.artifact.reviewed=true;}
+   for(const step of task.state.steps)if(step.status==='PREPARED'){
+    if(step.artifact.destination==='landing_page'){
+     await checkpoint(task,lease);
+     const digest=hash([task.id,step.id,step.artifact.hash]);
+     const requestId=[digest.slice(0,8),digest.slice(8,12),'4'+digest.slice(13,16),'8'+digest.slice(17,20),digest.slice(20,32)].join('-');
+     const page=await require('./landingDrafts').save(clientId,{requestId,payload:step.artifact.payload,taskBinding:{taskId:task.id,stepId:step.id,lease,artifactHash:step.artifact.hash}});
+     step.result={draftId:page.id,status:page.status,privateDraft:true,published:false};
+    }
+    step.status='DONE';step.artifact.reviewed=true;
+   }
    delete task.state.reviewHash;delete task.state.revising;
   }
   task.status='RUNNING';await checkpoint(task,lease);
@@ -161,7 +170,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    const decision=await planner.decide(contextFor(task,known),options);
    if(!decision||typeof decision!=='object'||!decision.next)throw Error('INVALID_TASK_DECISION');
    if(!task.state.steps.length)task.state.steps=validatePlan(decision.plan,task.request);
-   else if(decision.plan!==undefined)throw Error('TASK_PLAN_ALREADY_SET');
+   // Later model plans are ignored. Only validated next operations may advance the authoritative persisted plan.
    const n=decision.next;
    if(n.op==='review'){
     if(!task.state.steps.some(s=>s.status==='PREPARED'))throw Error('TASK_ARTIFACTS_REQUIRED');
@@ -185,7 +194,14 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     if(task.state.revising&&hash(facts)!==hash(task.state.facts)){for(const dependent of task.state.steps)if(dependent.kind==='draft'){dependent.status='PENDING';delete dependent.artifact;}if(task.state.steps.some(s=>s.kind==='image'&&s.result?.mediaId)){for(const imageStep of task.state.steps)if(imageStep.kind==='image'&&imageStep.result?.mediaId)imageStep.status='STALE';task.status='BLOCKED';task.state.reason='פרטי המשימה השתנו אחרי יצירת תמונה; יש לבדוק ולהכין מחדש את התמונה לפני שימוש בה';task.state.facts=facts;return await settle(task,lease,requestId);}}
     task.state.facts=facts;step.status='DONE';
    }else if(n.op==='draft'){
-    const artifact={title:text(n.title,160),content:text(n.content,6000),reviewed:false};artifact.hash=hash(artifact);step.artifact=artifact;step.status='PREPARED';
+    const artifact={title:text(n.title,160),content:text(n.content,6000),reviewed:false};
+    if(n.destination!==undefined){
+     if(n.destination!=='landing_page')throw Error('UNSUPPORTED_DRAFT_DESTINATION');
+     const payload=require('./landingDrafts').checked(JSON.parse(artifact.content));
+     artifact.destination='landing_page';artifact.payload=payload;
+     artifact.content=[payload.businessName,payload.title,payload.body,payload.cta,'טיוטה פרטית לדף נחיתה. לא תפורסם באישור החבילה.'].join('\n\n');
+    }
+    artifact.hash=hash(artifact);step.artifact=artifact;step.status='PREPARED';
     if(task.state.steps.reduce((sum,s)=>sum+(s.artifact?.content.length||0),0)>18000)throw Error('TASK_ARTIFACT_LIMIT');
    }else if(n.op==='read'){
     if(!planner.READ_TOOLS.includes(n.tool)||!n.args||typeof n.args!=='object'||JSON.stringify(n.args).length>2000)throw Error('TASK_READ_TOOL_REJECTED');

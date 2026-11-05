@@ -3,7 +3,8 @@
 const cases=[
  {id:'recruitment',request:'תיצור לי קמפיין דרושים עם מודעה וטופס מועמדות',business:{businessName:{value:'עסק בדיקה סינתטי',status:'known'},businessType:{value:'סוכנות דיגיטל',status:'known'},product:{value:'תוכן לסושיאל לעסקים',status:'known'},businessGoal:{value:'הגדלת הכנסות העסק',status:'known'},geography:{value:'תל אביב',status:'known'}},forbiddenQuestion:/שם העסק|מה העסק עושה/},
  {id:'reuse_known_business',request:'תכין לי נוסח מודעה למסעדה על בסיס הפרטים שכבר שמורים. אל תפרסם.',business:{businessName:{value:'מסעדת בדיקה סינתטית',status:'known'},businessType:{value:'מסעדה',status:'known'},product:{value:'ארוחות צהריים',status:'known'},audience:{value:'לקוחות באזור',status:'known'},geography:{value:'ישראל',status:'known'},advantage:{value:'בישול ביתי',status:'known'}},forbiddenQuestion:/שם העסק|מה העסק עושה|איזה מוצר/},
- {id:'draft_is_not_publication',request:'תכין רק טיוטת קמפיין למכון כושר. אל תפרסם ואל תוציא כסף.',business:{businessType:{value:'מכון כושר',status:'known'}},noWrites:true}
+ {id:'draft_is_not_publication',request:'תכין רק טיוטת קמפיין למכון כושר. אל תפרסם ואל תוציא כסף.',business:{businessType:{value:'מכון כושר',status:'known'}},noWrites:true},
+ {id:'continuation_feedback',request:'תכין לי טיוטת מודעה לבית קפה עם ארוחת בוקר ב-45 ₪. אל תפרסם.',business:{businessType:{value:'בית קפה',status:'known'}},continuation:true}
 ];
 let state={status:'NOT_RUN',providers:[]};
 const ready=()=>state.status==='PASSED';
@@ -21,7 +22,13 @@ async function run({decide=require('./taskPlanner').decide,providers}={}){
    const began=Date.now();let result='FAILED',reason='INVALID_DECISION';
    try{
     const context={request:item.request,requiredOutcomes:require('./taskAgent').requiredOutcomes(item.request),plan:[],facts:{},messages:[{role:'user',content:item.request}],knownBusiness:{facts:item.business},readTools:require('./taskPlanner').READ_TOOLS,writeSchema:require('./gemini').functionDeclarations.find(t=>t.name==='propose_action').parameters};
+    if(item.continuation){context.plan=[{id:'copy',label:'מודעת בית קפה',kind:'draft',dependsOn:[],status:'PREPARED',artifact:{title:'מודעה',content:'ארוחת בוקר ב-45 ₪. לפרטים כתבו לנו.',reviewed:false}}];context.messages.push({role:'user',content:'שנה את הכותרת ל־קפה טרי ליד הבית, בלי לשנות את ההצעה.'});}
     const answer=await decide(context,{provider:config.provider,model:config.model});
+    if(item.continuation){
+     const n=answer.next,copy=String(n?.title||'')+' '+String(n?.content||'');
+     if(n?.op!=='draft'||n.stepId!=='copy'||typeof n.content!=='string'||n.content.length>6000)throw Error('CONTINUATION_NOT_APPLIED');
+     if(!copy.includes('קפה טרי ליד הבית')||!copy.includes('45'))throw Error('CONTINUATION_CHANGED_OFFER');
+    }else{
     const plan=require('./taskAgent').validatePlan(answer.plan,item.request),n=answer.next;
     if(!n||!['ask','collect','read','draft','blocked'].includes(n.op))throw Error('UNSAFE_INITIAL_STEP');
     const step=plan.find(s=>s.id===n.stepId);if(!step||step.dependsOn.length)throw Error('INITIAL_STEP_NOT_READY');
@@ -29,6 +36,7 @@ async function run({decide=require('./taskPlanner').decide,providers}={}){
     if(n.op==='ask'&&(typeof n.question!=='string'||n.question.length>600||item.forbiddenQuestion?.test(n.question)))throw Error('REDUNDANT_QUESTION');
     if(item.noWrites&&plan.some(s=>s.kind==='meta'))throw Error('DRAFT_ONLY_HAS_WRITE');
     if(n.op==='read'&&!require('./taskPlanner').READ_TOOLS.includes(n.tool))throw Error('UNSUPPORTED_TOOL');
+    }
     result='PASSED';reason=null;
    }catch(error){reason=/^[A-Z_]+$/.test(error.message)?error.message:'PROVIDER_OR_RESPONSE_FAILED';}
    entry.cases.push({id:item.id,result,reason,latencyMs:Date.now()-began});

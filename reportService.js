@@ -1,6 +1,6 @@
 'use strict';
 const db=require('./db');
-async function campaignReport(clientId,preset='last_7d') {
+async function campaignDiagnosis(clientId,preset='last_7d',options={}) {
  const meta=require('./metaConnection');
  if(String(meta.context.getStore())!==String(clientId)) throw Error('TENANT_CONTEXT_REQUIRED');
  require('./reportPeriod').validate(preset);
@@ -17,7 +17,7 @@ async function campaignReport(clientId,preset='last_7d') {
  if(latest.meta_ad_account_id!==c.meta_ad_account_id||String(latest.meta_generation)!==String(c.meta_generation))throw Error('REPORT_ACCOUNT_CHANGED');
  const id=require('crypto').randomUUID();
  await db.query('INSERT INTO performance_snapshots(id,client_id,account_id,date_preset,payload) VALUES($1,$2,$3,$4,$5::jsonb)',[id,clientId,c.meta_ad_account_id,typeof preset==='string'?preset:'custom',JSON.stringify(payload)]);
- const analysis=require('./marketingBrain').analyze(payload);
- return 'דוח '+require('./reportPeriod').label(preset)+' — '+account.name+'\n'+require('./marketingBrain').format(analysis);
+ return require('./marketingBrain').analyze(payload,options);
 }
-module.exports={campaignReport};
+async function campaignReport(clientId,preset='last_7d'){const analysis=await campaignDiagnosis(clientId,preset);return 'דוח '+require('./reportPeriod').label(preset)+' — '+analysis.account.name+'\n'+require('./marketingBrain').format(analysis);}
+module.exports={campaignReport,campaignDiagnosis};

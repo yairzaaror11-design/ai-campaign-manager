@@ -6,7 +6,8 @@ function checked(input){
 }
 async function mutate(clientId,operation,input,work){
  if(!workspace.uuid(input?.requestId))throw Error('INVALID_LANDING_REQUEST');
- const fingerprint=crypto.createHash('sha256').update(JSON.stringify({operation,input})).digest('hex');
+ const fingerprintInput=input?.taskBinding?{...input,taskBinding:{taskId:input.taskBinding.taskId,stepId:input.taskBinding.stepId,artifactHash:input.taskBinding.artifactHash}}:input;
+ const fingerprint=crypto.createHash('sha256').update(JSON.stringify({operation,input:fingerprintInput})).digest('hex');
  return db.transaction(async tx=>{
   const client=await tx('SELECT id FROM clients WHERE id=$1 FOR UPDATE',[clientId]);if(!client.rows.length)throw Error('CLIENT_NOT_FOUND');
   const previous=(await tx('SELECT fingerprint,result FROM workspace_requests WHERE client_id=$1 AND request_id=$2',[clientId,input.requestId])).rows[0];if(previous){if(previous.fingerprint!==fingerprint)throw Error('WORKSPACE_REQUEST_CONFLICT');return previous.result;}
@@ -16,6 +17,13 @@ async function mutate(clientId,operation,input,work){
 async function save(clientId,input,id){
  const payload=checked(input?.payload);if(id!==undefined&&(!workspace.uuid(id)||!Number.isSafeInteger(input?.revision)||input.revision<1))throw Error('INVALID_LANDING_DRAFT');
  return mutate(clientId,'landing-draft:'+String(id||'new'),input,async tx=>{
+  if(input.taskBinding){
+   const b=input.taskBinding;
+   if(!workspace.uuid(b.taskId)||!workspace.uuid(b.lease)||typeof b.stepId!=='string'||typeof b.artifactHash!=='string')throw Error('INVALID_TASK_BINDING');
+   const task=(await tx('SELECT state FROM agent_tasks WHERE id=$1 AND client_id=$2 AND lease_token=$3 AND lease_until>NOW() AND status NOT IN (\'CANCELLED\',\'MANUAL_REVIEW\',\'HUMAN_PAUSED\') FOR UPDATE',[b.taskId,clientId,b.lease])).rows[0];
+   const step=task?.state.steps?.find(s=>s.id===b.stepId);
+   if(step?.status!=='PREPARED'||step.artifact?.destination!=='landing_page'||step.artifact.hash!==b.artifactHash||require('./approvalPolicy').canonical(step.artifact.payload)!==require('./approvalPolicy').canonical(payload))throw Error('TASK_DRAFT_CHANGED');
+  }
   let r;if(id)r=(await tx("UPDATE landing_pages SET payload=$3::jsonb,revision=revision+1,updated_at=NOW() WHERE client_id=$1 AND id=$2 AND revision=$4 AND status='DRAFT' RETURNING id,payload,status,revision,created_at",[clientId,id,JSON.stringify(payload),input.revision])).rows[0];
   else r=(await tx("INSERT INTO landing_pages(id,client_id,slug,payload) VALUES($1,$2,$3,$4::jsonb) RETURNING id,payload,status,revision,created_at",[crypto.randomUUID(),clientId,crypto.randomBytes(20).toString('hex'),JSON.stringify(payload)])).rows[0];
   if(!r)throw Error('WORKSPACE_STALE');await tx("INSERT INTO tenant_audit(client_id,event,result) VALUES($1,'LANDING_DRAFT_SAVED',$2)",[clientId,r.id]);return r;
