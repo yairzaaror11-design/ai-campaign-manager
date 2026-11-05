@@ -76,6 +76,7 @@ function replyFor(task){
  if(task.status==='PAUSED')return 'עצרתי את המשימה. ההתקדמות נשמרה; אפשר לכתוב ״המשך במשימה״.';
  if(task.status==='BLOCKED')return 'כדי להשלים את המשימה צריך לפתור את החלק הבא: '+(s.reason||'יכולת שלא זמינה כרגע')+'. שאר ההתקדמות נשמרה.';
  if(task.status==='HUMAN_PAUSED')return 'המענה האוטומטי והמשימה הושהו למענה אנושי.';
+ if(s.lastError==='TASK_FORM_DRAFT_REQUIRED')return 'החבילה עדיין אינה מוכנה לאישור: חסרה טיוטת טופס מועמדות לבדיקה. ההתקדמות נשמרה.';
  return 'ההתקדמות נשמרה, אבל לא הצלחתי להשלים את הצעד הבא כרגע. אפשר לנסות שוב; פעולה חיצונית לא תבוצע מחדש אם תוצאתה אינה ודאית.';
 }
 async function settle(task,lease,requestId){
@@ -186,6 +187,9 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    if(!outcome.ok){if(outcome.reason==='READ_ONLY'){await db.query("UPDATE action_plans SET status='BLOCKED' WHERE id=$1 AND client_id=$2 AND status='APPROVED'",[a.actionId,clientId]);waiting.status='PENDING';delete waiting.result;task.status='BLOCKED';task.state.reason='הרשאות הכתיבה לחשבון הפרסום אינן פעילות';}else task.status='MANUAL_REVIEW';return await settle(task,lease,requestId);}
    await reconcile(task);
   }
+  if(task.status==='WAITING_REVIEW'&&require('./taskDraftReview').issue(task)){
+   task.status='RUNNING';task.state.reviewIssue='TASK_FORM_DRAFT_REQUIRED';task.state.revising=true;delete task.state.reviewHash;
+  }
   if(task.status==='WAITING_REVIEW'&&/^(כן|לא|מאשר|מאשרת|אוקיי)$/.test(message.trim()))return await settle(task,lease,requestId);
   if(task.status==='WAITING_REVIEW'&&/^(מאשר את החבילה|מאשרת את החבילה)$/.test(message.trim())){
    if(task.state.reviewHash!==hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash])))throw Error('TASK_REVIEW_CHANGED');
@@ -211,12 +215,15 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    const context=contextFor(task,known);
    if(initialRepairs&&!task.state.steps.length)context.plannerFeedback=planner.initialFeedback(task.state.lastError);
    if(decisionFeedback)context.plannerFeedback=decisionFeedback;
+   else if(task.state.reviewIssue)context.plannerFeedback=require('./taskDraftReview').feedback();
    let decision;
    try{
     decision=await planner.decide(context,options);
     if(!decision||typeof decision!=='object'||!decision.next)throw Error('INVALID_TASK_DECISION');
     if(!task.state.steps.length)task.state.steps=validatePlan(decision.plan,task.request);
     const n=decision.next;
+    if(['review','meta'].includes(n.op)&&require('./taskDraftReview').issue(task))throw Error('TASK_FORM_DRAFT_REQUIRED');
+    if(n.op==='draft'&&n.formDraft!==undefined)require('./taskDraftReview').formDraft(n.formDraft);
     if(!['review','finish'].includes(n.op)){
      const step=task.state.steps.find(s=>s.id===n.stepId);
      if(!step||step.status==='STALE'||step.status==='DONE'&&!(step.kind==='read'&&n.op==='read'&&step.lastReadTurn!==requestId)&&!(task.state.revising&&step.kind==='collect'&&n.op==='collect')||step.status==='WAITING_APPROVAL'||!dependenciesReady(task,step))throw Error('TASK_STEP_NOT_READY');
@@ -227,8 +234,8 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     if(!task.state.steps.length&&initialRepairs<1&&planner.repairableInitial(error)){
      initialRepairs++;task.state.lastError=error instanceof SyntaxError?'INVALID_TASK_JSON':error.message;await checkpoint(task,lease);continue;
     }
-    if(decisionRepairs<1&&['TASK_STEP_NOT_READY','TASK_OPERATION_MISMATCH'].includes(error.message)){
-     decisionRepairs++;decisionFeedback={code:error.message,instruction:'The proposed next step was rejected BEFORE execution. Keep the existing plan, step IDs, facts and completed effects unchanged. Select a dependency-ready step of the matching kind; use review for prepared artifacts, or blocked on a ready step when access is missing. Never repeat completed writes or infer approval.'};
+    if(decisionRepairs<1&&['TASK_STEP_NOT_READY','TASK_OPERATION_MISMATCH','TASK_FORM_DRAFT_REQUIRED','INVALID_FORM_DRAFT'].includes(error.message)){
+     decisionRepairs++;decisionFeedback=error.message==='TASK_FORM_DRAFT_REQUIRED'?require('./taskDraftReview').feedback():{code:error.message,instruction:'The proposed next step was rejected BEFORE execution. Keep the existing plan, step IDs, facts and completed effects unchanged. Select a dependency-ready step of the matching kind; use review for prepared artifacts, or blocked on a ready step when access is missing. Never repeat completed writes or infer approval.'};
      task.state.lastError=error.message;await checkpoint(task,lease);continue;
     }
     throw error;
@@ -238,6 +245,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    // Later model plans are ignored. Only validated next operations may advance the authoritative persisted plan.
    const n=decision.next;
    if(n.op==='review'){
+    delete task.state.reviewIssue;
     if(!task.state.steps.some(s=>s.status==='PREPARED'))throw Error('TASK_ARTIFACTS_REQUIRED');
     task.state.reviewHash=hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash]));task.status='WAITING_REVIEW';return await settle(task,lease,requestId);
    }
@@ -260,6 +268,10 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     task.state.facts=facts;step.status='DONE';
    }else if(n.op==='draft'){
     const artifact={title:text(n.title,160),content:text(n.content,6000),reviewed:false};
+    if(n.formDraft!==undefined){
+     artifact.formDraft=require('./taskDraftReview').formDraft(n.formDraft);
+     artifact.content+='\n\n'+artifact.formDraft.title+' — טיוטת טופס, טרם נוצר ב־Meta\n'+artifact.formDraft.questions.map((q,i)=>(i+1)+'. '+q).join('\n');
+    }
     if(n.destination!==undefined){
      if(n.destination!=='landing_page')throw Error('UNSUPPORTED_DRAFT_DESTINATION');
      const payload=require('./landingDrafts').checked(JSON.parse(artifact.content));
