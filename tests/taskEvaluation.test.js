@@ -46,3 +46,13 @@ test('acceptance exercises the same bounded initial-plan correction and still re
   const failed=await evaluation.run({providers,decide:async context=>context.plan.length?answer(context):{next:{op:'finish'}}});assert.equal(failed.status,'FAILED');assert.equal(evaluation.ready(),false);
  }finally{if(previous===undefined)delete process.env.AI_PROVIDER;else process.env.AI_PROVIDER=previous;}
 });
+test('campaign contract correction is model-only and bounded; missing settings never pass acceptance',async()=>{
+ const previous=process.env.AI_PROVIDER;process.env.AI_PROVIDER='gemini';let calls=0,first=true;
+ try{
+  const passed=await evaluation.run({providers,decide:async context=>{calls++;const a=answer(context);if(context.plan.some(s=>s.id==='recruitment_copy')&&first){first=false;delete a.next.campaignDraft;}return a;}});
+  assert.equal(passed.status,'PASSED');assert.equal(calls,evaluation.cases.length+1);
+  const failed=await evaluation.run({providers,decide:async context=>{const a=answer(context);if(context.plan.some(s=>s.id==='recruitment_copy'))delete a.next.campaignDraft;return a;}});
+  assert.equal(failed.status,'FAILED');assert.equal(evaluation.ready(),false);
+  const item=failed.providers[0].cases.find(c=>c.id==='recruitment_grounded_package');assert.equal(item.reason,'INVALID_CAMPAIGN_DRAFT');assert.equal(item.contractIssue.missing,true);
+ }finally{if(previous===undefined)delete process.env.AI_PROVIDER;else process.env.AI_PROVIDER=previous;}
+});
