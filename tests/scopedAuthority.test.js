@@ -53,7 +53,7 @@ test('authenticated owner scope flows from HTTP consent through voice/task execu
   await assert.rejects(meta.context.run(String(a.id),()=>authority.propose(a.id,input())),/OWNER_REQUIRED/);
   await assert.rejects(authority.list(a.id),/TENANT_CONTEXT_REQUIRED/);
   authority.approveIfCovered=async(client,plan)=>{process.env.READ_ONLY='true';assert.equal(await before.authorize(client,plan),false);process.env.READ_ONLY='false';const decisions=await Promise.all([before.authorize(client,plan),before.authorize(client,plan)]);assert.deepEqual(decisions.sort(),[false,true]);return true;};
-  await send('voice-request',null,true);assert.match(sent.at(-1),/מאשר את החבילה/);assert.equal(writes,0);
+  await send('voice-request',null,true);assert.match(sent.at(-1),/מאשר את התוכן/);assert.equal(writes,0);
   await send('review-approval','מאשר את החבילה');assert.equal(writes,1);assert.equal((await require('../taskAgent').current(a.id)).status,'COMPLETE');assert.match(sent.at(-1),/אומתו מול Meta/);
   await send('review-approval','מאשר את החבילה');assert.equal(writes,1);
   const state=(await(await call('/app/api/authority',null,sa)).json()).mandates[0];assert.equal(state.usedActions,1);assert.equal(state.remainingActions,0);
