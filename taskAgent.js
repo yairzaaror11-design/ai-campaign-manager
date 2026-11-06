@@ -66,7 +66,7 @@ function replyFor(task){
   if(analysis)return require('./businessCase').format(analysis.result);
  }
  if(task.status==='WAITING_INPUT')return s.question;
- if(task.status==='WAITING_MODEL')return 'יש כרגע עיכוב בחיבור למודל. הבקשה נשמרה; אפשר לנסות שוב עוד מעט, או לכתוב מה תרצה להכין במקום. לא בוצעה פעולה בחשבון.';
+ if(task.status==='WAITING_MODEL')return 'בדיקת התקינות של הסוכן טרם הושלמה בהצלחה. הבקשה נשמרה; הכנה ופעולות חדשות ימתינו לסיום הבדיקה.';
  if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nזו החבילה לבדיקה שלך. אפשר לבקש תיקונים, או לכתוב ״מאשר את החבילה״. אישור החבילה אינו אישור לפרסום או להוצאה כספית.';
  const waiting=s.steps?.find(x=>x.status==='WAITING_APPROVAL');
  if(waiting){const a=waiting.result.approval;return require('./actionPlan').formatActionPlan(a.plan)+'\n\nכדי לאשר את הפעולה המדויקת, שלח: אשר '+meta.decrypt(a.codeCiphertext,task.client_id)+'\nהאישור תקף עד '+a.expiresAt+'. האישור מתייחס רק לפעולה הזו.';}
@@ -153,6 +153,9 @@ function prepareReview(task){
  delete task.state.reviewIssue;delete task.state.lastError;delete task.state.reason;
  task.state.reviewHash=hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash]));task.status='WAITING_REVIEW';
 }
+function canPresentReview(task,message){
+ return process.env.TASK_AGENT_ENABLED==='true'&&!!task&&['BLOCKED','ERROR','WAITING_MODEL','WAITING_REVIEW'].includes(task.status)&&/^(?:המשך במשימה|נמשיך|המשך|תמשיך|הצג את החבילה|תציג את החבילה)[.!?]*$/u.test(message.trim())&&reviewReady(task);
+}
 async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={},options={}){
  text(message);text(requestId,200);if(!['PORTAL','WHATSAPP'].includes(channel))throw Error('INVALID_TASK_CHANNEL');
  if(String(meta.context.getStore())!==String(clientId))throw Error('TENANT_CONTEXT_REQUIRED');
@@ -171,6 +174,9 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    task.request=message.trim();delete task.state.awaitingGoal;delete task.state.question;
    await db.query('UPDATE agent_tasks SET request=$4 WHERE id=$1 AND client_id=$2 AND lease_token=$3',[task.id,clientId,lease,task.request]);
   }
+  // Explicitly viewing an already prepared local package is not planning or
+  // authorization. Recheck the leased task and never cross this branch into a write.
+  if(canPresentReview(task,message)){prepareReview(task);return await settle(task,lease,requestId);}
   if(options.deferPlanning){if(!['MANUAL_REVIEW','PAUSED','HUMAN_PAUSED'].includes(task.status))task.status='WAITING_MODEL';return await settle(task,lease,requestId);}
   // A paused task resumes only on a new explicit user message, never by a timer.
   await reconcile(task);if(task.status==='MANUAL_REVIEW')return await settle(task,lease,requestId);
@@ -362,4 +368,4 @@ async function maybeHandle(clientId,input,options={}){
  if(!task&&!/^(?:תיצור|תיצרי|צור|צרי|תכין|תכיני|בנה|בני|אני רוצה|אני צריך|אני צריכה|רוצה|תעשה|תעשי|תייצר|תייצרי|צריך|צריכה|create|build|generate)|לגייס עובדים|קמפיין דרושים/i.test(input.message.trim()))return null;
  return send(clientId,input,options);
 }
-module.exports={enabled,requiredOutcomes,validatePlan,view,current,active,send,maybeHandle,cancel,needsGoalClarification:vagueGoal};
+module.exports={enabled,requiredOutcomes,validatePlan,view,current,active,send,maybeHandle,cancel,needsGoalClarification:vagueGoal,canPresentReview};

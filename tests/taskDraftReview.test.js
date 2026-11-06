@@ -36,6 +36,20 @@ test('an existing ad-only recruitment review cannot authorize Meta until its con
   const recovered=await agent.current(client.id);assert.equal(recovered.state.reviewIssue,undefined);assert.equal(recovered.state.reason,undefined);assert.equal(recovered.state.plannerCalls,22);assert.equal(recovered.state.steps[0].artifact.reviewed,false);assert.equal(recovered.state.steps[1].status,'PENDING');
   assert.deepEqual(await send('המשך במשימה','resume-stranded'),resumed);
   assert.equal((await h.db.query('SELECT id FROM action_plans WHERE client_id=$1',[client.id])).rows.length,0);
+  // A stored package can be displayed even if an unrelated model probe fails.
+  // Approval and fresh planning must still be deferred while that gate is down.
+  const evaluation=require('../taskEvaluation'),oldReady=evaluation.ready,oldWait=evaluation.waitUntilReady;
+  Object.assign(process.env,{UNIFIED_CONVERSATION_ENABLED:'true',TASK_AGENT_REQUIRE_EVAL:'true',TASK_AGENT_PILOT_ONLY:'true',AUTHORIZED_PHONE_NUMBERS:'972500077903'});
+  let waits=0;evaluation.ready=()=>false;evaluation.waitUntilReady=async()=>{waits++;return false;};
+  try{
+   await h.db.query("UPDATE agent_tasks SET status='WAITING_MODEL' WHERE id=$1",[id]);
+   const controller=require('../conversationController');
+   const incoming=(message,requestId)=>meta.context.run(String(client.id),()=>controller.handle(client.id,{message,requestId,channel:'WHATSAPP'},{planner:async()=>{throw Error('NO_MODEL_FOR_STORED_REVIEW');}}));
+   const displayed=await incoming('המשך במשימה','view-during-outage');assert.equal(displayed.task.status,'WAITING_REVIEW');assert.equal(waits,0);assert.match(displayed.reply,/טיוטת טופס/);
+   assert.equal((await agent.current(client.id)).state.steps[0].artifact.reviewed,false);
+   const withheld=await incoming('מאשר את החבילה','approval-during-outage');assert.equal(withheld.task.status,'WAITING_MODEL');assert.equal(waits,1);assert.equal((await agent.current(client.id)).state.steps[0].artifact.reviewed,false);
+   assert.equal((await h.db.query('SELECT id FROM action_plans WHERE client_id=$1',[client.id])).rows.length,0);
+  }finally{evaluation.ready=oldReady;evaluation.waitUntilReady=oldWait;}
 
  }finally{if(client)await h.db.query('DELETE FROM clients WHERE id=$1',[client.id]);await h.close();for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);}
 });
