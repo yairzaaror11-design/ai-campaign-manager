@@ -144,6 +144,15 @@ function contextFor(task,known){
  return{request:task.request,requiredOutcomes:requiredOutcomes(task.request),lastError:task.state.lastError||null,pendingQuestion:task.state.question||null,plan:task.state.steps.map(s=>({...s,result:s.result?.approval?{awaitingExactApproval:true}:safe(s.result,1500)})),facts:task.state.facts,messages:task.state.messages.slice(-6),knownBusiness:known,readTools:planner.READ_TOOLS,professionalReadSchemas:require('./gemini').functionDeclarations.filter(t=>['get_professional_skills','analyze_business_case'].includes(t.name)),writeSchema:require('./gemini').functionDeclarations.find(t=>t.name==='propose_action').parameters,notes:'Only DONE is completed. PREPARED drafts await local review; WAITING_APPROVAL Meta actions have not executed.'};
 }
 function dependenciesReady(task,step){return step.dependsOn.every(id=>{const dep=task.state.steps.find(s=>s.id===id);return dep.status==='DONE'||step.kind!=='meta'&&dep.status==='PREPARED';});}
+function reviewReady(task){
+ const steps=task.state.steps;
+ if(steps.some(s=>['STALE','RUNNING','WAITING_APPROVAL'].includes(s.status))||require('./taskDraftReview').issue(task))return false;
+ return steps.some(s=>s.status==='PREPARED'&&s.artifact&&!s.artifact.reviewed)&&!steps.some(s=>s.kind!=='meta'&&['PENDING','WAITING_INPUT'].includes(s.status)&&dependenciesReady(task,s));
+}
+function prepareReview(task){
+ delete task.state.reviewIssue;delete task.state.lastError;delete task.state.reason;
+ task.state.reviewHash=hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash]));task.status='WAITING_REVIEW';
+}
 async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={},options={}){
  text(message);text(requestId,200);if(!['PORTAL','WHATSAPP'].includes(channel))throw Error('INVALID_TASK_CHANNEL');
  if(String(meta.context.getStore())!==String(clientId))throw Error('TENANT_CONTEXT_REQUIRED');
@@ -174,6 +183,10 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    }
    task.state.revising=true;delete task.state.reviewHash;
   }
+  // Resume a completed local package stranded by a former planning-loop limit.
+  // This exposes drafts only; it never consumes an approval or retries a write.
+  if(!revisionRequested&&['BLOCKED','ERROR'].includes(task.status)&&reviewReady(task)){prepareReview(task);return await settle(task,lease,requestId);}
+  if(task.state.reviewIssue&&!require('./taskDraftReview').issue(task))delete task.state.reviewIssue;
   const waiting=task.state.steps.find(s=>s.status==='WAITING_APPROVAL');
   if(waiting){
    const code=message.trim().match(/^אשר\s+(\d{6})$/);
@@ -245,9 +258,8 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    // Later model plans are ignored. Only validated next operations may advance the authoritative persisted plan.
    const n=decision.next;
    if(n.op==='review'){
-    delete task.state.reviewIssue;
     if(!task.state.steps.some(s=>s.status==='PREPARED'))throw Error('TASK_ARTIFACTS_REQUIRED');
-    task.state.reviewHash=hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash]));task.status='WAITING_REVIEW';return await settle(task,lease,requestId);
+    prepareReview(task);return await settle(task,lease,requestId);
    }
    if(n.op==='finish'){
     if(requiredOutcomes(task.request).some(o=>!task.state.steps.some(s=>s.kind==='meta'&&s.status==='DONE'&&s.result?.verified&&o.intents.includes(s.intent)))||task.state.steps.some(s=>s.status!=='DONE')||!task.state.steps.some(s=>['draft','image','meta','read'].includes(s.kind)))throw Error('TASK_NOT_COMPLETE');
@@ -325,6 +337,10 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     }
     return await settle(task,lease,requestId);
    }
+   // The backend owns the consent boundary. A ready package must be shown,
+   // not sent around another model loop which can rewrite it indefinitely.
+   if(task.state.reviewIssue&&!require('./taskDraftReview').issue(task))delete task.state.reviewIssue;
+   if(reviewReady(task)){prepareReview(task);return await settle(task,lease,requestId);}
    await checkpoint(task,lease);
   }
   task.status='BLOCKED';task.state.reason='נדרשת חלוקה של המשימה לשלבים נוספים לפני המשך בטוח';return await settle(task,lease,requestId);

@@ -16,7 +16,7 @@ test('an existing ad-only recruitment review cannot authorize Meta until its con
   const formDraft={title:'טופס מועמדות — איש מכירות',questions:['שם מלא','טלפון ליצירת קשר','מה הניסיון הרלוונטי שלך במכירות?']};let corrections=0;
   const planner=async c=>{
    assert.equal(c.planningPhase,'CONTINUE_EXISTING_PLAN');assert.deepEqual(c.plan.map(s=>s.id),['copy','form','campaign']);
-   if(c.plan[0].artifact.formDraft)return{next:{op:'review'}};
+   if(c.plan[0].artifact.formDraft)throw Error('READY_PACKAGE_MUST_NOT_CALL_MODEL');
    assert.equal(c.plannerFeedback.code,'TASK_FORM_DRAFT_REQUIRED');corrections++;
    if(corrections===1)return{next:{op:'review'}}; // Must not expose another incomplete package.
    return{next:{op:'draft',stepId:'copy',title:'דרוש איש מכירות',content:'מגייסים איש מכירות בכל הארץ. להגשת מועמדות השאירו פרטים בטופס.',formDraft}};
@@ -28,5 +28,14 @@ test('an existing ad-only recruitment review cannot authorize Meta until its con
   assert.deepEqual(await send('מאשר את החבילה','repair-old-review'),repaired);
   assert.equal((await h.db.query('SELECT id FROM action_plans WHERE client_id=$1',[client.id])).rows.length,0);
   assert.equal((await h.db.query('SELECT action_id FROM meta_execution_attempts WHERE client_id=$1',[client.id])).rows.length,0);
+  // Reproduce the live stranded package: already prepared, stale missing-form
+  // marker, no external attempt, and the old per-turn loop-limit status.
+  const stranded=await agent.current(client.id);stranded.state.reviewIssue='TASK_FORM_DRAFT_REQUIRED';stranded.state.plannerCalls=22;stranded.state.reason='נדרשת חלוקה של המשימה לשלבים נוספים לפני המשך בטוח';delete stranded.state.reviewHash;
+  await h.db.query("UPDATE agent_tasks SET status='BLOCKED',state=$2::jsonb WHERE id=$1",[id,JSON.stringify(stranded.state)]);
+  const resumed=await send('המשך במשימה','resume-stranded');assert.equal(resumed.task.status,'WAITING_REVIEW');assert.equal(corrections,2);assert.match(resumed.reply,/טיוטת טופס, טרם נוצר/);
+  const recovered=await agent.current(client.id);assert.equal(recovered.state.reviewIssue,undefined);assert.equal(recovered.state.reason,undefined);assert.equal(recovered.state.plannerCalls,22);assert.equal(recovered.state.steps[0].artifact.reviewed,false);assert.equal(recovered.state.steps[1].status,'PENDING');
+  assert.deepEqual(await send('המשך במשימה','resume-stranded'),resumed);
+  assert.equal((await h.db.query('SELECT id FROM action_plans WHERE client_id=$1',[client.id])).rows.length,0);
+
  }finally{if(client)await h.db.query('DELETE FROM clients WHERE id=$1',[client.id]);await h.close();for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);}
 });
