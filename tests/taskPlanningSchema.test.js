@@ -34,3 +34,9 @@ test('numeric formatting repair is bounded and never dispatches analysis',async(
  const result=await require('../taskPlanner').decide(context,{provider:'numeric_contract_fixture'});assert.equal(calls,2);assert.equal(result.next.args.fields[0].value,'3000');
  repeated=true;await assert.rejects(require('../taskPlanner').decide(context,{provider:'numeric_contract_fixture'}),/INVALID_BUSINESS_FIELDS/);assert.equal(calls,4);
 });
+test('numeric correction grammar excludes every unrelated optional campaign or write contract',()=>{
+ const schema=require('../taskPlanningSchema').responseSchema({request:'בדוק כדאיות',plan:[{id:'economics',kind:'read',status:'PENDING'}],plannerFeedback:{code:'INVALID_BUSINESS_FIELDS'}});
+ assert.deepEqual(Object.keys(schema.properties.next.properties),['op','stepId','tool','args']);
+ assert.deepEqual(schema.properties.next.required,['op','stepId','tool','args']);assert.equal(schema.properties.next.properties.args.properties.fields.maxItems,16);
+ assert.ok(require('../taskEvaluation').cases.some(c=>c.id==='professional_contract_correction'&&c.professional&&c.contractCorrection));
+});

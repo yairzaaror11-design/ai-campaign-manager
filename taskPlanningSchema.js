@@ -25,6 +25,11 @@ function responseSchema(context){
  if(context.plannerFeedback?.code==='INVALID_BUSINESS_FIELDS'){
   next.properties.op.enum=['read'];next.properties.tool.enum=['analyze_business_case'];next.required=['op','stepId','tool','args'];
   const args=next.properties.args;args.additionalProperties=false;args.required=['operation','fields'];args.properties.fields.items=args.properties.fields.items.anyOf[1];args.properties.fields.maxItems=16;
+  const op=context.plannerFeedback.operation,contract=require('./businessCase').OPS[op];
+  if(Object.hasOwn(require('./businessCase').OPS,op)){args.properties.operation.enum=[op];args.properties.fields.items.properties.key.enum=[...contract.required,...contract.optional];}
+  // This correction has one operation. Do not include unrelated optional campaign,
+  // media and write contracts in the provider's constrained decoding grammar.
+  next.properties=Object.fromEntries(['op','stepId','tool','args'].map(k=>[k,next.properties[k]]));
  }
  const properties={next};
  if(initial)properties.plan={type:'array',minItems:1,maxItems:12,items:{type:'object',additionalProperties:false,properties:{id:{type:'string',description:'Unique lowercase ASCII identifier, starting with a letter, then letters/digits/underscores, at most 40 characters.'},label:string,kind:{type:'string',enum:['collect','read','draft','image','meta']},dependsOn:{type:'array',items:{type:'string',description:'Id of an EARLIER step in this plan.'}},intent:{type:'string',enum:[...require('./actionPlan').WRITE_INTENTS]}},required:['id','label','kind','dependsOn']}};
