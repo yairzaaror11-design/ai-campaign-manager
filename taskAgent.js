@@ -259,7 +259,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
      initialRepairs++;task.state.lastError=error instanceof SyntaxError?'INVALID_TASK_JSON':error.message;await checkpoint(task,lease);continue;
     }
     if(decisionRepairs<1&&['TASK_STEP_NOT_READY','TASK_OPERATION_MISMATCH','TASK_FORM_DRAFT_REQUIRED','INVALID_FORM_DRAFT','TASK_CAMPAIGN_DRAFT_REQUIRED','INVALID_CAMPAIGN_DRAFT','TASK_CAMPAIGN_GRAPHIC_REQUIRED'].includes(error.message)){
-     decisionRepairs++;decisionFeedback=/^TASK_(?:FORM_DRAFT|CAMPAIGN_)/.test(error.message)?require('./taskDraftReview').feedback(error.message):{code:error.message,instruction:'The proposed next step was rejected BEFORE execution. Keep the existing plan, step IDs, facts and completed effects unchanged. Select a dependency-ready step of the matching kind; use review for prepared artifacts, or blocked on a ready step when access is missing. Never repeat completed writes or infer approval.'};
+     decisionRepairs++;decisionFeedback=(/^TASK_(?:FORM_DRAFT|CAMPAIGN_)/.test(error.message)||error.message==='INVALID_CAMPAIGN_DRAFT')?require('./taskDraftReview').feedback(error.message):{code:error.message,instruction:'The proposed next step was rejected BEFORE execution. Keep the existing plan, step IDs, facts and completed effects unchanged. Select a dependency-ready step of the matching kind; use review for prepared artifacts, or blocked on a ready step when access is missing. Never repeat completed writes or infer approval.'};
      task.state.lastError=error.message;await checkpoint(task,lease);continue;
     }
     throw error;
