@@ -9,7 +9,7 @@ function describe(){return{
  professionalSkills:{version:'2026-11-05-v1',guides:require('./professionalSkills').SKILLS.length,analysisOperations:Object.keys(require('./businessCase').OPS),mode:'PARTIAL_READ_ONLY_ANALYSIS',crmConnected:false,billingEnabledByThisFeature:false},
  landingPages:{privateDrafts:true,publishViaChat:false},leadImport:{availableViaChat:false},
  models:{selected:process.env.AI_PROVIDER||'gemini',claudeConfigured:!!process.env.ANTHROPIC_API_KEY&&!!process.env.CLAUDE_MODEL},
- graphics:{implemented:true,enabled:process.env.GRAPHICS_ENABLED==='true'&&!!process.env.GEMINI_API_KEY&&!!process.env.GEMINI_IMAGE_MODEL,maxReferences:4},
+ graphics:{implemented:true,configured:!!process.env.GEMINI_API_KEY&&!!process.env.GEMINI_IMAGE_MODEL,enabled:process.env.GRAPHICS_ENABLED==='true'&&!!process.env.GEMINI_API_KEY&&!!process.env.GEMINI_IMAGE_MODEL,maxReferences:4},
  unsupported:['video generation','full website deployment through chat','organic social publication through chat','automatic CRM integration','generic arbitrary Graph API writes','automatic applicant ranking','conditional form questions','automatic coverage of every Ads Manager feature'],verifiedLive:false
 };}
 module.exports={READ_TOOLS,describe};

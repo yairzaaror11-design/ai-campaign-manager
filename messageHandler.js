@@ -85,7 +85,7 @@ async function handleMedia(from, message) {
       if(p.socialInput&&media.caption&&!require('./conversationControl').hasControlContamination(media.caption))p.contentBrief={...(p.contentBrief||{}),subject:media.caption.slice(0,1000),source:'user_media_caption'};
       return{handled:false,changed:true,audit:'MEDIA_RECEIVED'};
     });
-    const unifiedMedia=await require('./conversationController').media(client.id,{message:'קובץ מצורף: '+kind+' '+(media.caption||''),requestId:'media:'+require('./whatsappDelivery').messageContext.getStore()?.eventId,channel:'WHATSAPP'});if(unifiedMedia){await deliverTaskReply(from,client.id,unifiedMedia);return;}
+    const unifiedMedia=await require('./conversationController').media(client.id,{message:'קובץ מצורף: '+kind+' '+(media.caption||''),requestId:'media:'+require('./whatsappDelivery').messageContext.getStore()?.eventId,channel:'WHATSAPP'},{onProgress:text=>notifyProcessing(from,text)});if(unifiedMedia){await deliverTaskReply(from,client.id,unifiedMedia);return;}
     if(require('./taskAgent').enabled()&&await require('./taskAgent').active(client.id)){const result=await require('./taskAgent').send(client.id,{message:'קובץ מצורף: '+kind+' '+(media.caption||''),requestId:'media:'+require('./whatsappDelivery').messageContext.getStore()?.eventId,channel:'WHATSAPP'});await deliverTaskReply(from,client.id,result);return;}
     const profile=await require('./marketingStore').load(client.id);
     if(profile?.socialInput&&require('./marketingConversation').enabled()){
@@ -217,7 +217,7 @@ async function routeText(from, text, prefix = '') {
   if(configured()){
     const client=await getOrCreateClient(from);
     const controller=require('./conversationController');
-    const result=await controller.handle(client.id,{message:text,requestId:'whatsapp:'+require('./whatsappDelivery').messageContext.getStore()?.eventId,channel:'WHATSAPP'});
+    const result=await controller.handle(client.id,{message:text,requestId:'whatsapp:'+require('./whatsappDelivery').messageContext.getStore()?.eventId,channel:'WHATSAPP'},{onProgress:notice=>notifyProcessing(from,notice)});
     if(result?.delegateApproval){await handleApproval(from,result.delegateApproval);return;}
     if(result){await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:result.historyReply||result.reply}]);if(result.decisionKey){const ui=await require('./conversationUi').prepare(client.id,result.reply,result.decisionKey);await safeSend(from,ui.text,ui);}else await deliverTaskReply(from,client.id,result);return;}
   }

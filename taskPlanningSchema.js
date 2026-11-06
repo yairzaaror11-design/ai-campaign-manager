@@ -14,6 +14,7 @@ function responseSchema(context){
    period:{type:'object',additionalProperties:false,properties:{value:{type:'string',description:'Exact contiguous owner quotation, or omit the entire period object.'},evidence:{type:'string'}},required:['value','evidence']}
   }},
   title:string,content:string,destination:{type:'string',enum:['landing_page']},prompt:string,referenceMediaIds:{...strings,maxItems:4},
+  campaignDraft:{type:'object',additionalProperties:false,properties:Object.fromEntries(['objective','audience','geography','placements','budgetNote','scheduleNote','headline','cta','designBrief'].map(k=>[k,{type:'string'}]).concat([['referenceMediaIds',{type:'array',maxItems:4,items:{type:'string'}}]])),required:['objective','audience','geography','placements','budgetNote','scheduleNote','headline','cta','designBrief']},
   formDraft:{type:'object',additionalProperties:false,properties:{title:{type:'string'},questions:{type:'array',minItems:2,maxItems:8,items:{type:'string'}}},required:['title','questions']},
   proposal:{type:'object',additionalProperties:false,properties:{intent:{type:'string',enum:[...require('./actionPlan').WRITE_INTENTS]},summary:string,target:{type:'object',additionalProperties:true},parameters:{type:'object',additionalProperties:true}},required:['intent','summary','target','parameters']},reason:string
  }};

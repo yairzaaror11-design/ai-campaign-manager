@@ -1,8 +1,10 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 test('an existing ad-only recruitment review cannot authorize Meta until its concrete form draft has been reviewed',async()=>{
+ const campaignDraft={objective:'לידים למועמדים',audience:'מועמדים לתפקיד שנמסר',geography:'בכל הארץ',placements:'הצעת מיקומים אוטומטיים לבדיקה',budgetNote:'לא נקבע; נדרש אישור נפרד',scheduleNote:'לא נקבע',headline:'דרוש איש מכירות',cta:'להגשת מועמדות',designBrief:'עיצוב נקי בעברית, ללא המצאת לוגו'};
+ const imageOptions={generateImage:async()=>({buffer:Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(32)]),mimeType:'image/png'}),uploadImage:async()=>'456'};
  const env={...process.env},h=await require('./helpers/isolatedDatabase').openDatabase();let client;
- Object.assign(process.env,{TASK_AGENT_ENABLED:'true',READ_ONLY:'true',META_WRITES_ENABLED:'false'});
+ Object.assign(process.env,{TASK_AGENT_ENABLED:'true',READ_ONLY:'true',META_WRITES_ENABLED:'false',GRAPHICS_ENABLED:'true',GEMINI_API_KEY:'fixture',GEMINI_IMAGE_MODEL:'gemini-image-fixture'});
  const review=require('../taskDraftReview'),agent=require('../taskAgent'),meta=require('../metaConnection');
  try{
   assert.throws(()=>review.formDraft({title:'טופס',questions:['שם'],approved:true}),/INVALID_FORM_DRAFT/);
@@ -15,16 +17,16 @@ test('an existing ad-only recruitment review cannot authorize Meta until its con
   await h.db.query("INSERT INTO agent_tasks(id,client_id,request,status,state) VALUES($1,$2,$3,'WAITING_REVIEW',$4::jsonb)",[id,client.id,request,JSON.stringify({steps:plan,facts:{role:{value:'איש מכירות',evidence:'גיוס איש מכירות בכל הארץ'}},messages:[{role:'user',content:request},{role:'user',content:'גיוס איש מכירות בכל הארץ'}],reviewHash:'obsolete'})]);
   const formDraft={title:'טופס מועמדות — איש מכירות',questions:['שם מלא','טלפון ליצירת קשר','מה הניסיון הרלוונטי שלך במכירות?']};let corrections=0;
   const planner=async c=>{
-   assert.equal(c.planningPhase,'CONTINUE_EXISTING_PLAN');assert.deepEqual(c.plan.map(s=>s.id),['copy','form','campaign']);
+   assert.equal(c.planningPhase,'CONTINUE_EXISTING_PLAN');assert.deepEqual(c.plan.map(s=>s.id),['copy','campaign_package_image','form','campaign_package_upload','campaign']);
    if(c.plan[0].artifact.formDraft)throw Error('READY_PACKAGE_MUST_NOT_CALL_MODEL');
    assert.equal(c.plannerFeedback.code,'TASK_FORM_DRAFT_REQUIRED');corrections++;
    if(corrections===1)return{next:{op:'review'}}; // Must not expose another incomplete package.
-   return{next:{op:'draft',stepId:'copy',title:'דרוש איש מכירות',content:'מגייסים איש מכירות בכל הארץ. להגשת מועמדות השאירו פרטים בטופס.',formDraft}};
+   return{next:{op:'draft',stepId:'copy',title:'דרוש איש מכירות',content:'מגייסים איש מכירות בכל הארץ. להגשת מועמדות השאירו פרטים בטופס.',campaignDraft,formDraft}};
   };
-  const send=(message,requestId)=>meta.context.run(String(client.id),()=>agent.send(client.id,{message,requestId,channel:'WHATSAPP'},{planner}));
+  const send=(message,requestId)=>meta.context.run(String(client.id),()=>agent.send(client.id,{message,requestId,channel:'WHATSAPP'},{planner,imageOptions}));
   const repaired=await send('מאשר את החבילה','repair-old-review');
   assert.equal(repaired.task.status,'WAITING_REVIEW');assert.equal(corrections,2);assert.match(repaired.reply,/טיוטת טופס, טרם נוצר/);assert.match(repaired.reply,/מה הניסיון הרלוונטי/);assert.doesNotMatch(repaired.reply,/מתרחבת|B2B/);
-  const stored=await agent.current(client.id);assert.deepEqual(stored.state.steps[0].artifact.formDraft,formDraft);assert.notEqual(stored.state.steps[0].artifact.hash,oldHash);assert.equal(stored.state.steps[0].artifact.reviewed,false);assert.equal(stored.state.steps[1].status,'PENDING');
+  const stored=await agent.current(client.id);assert.deepEqual(stored.state.steps[0].artifact.formDraft,formDraft);assert.notEqual(stored.state.steps[0].artifact.hash,oldHash);assert.equal(stored.state.steps[0].artifact.reviewed,false);assert.equal(stored.state.steps.find(s=>s.id==='form').status,'PENDING');
   assert.deepEqual(await send('מאשר את החבילה','repair-old-review'),repaired);
   assert.equal((await h.db.query('SELECT id FROM action_plans WHERE client_id=$1',[client.id])).rows.length,0);
   assert.equal((await h.db.query('SELECT action_id FROM meta_execution_attempts WHERE client_id=$1',[client.id])).rows.length,0);
@@ -33,7 +35,7 @@ test('an existing ad-only recruitment review cannot authorize Meta until its con
   const stranded=await agent.current(client.id);stranded.state.reviewIssue='TASK_FORM_DRAFT_REQUIRED';stranded.state.plannerCalls=22;stranded.state.reason='נדרשת חלוקה של המשימה לשלבים נוספים לפני המשך בטוח';delete stranded.state.reviewHash;
   await h.db.query("UPDATE agent_tasks SET status='BLOCKED',state=$2::jsonb WHERE id=$1",[id,JSON.stringify(stranded.state)]);
   const resumed=await send('המשך במשימה','resume-stranded');assert.equal(resumed.task.status,'WAITING_REVIEW');assert.equal(corrections,2);assert.match(resumed.reply,/טיוטת טופס, טרם נוצר/);
-  const recovered=await agent.current(client.id);assert.equal(recovered.state.reviewIssue,undefined);assert.equal(recovered.state.reason,undefined);assert.equal(recovered.state.plannerCalls,22);assert.equal(recovered.state.steps[0].artifact.reviewed,false);assert.equal(recovered.state.steps[1].status,'PENDING');
+  const recovered=await agent.current(client.id);assert.equal(recovered.state.reviewIssue,undefined);assert.equal(recovered.state.reason,undefined);assert.equal(recovered.state.plannerCalls,22);assert.equal(recovered.state.steps[0].artifact.reviewed,false);assert.equal(recovered.state.steps.find(s=>s.id==='form').status,'PENDING');
   assert.deepEqual(await send('המשך במשימה','resume-stranded'),resumed);
   assert.equal((await h.db.query('SELECT id FROM action_plans WHERE client_id=$1',[client.id])).rows.length,0);
   // A stored package can be displayed even if an unrelated model probe fails.

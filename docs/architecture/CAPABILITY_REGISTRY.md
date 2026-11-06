@@ -19,3 +19,6 @@ botCapabilities.js is the executable registry and must match Gemini read declara
 |Reports/notifications|reportService, WhatsApp gate|Partial; consent/template/eligibility checks apply.|
 |Other platforms|Social connection records|No claim of complete campaign execution.|
 |Commercial|billingService, humanSupport|Partial; real billing/paid access not enabled.|
+
+
+Full campaign preparation: server-owned package expansion, concrete form questions, audience/geography/objective/placements and explicit unset budget/schedule; short Hebrew text is included in the image brief. Ad content is stored separately from owner-facing configuration. Meta upload/creative proposals must use the reviewed generated asset and approved copy/headline. One progress notice is routed through the actual WhatsApp adapter; portal preparation sends no WhatsApp replies. Image configuration and attempt quotas remain mandatory, references remain tenant-scoped, unknown outcomes are not retried. Real image generation/text rendering and WhatsApp owner acceptance are separate from mocked integration checks.

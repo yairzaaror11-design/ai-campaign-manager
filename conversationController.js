@@ -28,10 +28,10 @@ async function handle(clientId,input,options={}){
  if(!tasks.canPresentReview(active,message)&&!tasks.needsGoalClarification(message)&&!tasks.enabled()&&process.env.TASK_AGENT_ENABLED==='true'&&process.env.TASK_AGENT_REQUIRE_EVAL==='true')await require('./taskEvaluation').waitUntilReady();
  return tasks.send(clientId,{...input,message:message==='/start'?'היי':message},{...options,deferPlanning:!tasks.enabled()});
 }
-async function media(clientId,input){
+async function media(clientId,input,options={}){
  if(!await owns(clientId))return null;
  if(!await tasks.active(clientId))return{handled:true,reply:'הקובץ נשמר לשיחה. מה תרצה להכין איתו?'};
- return handle(clientId,input);
+ return handle(clientId,input,options);
 }
 function acceptsInteractive(profile){return ['action_approval','account_selection','connection_offer','connected'].includes(profile?.ui?.decisionKey);}
 module.exports={owns,handle,media,acceptsInteractive};

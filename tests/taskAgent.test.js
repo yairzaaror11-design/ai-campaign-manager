@@ -127,10 +127,10 @@ test('task safety: no invented facts, no unsupported tools, no false completion 
   });
   await t.test('image generation returns a real tenant media reference and waits for package review',async()=>{
    process.env.GRAPHICS_ENABLED='true';process.env.OBJECT_STORAGE_ENABLED='false';
-   const c=(await h.db.query('INSERT INTO clients(phone) VALUES($1) RETURNING *',['972500044096'])).rows[0];let generated=0;
-   const options={planner:async context=>!context.plan.length?{plan:[{id:'image',kind:'image',label:'עיצוב לעסק',dependsOn:[]}],next:{op:'image',stepId:'image',prompt:'תמונת מוצר נקייה לעסק'}}:context.plan[0].status==='PREPARED'?{next:{op:'review'}}:{next:{op:'finish'}},imageOptions:{generateImage:async()=>{generated++;return{buffer:Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(32)]),mimeType:'image/png'};},uploadImage:async()=>'456'}};
+   const c=(await h.db.query('INSERT INTO clients(phone) VALUES($1) RETURNING *',['972500044096'])).rows[0];let generated=0,notice='';
+   const options={onProgress:async text=>{notice=text;},planner:async context=>!context.plan.length?{plan:[{id:'image',kind:'image',label:'עיצוב לעסק',dependsOn:[]}],next:{op:'image',stepId:'image',prompt:'תמונת מוצר נקייה לעסק'}}:context.plan[0].status==='PREPARED'?{next:{op:'review'}}:{next:{op:'finish'}},imageOptions:{generateImage:async()=>{generated++;return{buffer:Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(32)]),mimeType:'image/png'};},uploadImage:async()=>'456'}};
    const result=await meta.context.run(String(c.id),()=>agent.send(c.id,{message:'תכין תמונה לעסק',requestId:'image-1',channel:'WHATSAPP'},options));
-   assert.equal(result.task.status,'WAITING_REVIEW');assert.equal(generated,1);assert.equal(result.mediaIds.length,1);assert.equal(result.task.steps[0].status,'PREPARED');
+   assert.equal(result.task.status,'WAITING_REVIEW');assert.equal(generated,1);assert.equal(result.mediaIds.length,1);assert.equal(result.task.steps[0].status,'PREPARED');assert.doesNotMatch(notice,/קמפיין/);
    const media=await require('../mediaStore').loadMedia(c.id,result.mediaIds[0]);assert.equal(media.whatsapp_media_id,'456');
    const approved=await meta.context.run(String(c.id),()=>agent.send(c.id,{message:'מאשר את החבילה',requestId:'image-2',channel:'WHATSAPP'},options));assert.equal(approved.task.status,'COMPLETE');assert.equal(generated,1);
    process.env.GRAPHICS_ENABLED='false';

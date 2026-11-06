@@ -45,6 +45,7 @@ function validatePlan(plan,request=''){
   seen.add(p.id);return{id:p.id,label:text(p.label,160),kind:p.kind,dependsOn:[...new Set(p.dependsOn)],...(p.kind==='meta'?{intent:p.intent}:{}),status:'PENDING'};
  });
  if(requiredOutcomes(request).some(o=>!steps.some(s=>s.kind==='meta'&&o.intents.includes(s.intent))))throw Error('TASK_PLAN_MISSING_OUTCOME');
+ if(require('./campaignPackage').required(request)&&!steps.slice(0,steps.findIndex(s=>s.kind==='meta')<0?steps.length:steps.findIndex(s=>s.kind==='meta')).some(s=>s.kind==='draft'))throw Error('INVALID_TASK_PLAN');
  return steps;
 }
 function view(task){
@@ -133,9 +134,9 @@ async function claim(clientId,{message,requestId,channel,taskRevision}){
 async function reconcile(task){
  for(const step of task.state.steps||[]){
   if(step.status!=='WAITING_APPROVAL')continue;
-  const a=step.result.approval,row=(await db.query('SELECT status,plan_hash,execution_result FROM action_plans WHERE id=$1 AND client_id=$2',[a.actionId,task.client_id])).rows[0];
+  const a=step.result.approval,row=(await db.query('SELECT status,plan_hash,execution_result,payload FROM action_plans WHERE id=$1 AND client_id=$2',[a.actionId,task.client_id])).rows[0];
   if(row?.plan_hash!==a.planHash)throw Error('TASK_APPROVAL_CHANGED');
-  if(row.status==='VERIFIED'&&row.execution_result?.verified){step.status='DONE';step.result={...row.execution_result,actionId:a.actionId,verified:true};}
+  if(row.status==='VERIFIED'&&row.execution_result?.verified){step.status='DONE';step.result={...row.execution_result,actionId:a.actionId,verified:true,...(step.intent==='UPLOAD_IMAGE'?{sourceMediaId:row.payload?.parameters?.mediaId}:{})};}
   else if(['APPROVED','MANUAL_REVIEW'].includes(row.status)){task.status='MANUAL_REVIEW';return;}
   else if(row.status!=='PROPOSED'||new Date(a.expiresAt)<=new Date()){step.status='PENDING';delete step.result;}
  }
@@ -176,6 +177,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   }
   // Explicitly viewing an already prepared local package is not planning or
   // authorization. Recheck the leased task and never cross this branch into a write.
+  require('./campaignPackage').ensure(task);
   if(canPresentReview(task,message)){prepareReview(task);return await settle(task,lease,requestId);}
   if(options.deferPlanning){if(!['MANUAL_REVIEW','PAUSED','HUMAN_PAUSED'].includes(task.status))task.status='WAITING_MODEL';return await settle(task,lease,requestId);}
   // A paused task resumes only on a new explicit user message, never by a timer.
@@ -207,7 +209,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    await reconcile(task);
   }
   if(task.status==='WAITING_REVIEW'&&require('./taskDraftReview').issue(task)){
-   task.status='RUNNING';task.state.reviewIssue='TASK_FORM_DRAFT_REQUIRED';task.state.revising=true;delete task.state.reviewHash;
+   task.status='RUNNING';task.state.reviewIssue=require('./taskDraftReview').issue(task);task.state.revising=true;delete task.state.reviewHash;
   }
   if(task.status==='WAITING_REVIEW'&&/^(כן|לא|מאשר|מאשרת|אוקיי)$/.test(message.trim()))return await settle(task,lease,requestId);
   if(task.status==='WAITING_REVIEW'&&/^(מאשר את החבילה|מאשרת את החבילה)$/.test(message.trim())){
@@ -229,19 +231,22 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   if(task.state.newGoal){delete known.facts.product;known.rule+=' The owner explicitly switched goals. Do not reuse a prior product or campaign.';}
   let initialRepairs=0,decisionRepairs=0,decisionFeedback=null;
   for(let round=0;round<16;round++){
-   if((task.state.plannerCalls||0)>=64||!await require('./rateLimit').take('task-planner:'+clientId,60,3600)){task.status='BLOCKED';task.state.reason='המשימה הגיעה למגבלת התכנון כדי לעצור לולאה או עלות לא צפויה';return await settle(task,lease,requestId);}
-   task.state.plannerCalls=(task.state.plannerCalls||0)+1;await checkpoint(task,lease);
+   const automaticImage=require('./campaignPackage').imageDecision(task,dependenciesReady);
+   if(!automaticImage&&( (task.state.plannerCalls||0)>=64||!await require('./rateLimit').take('task-planner:'+clientId,60,3600))){task.status='BLOCKED';task.state.reason='המשימה הגיעה למגבלת התכנון כדי לעצור לולאה או עלות לא צפויה';return await settle(task,lease,requestId);}
+   if(!automaticImage)task.state.plannerCalls=(task.state.plannerCalls||0)+1;await checkpoint(task,lease);
    const context=contextFor(task,known);
    if(initialRepairs&&!task.state.steps.length)context.plannerFeedback=planner.initialFeedback(task.state.lastError);
    if(decisionFeedback)context.plannerFeedback=decisionFeedback;
-   else if(task.state.reviewIssue)context.plannerFeedback=require('./taskDraftReview').feedback();
+   else if(task.state.reviewIssue)context.plannerFeedback=require('./taskDraftReview').feedback(task.state.reviewIssue);
    let decision;
    try{
-    decision=await planner.decide(context,options);
+    decision=automaticImage||await planner.decide(context,options);
     if(!decision||typeof decision!=='object'||!decision.next)throw Error('INVALID_TASK_DECISION');
-    if(!task.state.steps.length)task.state.steps=validatePlan(decision.plan,task.request);
+    if(!task.state.steps.length){const proposed={...task,state:{...task.state,steps:validatePlan(decision.plan,task.request)}};require('./campaignPackage').ensure(proposed);task.state=proposed.state;}
     const n=decision.next;
-    if(['review','meta'].includes(n.op)&&require('./taskDraftReview').issue(task))throw Error('TASK_FORM_DRAFT_REQUIRED');
+    if(['review','meta'].includes(n.op)&&require('./taskDraftReview').issue(task))throw Error(require('./taskDraftReview').issue(task));
+    if(n.op==='draft'&&n.campaignDraft!==undefined)require('./campaignPackage').checked(n.campaignDraft);
+    if(n.op==='image'&&task.state.steps.find(s=>s.id===n.stepId)?.packageImage&&!automaticImage)throw Error('TASK_CAMPAIGN_DRAFT_REQUIRED');
     if(n.op==='draft'&&n.formDraft!==undefined)require('./taskDraftReview').formDraft(n.formDraft);
     if(!['review','finish'].includes(n.op)){
      const step=task.state.steps.find(s=>s.id===n.stepId);
@@ -253,8 +258,8 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     if(!task.state.steps.length&&initialRepairs<1&&planner.repairableInitial(error)){
      initialRepairs++;task.state.lastError=error instanceof SyntaxError?'INVALID_TASK_JSON':error.message;await checkpoint(task,lease);continue;
     }
-    if(decisionRepairs<1&&['TASK_STEP_NOT_READY','TASK_OPERATION_MISMATCH','TASK_FORM_DRAFT_REQUIRED','INVALID_FORM_DRAFT'].includes(error.message)){
-     decisionRepairs++;decisionFeedback=error.message==='TASK_FORM_DRAFT_REQUIRED'?require('./taskDraftReview').feedback():{code:error.message,instruction:'The proposed next step was rejected BEFORE execution. Keep the existing plan, step IDs, facts and completed effects unchanged. Select a dependency-ready step of the matching kind; use review for prepared artifacts, or blocked on a ready step when access is missing. Never repeat completed writes or infer approval.'};
+    if(decisionRepairs<1&&['TASK_STEP_NOT_READY','TASK_OPERATION_MISMATCH','TASK_FORM_DRAFT_REQUIRED','INVALID_FORM_DRAFT','TASK_CAMPAIGN_DRAFT_REQUIRED','INVALID_CAMPAIGN_DRAFT','TASK_CAMPAIGN_GRAPHIC_REQUIRED'].includes(error.message)){
+     decisionRepairs++;decisionFeedback=/^TASK_(?:FORM_DRAFT|CAMPAIGN_)/.test(error.message)?require('./taskDraftReview').feedback(error.message):{code:error.message,instruction:'The proposed next step was rejected BEFORE execution. Keep the existing plan, step IDs, facts and completed effects unchanged. Select a dependency-ready step of the matching kind; use review for prepared artifacts, or blocked on a ready step when access is missing. Never repeat completed writes or infer approval.'};
      task.state.lastError=error.message;await checkpoint(task,lease);continue;
     }
     throw error;
@@ -286,6 +291,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     task.state.facts=facts;step.status='DONE';
    }else if(n.op==='draft'){
     const artifact={title:text(n.title,160),content:text(n.content,6000),reviewed:false};
+    if(n.campaignDraft!==undefined){artifact.adContent=artifact.content;artifact.campaignDraft=require('./campaignPackage').checked(n.campaignDraft);artifact.content+=require('./campaignPackage').render(artifact.campaignDraft);}
     if(n.formDraft!==undefined){
      artifact.formDraft=require('./taskDraftReview').formDraft(n.formDraft);
      artifact.content+='\n\n'+artifact.formDraft.title+' — טיוטת טופס, טרם נוצר ב־Meta\n'+artifact.formDraft.questions.map((q,i)=>(i+1)+'. '+q).join('\n');
@@ -311,6 +317,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     step.status='DONE';step.lastReadTurn=requestId;
     if(n.tool==='analyze_business_case'&&step.result?.status==='NEEDS_INPUT'){step.status='PENDING';task.status='WAITING_INPUT';task.state.question=step.result.nextQuestion;return await settle(task,lease,requestId);}
    }else if(n.op==='image'){
+    if(step.packageImage&&!require('./botCapabilities').describe().graphics.enabled){task.status='BLOCKED';task.state.reason='יצירת הגרפיקה אינה מוגדרת בשירות; חבילת הקמפיין עדיין אינה מלאה';return await settle(task,lease,requestId);}
     const prompt=text(n.prompt);
     if(n.referenceMediaId&&n.referenceMediaIds)throw Error('AMBIGUOUS_REFERENCE_IMAGES');
     const ids=n.referenceMediaIds===undefined?(n.referenceMediaId?[n.referenceMediaId]:[]):n.referenceMediaIds;
@@ -318,13 +325,22 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     const referenceImages=[];
     for(const id of ids)referenceImages.push(await require('./mediaStore').readMedia(clientId,id));
     require('./graphicService').references({referenceImages});
+    try{await options.onProgress?.(step.packageImage?'מכין את חבילת הקמפיין, כולל הגרפיקה. אציג את כל החלקים יחד לבדיקה.':'מכין את הגרפיקה. אציג אותה לבדיקה כשהיא תהיה מוכנה.');}catch{require('./logger').logger.warn('Task progress notice unavailable');}
     step.status='RUNNING';await checkpoint(task,lease);
     const output=await require('./whatsappDelivery').messageContext.run({eventId:'task:'+task.id+':'+step.id},()=>require('./graphicService').createGraphic(clientId,prompt,{...(options.imageOptions||{}),referenceImages}));
     if(!output?.id)throw Error('TASK_IMAGE_NOT_VERIFIED');
-    step.result={mediaId:output.id,kind:'image',verified:true};step.artifact={title:step.label,content:'התמונה שנוצרה נשלחה כאן לבדיקה.',mediaId:output.id,reviewed:false,hash:hash({mediaId:output.id})};step.status='PREPARED';task.newMedia=[...(task.newMedia||[]),output.id];
+    step.result={mediaId:output.id,kind:'image',verified:true};step.artifact={title:step.label,content:'התמונה שנוצרה נשלחה כאן לבדיקה.',mediaId:output.id,...(n.imageText?{imageText:n.imageText}:{}),reviewed:false,hash:hash({mediaId:output.id,imageText:n.imageText||null})};step.status='PREPARED';task.newMedia=[...(task.newMedia||[]),output.id];
    }else if(n.op==='meta'){
     if(task.state.steps.some(s=>s.artifact&&!s.artifact.reviewed))throw Error('TASK_REVIEW_REQUIRED');
     if(n.proposal?.intent!==step.intent)throw Error('TASK_META_INTENT_MISMATCH');
+    if(require('./campaignPackage').required(task.request)){
+     const image=task.state.steps.find(s=>s.packageImage),copy=task.state.steps.find(s=>s.artifact?.campaignDraft);
+     if(step.packageUpload&&n.proposal?.parameters?.mediaId!==image?.artifact?.mediaId)throw Error('CAMPAIGN_IMAGE_NOT_REVIEWED');
+     if(['CREATE_BUNDLE','CREATE_CREATIVE'].includes(step.intent)){
+      const p=n.proposal.parameters,upload=task.state.steps.find(s=>s.kind==='meta'&&s.intent==='UPLOAD_IMAGE'&&s.status==='DONE'&&s.result?.sourceMediaId===image?.artifact?.mediaId);
+      if(!copy?.artifact.reviewed||p.message!==copy.artifact.adContent||p.headline!==copy.artifact.campaignDraft.headline||!upload||p.imageHash!==upload.result.id)throw Error('CAMPAIGN_CONTENT_NOT_REVIEWED');
+     }
+    }
     const plan={...require('./actionPlan').createActionPlan(n.proposal),taskId:task.id,taskStepId:step.id,taskCreationLease:lease};
     step.status='RUNNING';await checkpoint(task,lease);
     const a=await require('./approvalEngine').createApprovalForClient(clientId,plan);

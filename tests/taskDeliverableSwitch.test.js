@@ -1,12 +1,14 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 test('a standalone recruitment request replaces the old property plan and repairs a rejected next step without external effects',async()=>{
+ const campaignDraft={objective:'לידים למועמדים',audience:'מועמדים לתפקיד שנמסר',geography:'בכל הארץ',placements:'הצעת מיקומים אוטומטיים לבדיקה',budgetNote:'לא נקבע; נדרש אישור נפרד',scheduleNote:'לא נקבע',headline:'דרוש איש מכירות',cta:'להגשת מועמדות',designBrief:'עיצוב נקי בעברית, ללא המצאת לוגו'};
+ const imageOptions={generateImage:async()=>({buffer:Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),Buffer.alloc(32)]),mimeType:'image/png'}),uploadImage:async()=>'456'};
  const env={...process.env},h=await require('./helpers/isolatedDatabase').openDatabase();
- Object.assign(process.env,{TASK_AGENT_ENABLED:'true',READ_ONLY:'true',META_WRITES_ENABLED:'false'});
+ Object.assign(process.env,{TASK_AGENT_ENABLED:'true',READ_ONLY:'true',META_WRITES_ENABLED:'false',GRAPHICS_ENABLED:'true',GEMINI_API_KEY:'fixture',GEMINI_IMAGE_MODEL:'gemini-image-fixture'});
  const agent=require('../taskAgent'),meta=require('../metaConnection');let client;
  try{
   client=await require('../clientStore').getOrCreateClient('972500077891');
-  const send=(message,requestId,planner)=>meta.context.run(String(client.id),()=>agent.send(client.id,{message,requestId,channel:'WHATSAPP'},{planner}));
+  const send=(message,requestId,planner)=>meta.context.run(String(client.id),()=>agent.send(client.id,{message,requestId,channel:'WHATSAPP'},{planner,imageOptions}));
   const oldPlan=[{id:'property_copy',kind:'draft',label:'מודעת דירה',dependsOn:[]}];
   const oldPlanner=async c=>({...(c.plan.length?{}:{plan:oldPlan}),next:c.plan[0]?.status==='PREPARED'?{op:'review'}:{op:'draft',stepId:'property_copy',title:'דירה באילת',content:'דירת 2 חדרים למכירה באילת במיליון שקל'}});
   const old=await send('דירת 2 חדרים למכירה באילת במיליון שקל','property',oldPlanner);assert.equal(old.task.status,'WAITING_REVIEW');
@@ -18,7 +20,7 @@ test('a standalone recruitment request replaces the old property plan and repair
    if(!c.plan.length)return{plan,next:{op:'ask',stepId:'role',question:'לאיזו משרה ובאיזה אזור מגייסים?'}};
    if(failOnce){failOnce=false;return{next:{op:'draft',stepId:'property_copy',title:'wrong',content:'must not run'}};}
    if(c.plannerFeedback){assert.equal(c.plannerFeedback.code,'TASK_STEP_NOT_READY');return{next:{op:'collect',stepId:'role',facts:[{key:'role',value:'מעצב גרפי',evidence:'מעצב גרפי בתל אביב'}]}};}
-   return{next:c.plan[1].status==='PREPARED'?{op:'review'}:{op:'draft',stepId:'recruitment_copy',title:'דרוש מעצב גרפי',content:'דרוש מעצב גרפי בתל אביב. לשליחת מועמדות השאירו פרטים.',formDraft:{title:'טופס מועמדות',questions:['שם מלא','טלפון ליצירת קשר','מה הניסיון הרלוונטי שלך בעיצוב?']}}};
+   return{next:c.plan[1].status==='PREPARED'?{op:'review'}:{op:'draft',stepId:'recruitment_copy',title:'דרוש מעצב גרפי',content:'דרוש מעצב גרפי בתל אביב. לשליחת מועמדות השאירו פרטים.',campaignDraft:{...campaignDraft,headline:'דרוש מעצב גרפי',geography:'תל אביב'},formDraft:{title:'טופס מועמדות',questions:['שם מלא','טלפון ליצירת קשר','מה הניסיון הרלוונטי שלך בעיצוב?']}}};
   };
   const start=await send(request,'recruitment',planner);assert.notEqual(start.task.id,old.task.id);assert.equal(start.task.request,request);assert.match(start.reply,/לאיזו משרה/);
   assert.equal((await h.db.query('SELECT status FROM agent_tasks WHERE id=$1',[old.task.id])).rows[0].status,'CANCELLED');
