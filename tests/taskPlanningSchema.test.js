@@ -40,3 +40,7 @@ test('numeric correction grammar excludes every unrelated optional campaign or w
  assert.deepEqual(schema.properties.next.required,['op','stepId','tool','args']);assert.equal(schema.properties.next.properties.args.properties.fields.maxItems,16);
  assert.ok(require('../taskEvaluation').cases.some(c=>c.id==='professional_contract_correction'&&c.professional&&c.contractCorrection));
 });
+test('prepared campaign correction excludes tools/writes and restricts selection to draft steps',()=>{
+ const n=require('../taskPlanningSchema').responseSchema({request:'תכין קמפיין דרושים עם מודעה וטופס',plan:[{id:'collect',kind:'collect',status:'DONE'},{id:'copy',kind:'draft',status:'PREPARED'},{id:'image',kind:'image',status:'PENDING'},{id:'form',kind:'meta',status:'PENDING'}],plannerFeedback:{code:'TASK_CAMPAIGN_DRAFT_REQUIRED'}}).properties.next;
+ assert.deepEqual(Object.keys(n.properties),['op','stepId','title','content','campaignDraft','formDraft']);assert.deepEqual(n.properties.stepId.enum,['copy']);assert.deepEqual(n.properties.op.enum,['draft']);
+});

@@ -12,6 +12,7 @@ const cases=[
 // Exercise the correction transport even when the first numeric answer happens
 // to be well formed. No client data or executor is involved.
 cases.push({...cases.find(c=>c.id==='professional_calculation'),id:'professional_contract_correction',contractCorrection:true});
+cases.push({...cases.find(c=>c.id==='recruitment_grounded_package'),id:'campaign_contract_continuation',packageContinuation:true});
 let state={status:'NOT_RUN',providers:[]};
 let inFlight=null;
 const ready=()=>state.status==='PASSED';
@@ -38,6 +39,11 @@ async function evaluate({decide=require('./taskPlanner').decide,providers}={}){
      context.facts={role:{value:'איש מכירות',evidence:'גיוס איש מכירות בכל הארץ'},geography:{value:'בכל הארץ',evidence:'גיוס איש מכירות בכל הארץ'}};
      context.messages.push({role:'user',content:'גיוס איש מכירות בכל הארץ'},{role:'assistant',content:'החברה מתרחבת; ניסיון B2B יתרון.'},{role:'user',content:'תקן את הטיוטה לפי הפרטים שמסרתי בלבד וצרף את שאלות טופס המועמדות. אל תוסיף תנאים או דרישות שלא מסרתי.'});
      context.plannerFeedback=require('./taskDraftReview').feedback();
+     if(item.packageContinuation){
+      context.plan.unshift({id:'stored_facts',label:'פרטים שנשמרו',kind:'collect',dependsOn:[],status:'DONE'});context.plan[1].dependsOn=['stored_facts'];
+      const existing={request:item.request,state:{steps:context.plan}};require('./campaignPackage').ensure(existing);context.plan=existing.state.steps;
+      context.plannerFeedback=require('./campaignPackage').feedback('TASK_CAMPAIGN_DRAFT_REQUIRED');
+     }
     }
     const options={provider:config.provider,model:config.model};
     let answer;
