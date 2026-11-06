@@ -12,13 +12,25 @@ test('real planner-to-Gemini transport requires an initial plan after clarificat
  const first=await require('../taskPlanner').decide(context,{provider:'structured_planner_fixture'});assert.deepEqual(first.plan,plan);
  const initial=configs[0].config;assert.equal(initial.tools,undefined);assert.equal(initial.responseMimeType,'application/json');assert.deepEqual(initial.responseJsonSchema.required,['plan','next']);assert.deepEqual(initial.responseJsonSchema.properties.plan.items.required,['id','label','kind','dependsOn']);assert.equal(inputs[0].planningPhase,'INITIAL_PLAN_REQUIRED');
  await require('../taskPlanner').decide({...context,plan},{provider:'structured_planner_fixture'});
- const continuation=configs[1].config.responseJsonSchema;assert.deepEqual(continuation.required,['next']);assert.equal(continuation.properties.plan,undefined);assert.deepEqual(continuation.properties.next.anyOf.find(s=>s.properties.op.enum[0]==='ask').properties.stepId.enum,['details']);assert.equal(inputs[1].planningPhase,'CONTINUE_EXISTING_PLAN');const read=continuation.properties.next.anyOf.find(s=>s.properties.tool?.enum?.includes('analyze_business_case'));const numeric=read.properties.args;assert.deepEqual(numeric.required,['operation','fields']);assert.equal(numeric.properties.fields.items.properties.value.type,'string');assert.deepEqual(numeric.properties.fields.items.required,['key','value','evidence']);assert.equal(numeric.properties.fields.maxItems,16);assert.equal(continuation.properties.next.anyOf.find(s=>s.properties.tool?.enum?.includes('get_business_facts')).properties.args.additionalProperties,true);
+ const continuation=configs[1].config.responseJsonSchema;assert.deepEqual(continuation.required,['next']);assert.equal(continuation.properties.plan,undefined);assert.deepEqual(continuation.properties.next.properties.stepId.enum,['details']);assert.equal(inputs[1].planningPhase,'CONTINUE_EXISTING_PLAN');const fields=continuation.properties.next.properties.args.properties.fields.items.anyOf;assert.equal(fields[0].type,'string');assert.equal(fields[1].properties.value.type,'string');assert.deepEqual(fields[1].required,['key','value','evidence']);
 });
-
-test('complete operation alternatives require their own payload and package repair cannot skip to review',()=>{
- const schema=require('../taskPlanningSchema').responseSchema({request:'תכין קמפיין דרושים',plan:[{id:'copy',kind:'draft',status:'PREPARED'}],plannerFeedback:{code:'INVALID_CAMPAIGN_DRAFT'}});
- const branches=schema.properties.next.anyOf;assert.equal(branches.length,1);const draft=branches[0];assert.deepEqual(draft.properties.op.enum,['draft']);assert.ok(draft.required.includes('campaignDraft'));assert.ok(draft.required.includes('content'));assert.equal(draft.additionalProperties,false);
- const general=require('../taskPlanningSchema').responseSchema({request:'בדוק כדאיות',plan:[]}).properties.next.anyOf;assert.ok(general.find(s=>s.properties.op.enum[0]==='read').required.includes('args'));assert.ok(general.find(s=>s.properties.op.enum[0]==='ask').required.includes('question'));
+test('provider-compatible package and numeric correction use direct required objects',()=>{
+ const build=require('../taskPlanningSchema').responseSchema;
+ const n=build({request:'תכין קמפיין דרושים עם מודעה וטופס',plan:[{id:'copy',kind:'draft',status:'PREPARED'}],plannerFeedback:{code:'INVALID_CAMPAIGN_DRAFT'}}).properties.next;
+ assert.equal(n.anyOf,undefined);assert.deepEqual(n.properties.op.enum,['draft']);assert.ok(n.required.includes('campaignDraft'));assert.ok(n.required.includes('formDraft'));
+ const r=build({request:'בדוק כדאיות',plan:[{id:'economics',kind:'read'}],plannerFeedback:{code:'INVALID_BUSINESS_FIELDS'}}).properties.next;
+ assert.deepEqual(r.properties.tool.enum,['analyze_business_case']);assert.deepEqual(r.properties.args.required,['operation','fields']);assert.equal(r.properties.args.properties.fields.items.type,'object');
 });
-
-test('initial schema excludes external operations and numeric reads have one complete argument contract',()=>{const schema=require('../taskPlanningSchema').responseSchema({request:'תכין קמפיין',plan:[]});const branches=schema.properties.next.anyOf;assert.ok(branches.every(s=>!['meta','image','review','finish'].includes(s.properties.op.enum[0])));const read=branches.find(s=>s.properties.tool?.enum?.includes('analyze_business_case'));assert.equal(read.anyOf,undefined);assert.deepEqual(read.required,['op','stepId','tool','args']);assert.equal(read.properties.args.additionalProperties,false);assert.equal(read.properties.args.properties.fields.items.type,'object');assert.ok(read.properties.args.required.includes('fields'));});
+test('numeric formatting repair is bounded and never dispatches analysis',async()=>{
+ let calls=0;let repeated=false;
+ const request='3000 ₪ ו-5 לקוחות';
+ require('../aiService').registerProvider('numeric_contract_fixture',async(text,history,options)=>{
+  calls++;const input=JSON.parse(text);assert.equal(options.planningOnly,true);
+  if(calls%2===1||repeated)return{text:JSON.stringify({next:{op:'read',stepId:'economics',tool:'analyze_business_case',args:{operation:'scaling',fields:{oldAdSpend:'3000'}}}}),actionPlans:[]};
+  assert.equal(input.plannerFeedback.code,'INVALID_BUSINESS_FIELDS');
+  return{text:JSON.stringify({next:{op:'read',stepId:'economics',tool:'analyze_business_case',args:{operation:'scaling',fields:[{key:'oldAdSpend',value:'3000',evidence:request}]}}}),actionPlans:[]};
+ });
+ const context={request,plan:[{id:'economics',kind:'read',status:'PENDING'}]};
+ const result=await require('../taskPlanner').decide(context,{provider:'numeric_contract_fixture'});assert.equal(calls,2);assert.equal(result.next.args.fields[0].value,'3000');
+ repeated=true;await assert.rejects(require('../taskPlanner').decide(context,{provider:'numeric_contract_fixture'}),/INVALID_BUSINESS_FIELDS/);assert.equal(calls,4);
+});
