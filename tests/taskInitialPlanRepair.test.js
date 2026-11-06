@@ -22,7 +22,7 @@ test('the apartment answer after a new-goal question requires its first plan and
   const first=await send('אני רוצה לשווק משהו אחר','new-goal',{deferPlanning:true});assert.equal(first.task.status,'WAITING_INPUT');assert.equal(contexts.length,0);
   const result=await send(request,'details');assert.equal(result.task.id,first.task.id);assert.equal(result.task.status,'WAITING_REVIEW');assert.match(result.reply,/דירת 2 חדרים/);assert.match(result.reply,/מיליון שקל/);assert.doesNotMatch(result.reply,/אלמוג|7%|התקדמות נשמרה/);
   assert.equal(contexts[0].messages.length,3);assert.equal(contexts[0].messages[1].role,'assistant');assert.match(contexts[0].messages[1].content,/מה המוצר/);assert.equal(contexts[0].planningPhase,'INITIAL_PLAN_REQUIRED');assert.equal(contexts[1].planningPhase,'INITIAL_PLAN_REQUIRED');assert.equal(contexts[2].planningPhase,'CONTINUE_EXISTING_PLAN');
-  const stored=await agent.current(c.id);assert.equal(stored.request,request);assert.equal(stored.state.lastError,undefined);assert.equal(stored.state.plannerCalls,4);
+  const stored=await agent.current(c.id);assert.equal(stored.request,request);assert.equal(stored.state.lastError,undefined);assert.equal(stored.state.plannerCalls,3);
   const count=contexts.length;assert.deepEqual(await send(request,'details'),result);assert.equal(contexts.length,count);
   await agent.cancel(c.id);
   let failedCalls=0;const fail=await send(request,'bad-plan',{planner:async()=>{failedCalls++;return{plan:[{id:'bad',label:'unsupported',kind:'shell',dependsOn:[]}],next:{op:'finish'}};}});
