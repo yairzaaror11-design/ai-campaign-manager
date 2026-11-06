@@ -48,7 +48,7 @@ async function evaluate({decide=require('./taskPlanner').decide,providers}={}){
     if(item.recruitmentPackage){
      const n=answer.next,copy=String(n?.title||'')+' '+String(n?.content||'');
      if(n?.op!=='draft'||n.stepId!=='recruitment_copy'||typeof n.content!=='string'||n.content.length>6000)throw Error('RECRUITMENT_PACKAGE_NOT_REVISED');
-     require('./taskDraftReview').formDraft(n.formDraft);
+     require('./taskDraftReview').formDraft(n.formDraft);require('./campaignPackage').checked(n.campaignDraft);
      if(!/מכירות/u.test(copy)||!/כל הארץ|פריסה ארצית/u.test(copy)||/מתרחב|B2B|טלפוני|דרישות סף|שכר בסיס/u.test(copy))throw Error('UNSUPPORTED_RECRUITMENT_CLAIM');
     }else if(item.professional){
      const n=answer.next;

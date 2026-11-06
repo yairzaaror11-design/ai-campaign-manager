@@ -10,8 +10,8 @@ function hasForm(artifact){
  try{require('./metaLeadForms').validate(JSON.parse(artifact.content));return true;}catch{return false;}
 }
 function issue(task){
- if(!/דרושים|מועמדות|גיוס/u.test(task.request)||!/מודעה/u.test(task.request)||!/טופס/u.test(task.request))return null;
- return task.state.steps.some(s=>s.artifact&&hasForm(s.artifact))?null:'TASK_FORM_DRAFT_REQUIRED';
+ if(/דרושים|מועמדות|גיוס/u.test(task.request)&&/מודעה/u.test(task.request)&&/טופס/u.test(task.request)&&!task.state.steps.some(s=>s.artifact&&hasForm(s.artifact)))return 'TASK_FORM_DRAFT_REQUIRED';
+ return require('./campaignPackage').issue(task);
 }
-function feedback(){return{code:'TASK_FORM_DRAFT_REQUIRED',instruction:'The owner requested both an ad and an applicant form. The package has no concrete form draft. Keep existing step IDs and completed effects. Revise a prepared draft step to include formDraft:{title,questions:[string,...]} with concrete contact and job-relevant questions, or prepare an already-planned pending form draft. Do not create a provider form yet, infer job requirements or request package approval until this draft is present.'};}
+function feedback(code='TASK_FORM_DRAFT_REQUIRED'){if(code!=='TASK_FORM_DRAFT_REQUIRED')return require('./campaignPackage').feedback(code);return{code:'TASK_FORM_DRAFT_REQUIRED',instruction:'The owner requested both an ad and an applicant form. The package has no concrete form draft. Keep existing step IDs and completed effects. Revise a prepared draft step to include formDraft:{title,questions:[string,...]} with concrete contact and job-relevant questions, or prepare an already-planned pending form draft. Do not create a provider form yet, infer job requirements or request package approval until this draft is present.'};}
 module.exports={formDraft,hasForm,issue,feedback};
