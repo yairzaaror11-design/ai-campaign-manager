@@ -21,14 +21,14 @@ test('WhatsApp routes a natural task to the manager, preserves progress through 
  const send=(id,body)=>handler({id,from:phone,timestamp:String(Math.floor(Date.now()/1000)),type:'text',text:{body}});
  try{
   await send('bot-1','תכין לי מודעת דרושים');assert.match(sent.at(-1),/לאיזו משרה/);assert.doesNotMatch(sent.at(-1),/מה העסק עושה/);
-  await send('bot-2','מחסנאי בחיפה');assert.match(sent.at(-1),/דרושים למחסן בחיפה/);assert.match(sent.at(-1),/מאשר את החבילה/);
+  await send('bot-2','מחסנאי בחיפה');assert.match(sent.at(-1),/דרושים למחסן בחיפה/);assert.match(sent.at(-1),/מאשר את התוכן/);assert.doesNotMatch(sent.at(-1),/חבילה/);
   const c=await require('../clientStore').getOrCreateClient(phone),first=await require('../taskAgent').current(c.id);
   await send('bot-3','עצור');assert.match(sent.at(-1),/עצרתי/);const n=decisions;
   await send('bot-4','שלום');assert.equal(decisions,n);assert.match(sent.at(-1),/עצרתי/);
-  await send('bot-5','המשך במשימה');assert.match(sent.at(-1),/מאשר את החבילה/);
+  await send('bot-5','המשך במשימה');assert.match(sent.at(-1),/מאשר את התוכן/);
   await send('bot-6','קצר את הנוסח');assert.match(sent.at(-1),/דרושים למחסן בחיפה\. הגישו/);
   const revised=await require('../taskAgent').current(c.id);assert.equal(revised.id,first.id);assert.notEqual(revised.state.steps[1].artifact.hash,first.state.steps[1].artifact.hash);
-  await send('bot-7','מאשר את החבילה');assert.match(sent.at(-1),/לא בוצעה פעולה חיצונית/);assert.equal((await require('../taskAgent').current(c.id)).status,'COMPLETE');
+  await send('bot-7','מאשר את התוכן');assert.match(sent.at(-1),/לא בוצעה פעולה חיצונית/);assert.equal((await require('../taskAgent').current(c.id)).status,'COMPLETE');
   assert.equal((await h.db.query('SELECT id FROM crm_leads WHERE client_id=$1',[c.id])).rows.length,0);
  }finally{whatsapp.safeSend=before;delete require.cache[require.resolve('../messageHandler')];await h.close();for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);}
 });

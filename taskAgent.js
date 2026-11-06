@@ -9,7 +9,7 @@ function newGoal(message){
  return generalRecommendation(m)||/^(?:(?:אני\s+)?(?:רוצה|צריך|צריכה)|בוא(?:י)?|בואו)\s+(?:לשווק|לקדם|לפרסם)\s+(?:משהו|מוצר|שירות)\s+אחר(?:\s|$)/u.test(m)||/^(?:בוא(?:י)?\s+)?(?:נתחיל|נעבור ל|נפתח)\s*(?:משימה|בקשה|קמפיין)\s+חדש(?:ה)?(?:\s|$)/u.test(m);
 }
 const goalQuestion='בטח, מה המוצר או השירות שתרצה לקדם עכשיו?';
-function vagueGoal(message){return generalRecommendation(message)||/^(?:(?:אני\s+)?(?:רוצה|צריך|צריכה)|בוא(?:י)?|בואו)\s+(?:לשווק|לקדם|לפרסם)\s+(?:משהו|מוצר|שירות)\s+אחר[.!?؟]*$/u.test(message.trim())||/^(?:בוא(?:י)?\s+)?(?:נתחיל|נעבור ל|נפתח)\s*(?:משימה|בקשה)\s+חדש(?:ה)?[.!?؟]*$/u.test(message.trim());}
+function vagueGoal(message){return /^(?:(?:אני\s+)?(?:רוצה|צריך|צריכה)|בוא(?:י)?|בואו)\s+(?:לשווק|לקדם|לפרסם)\s+(?:משהו|מוצר|שירות)\s+אחר[.!?؟]*$/u.test(message.trim())||/^(?:בוא(?:י)?\s+)?(?:נתחיל|נעבור ל|נפתח)\s*(?:משימה|בקשה)\s+חדש(?:ה)?[.!?؟]*$/u.test(message.trim());}
 function changedDeliverable(message,task){
  if(!task||message.trim()===task.request.trim()||! /^(?:תכין|תכיני|תיצור|תיצרי|צור|צרי|בנה|בני|תקים|תעשה|תעשי|הכן)(?:\s|$)/u.test(message.trim()))return false;
  const family=value=>/דרושים|מועמדות|גיוס עובדים/u.test(value)?'recruitment':/דיר[הת]|נכס|נדל[״"]?ן/u.test(value)?'property':/לעסק|לקוחות חדשים/u.test(value)?'business':null;
@@ -68,7 +68,7 @@ function replyFor(task){
  }
  if(task.status==='WAITING_INPUT')return s.question;
  if(task.status==='WAITING_MODEL')return 'בדיקת התקינות של הסוכן טרם הושלמה בהצלחה. הבקשה נשמרה; הכנה ופעולות חדשות ימתינו לסיום הבדיקה.';
- if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nזו החבילה לבדיקה שלך. אפשר לבקש תיקונים, או לכתוב ״מאשר את החבילה״. אישור החבילה אינו אישור לפרסום או להוצאה כספית.';
+ if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nתעבור על מה שהכנתי ותגיד לי מה תרצה לשנות. אם הכול מתאים, כתוב ״מאשר את התוכן״. זה אישור לתוכן בלבד; פרסום והפעלת תקציב דורשים אישור נפרד.';
  const waiting=s.steps?.find(x=>x.status==='WAITING_APPROVAL');
  if(waiting){const a=waiting.result.approval;return require('./actionPlan').formatActionPlan(a.plan)+'\n\nכדי לאשר את הפעולה המדויקת, שלח: אשר '+meta.decrypt(a.codeCiphertext,task.client_id)+'\nהאישור תקף עד '+a.expiresAt+'. האישור מתייחס רק לפעולה הזו.';}
  if(task.status==='COMPLETE')return 'השלמתי את כל השלבים בתוכנית שנבדקה. '+((s.steps||[]).some(x=>x.kind==='meta')?'הפעולות החיצוניות המסומנות כהושלמו אומתו מול Meta.':'התוצרים הוכנו ואושרו; לא בוצעה פעולה חיצונית.')+(s.steps.some(x=>x.result?.privateDraft)?' טיוטת דף הנחיתה נשמרה בדשבורד שלך ולא פורסמה.':'')+'\n'+(s.steps||[]).filter(x=>x.artifact).map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n');
@@ -77,8 +77,10 @@ function replyFor(task){
  if(task.status==='PAUSED')return 'עצרתי את המשימה. ההתקדמות נשמרה; אפשר לכתוב ״המשך במשימה״.';
  if(task.status==='BLOCKED')return 'כדי להשלים את המשימה צריך לפתור את החלק הבא: '+(s.reason||'יכולת שלא זמינה כרגע')+'. שאר ההתקדמות נשמרה.';
  if(task.status==='HUMAN_PAUSED')return 'המענה האוטומטי והמשימה הושהו למענה אנושי.';
- if(s.lastError==='TASK_FORM_DRAFT_REQUIRED')return 'החבילה עדיין אינה מוכנה לאישור: חסרה טיוטת טופס מועמדות לבדיקה. ההתקדמות נשמרה.';
- return 'ההתקדמות נשמרה, אבל לא הצלחתי להשלים את הצעד הבא כרגע. אפשר לנסות שוב; פעולה חיצונית לא תבוצע מחדש אם תוצאתה אינה ודאית.';
+ if(s.lastError==='TASK_FORM_DRAFT_REQUIRED')return 'המודעה נשמרה, אבל עדיין חסר טופס המועמדות. צריך להשלים אותו לפני שאשלח הכול לבדיקה.';
+ const prepared=(s.steps||[]).filter(x=>x.status==='PREPARED'&&x.artifact).map(x=>x.artifact.title).slice(0,3);
+ const stage=['INVALID_TASK_JSON','TASK_STEP_FAILED'].includes(s.lastError)?'נתקעתי בתכנון השלב הבא.':s.lastError?.includes('CAMPAIGN_DRAFT')?'עדיין לא הצלחתי להשלים את הגדרות הקמפיין.':s.lastError?.includes('GRAPHIC')||s.lastError?.includes('IMAGE')?'נעצרתי בהכנת התמונה.':'לא הצלחתי להשלים את השלב הבא.';
+ return stage+(prepared.length?' כבר מוכן ושמור: '+prepared.join(', ')+'.':' הבקשה שלך נשמרה.')+' אפשר לכתוב ״המשך במשימה״. פעולה שהתוצאה שלה לא ברורה לא תבוצע שוב אוטומטית.';
 }
 async function settle(task,lease,requestId){
  const reply=task.customReply||replyFor(task);
@@ -155,7 +157,7 @@ function prepareReview(task){
  task.state.reviewHash=hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash]));task.status='WAITING_REVIEW';
 }
 function canPresentReview(task,message){
- return process.env.TASK_AGENT_ENABLED==='true'&&!!task&&['BLOCKED','ERROR','WAITING_MODEL','WAITING_REVIEW'].includes(task.status)&&/^(?:המשך במשימה|נמשיך|המשך|תמשיך|הצג את החבילה|תציג את החבילה)[.!?]*$/u.test(message.trim())&&reviewReady(task);
+ return process.env.TASK_AGENT_ENABLED==='true'&&!!task&&['BLOCKED','ERROR','WAITING_MODEL','WAITING_REVIEW'].includes(task.status)&&/^(?:המשך במשימה|נמשיך|המשך|תמשיך|הצג את החבילה|תציג את החבילה|הצג את הקמפיין|תציג את הקמפיין|תראה לי מה הכנת)[.!?]*$/u.test(message.trim())&&reviewReady(task);
 }
 async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={},options={}){
  text(message);text(requestId,200);if(!['PORTAL','WHATSAPP'].includes(channel))throw Error('INVALID_TASK_CHANNEL');
@@ -171,7 +173,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   if(/^(עצור|עצירה|עצור את המשימה)$/.test(message.trim())){task.status='PAUSED';return await settle(task,lease,requestId);}
   if(task.state.awaitingGoal){
    const first=task.state.messages.length===1;
-   if(first||/^(?:כן|לא|אוקיי|בסדר|המשך|תמשיך|המשך במשימה|היי|תודה|מאשר את החבילה|אשר\s+\d{6})[.!?]*$/u.test(message.trim())){task.status='WAITING_INPUT';task.state.question=goalQuestion;return await settle(task,lease,requestId);}
+   if(first||/^(?:כן|לא|אוקיי|בסדר|המשך|תמשיך|המשך במשימה|היי|תודה|מאשר את התוכן|מאשרת את התוכן|מאשר את החבילה|אשר\s+\d{6})[.!?]*$/u.test(message.trim())){task.status='WAITING_INPUT';task.state.question=goalQuestion;return await settle(task,lease,requestId);}
    task.request=message.trim();delete task.state.awaitingGoal;delete task.state.question;
    await db.query('UPDATE agent_tasks SET request=$4 WHERE id=$1 AND client_id=$2 AND lease_token=$3',[task.id,clientId,lease,task.request]);
   }
@@ -212,7 +214,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    task.status='RUNNING';task.state.reviewIssue=require('./taskDraftReview').issue(task);task.state.revising=true;delete task.state.reviewHash;
   }
   if(task.status==='WAITING_REVIEW'&&/^(כן|לא|מאשר|מאשרת|אוקיי)$/.test(message.trim()))return await settle(task,lease,requestId);
-  if(task.status==='WAITING_REVIEW'&&/^(מאשר את החבילה|מאשרת את החבילה)$/.test(message.trim())){
+  if(task.status==='WAITING_REVIEW'&&/^(מאשר את התוכן|מאשרת את התוכן|מאשר את החבילה|מאשרת את החבילה)$/.test(message.trim())){
    if(task.state.reviewHash!==hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash])))throw Error('TASK_REVIEW_CHANGED');
    for(const step of task.state.steps)if(step.status==='PREPARED'){
     if(step.artifact.destination==='landing_page'){
@@ -228,7 +230,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   }
   task.status='RUNNING';await checkpoint(task,lease);
   const known=planner.businessContext(await require('./marketingStore').context(clientId));
-  if(task.state.newGoal){delete known.facts.product;known.rule+=' The owner explicitly switched goals. Do not reuse a prior product or campaign.';}
+  if(task.state.newGoal&&!generalRecommendation(task.request)){delete known.facts.product;known.rule+=' The owner explicitly switched goals. Do not reuse a prior product or campaign.';}
   let initialRepairs=0,decisionRepairs=0,decisionFeedback=null;
   for(let round=0;round<16;round++){
    const automaticImage=require('./campaignPackage').imageDecision(task,dependenciesReady);
@@ -304,7 +306,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
      if(n.destination!=='landing_page')throw Error('UNSUPPORTED_DRAFT_DESTINATION');
      const payload=require('./landingDrafts').checked(JSON.parse(artifact.content));
      artifact.destination='landing_page';artifact.payload=payload;
-     artifact.content=[payload.businessName,payload.title,payload.body,payload.cta,'טיוטה פרטית לדף נחיתה. לא תפורסם באישור החבילה.'].join('\n\n');
+     artifact.content=[payload.businessName,payload.title,payload.body,payload.cta,'טיוטה פרטית לדף נחיתה. אישור התוכן לא מפרסם אותה.'].join('\n\n');
     }
     artifact.hash=hash(artifact);step.artifact=artifact;step.status='PREPARED';
     if(task.state.steps.reduce((sum,s)=>sum+(s.artifact?.content.length||0),0)>18000)throw Error('TASK_ARTIFACT_LIMIT');
@@ -329,7 +331,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     const referenceImages=[];
     for(const id of ids)referenceImages.push(await require('./mediaStore').readMedia(clientId,id));
     require('./graphicService').references({referenceImages});
-    try{await options.onProgress?.(step.packageImage?'מכין את חבילת הקמפיין, כולל הגרפיקה. אציג את כל החלקים יחד לבדיקה.':'מכין את הגרפיקה. אציג אותה לבדיקה כשהיא תהיה מוכנה.');}catch{require('./logger').logger.warn('Task progress notice unavailable');}
+    try{await options.onProgress?.(step.packageImage?'מכין את העיצוב לקמפיין. אשלח אותו יחד עם שאר הדברים שהכנתי לבדיקה.':'מכין את העיצוב. אשלח אותו לבדיקה כשהוא יהיה מוכן.');}catch{require('./logger').logger.warn('Task progress notice unavailable');}
     step.status='RUNNING';await checkpoint(task,lease);
     const output=await require('./whatsappDelivery').messageContext.run({eventId:'task:'+task.id+':'+step.id},()=>require('./graphicService').createGraphic(clientId,prompt,{...(options.imageOptions||{}),referenceImages}));
     if(!output?.id)throw Error('TASK_IMAGE_NOT_VERIFIED');

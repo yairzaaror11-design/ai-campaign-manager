@@ -1,6 +1,19 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const {openDatabase}=require('./helpers/database'),agent=require('../taskAgent'),meta=require('../metaConnection');
+test('a recommendation request reaches the planner using business background without treating it as the current offer',async()=>{
+ const env={...process.env},h=await openDatabase();process.env.TASK_AGENT_ENABLED='true';
+ try{
+  const client=await require('../clientStore').getOrCreateClient('972500066128');
+  await require('../marketingStore').update(client.id,null,p=>{require('../conversationFacts').write(p,'product','ניהול פרסום לעסקים',{evidence:'ניהול פרסום לעסקים'});return{changed:true};});
+  let calls=0;
+  const result=await meta.context.run(String(client.id),()=>agent.send(client.id,{message:'מה אתה ממליץ לי לשווק?',requestId:'recommend',channel:'WHATSAPP'},{planner:async c=>{
+   calls++;assert.equal(c.knownBusiness.facts.product.value,'ניהול פרסום לעסקים');assert.deepEqual(c.facts,{});
+   return{plan:[{id:'direction',kind:'collect',label:'בחירת כיוון',dependsOn:[]}],next:{op:'ask',stepId:'direction',question:'אפשר לקדם את שירות ניהול הפרסום שלך. באיזה סוג עסקים יש לך הכי הרבה ניסיון?'}};
+  }}));
+  assert.equal(calls,1);assert.equal(result.task.status,'WAITING_INPUT');assert.match(result.reply,/באיזה סוג עסקים/);assert.equal((await h.db.query('SELECT count(*)::int AS n FROM action_plans')).rows[0].n,0);
+ }finally{await h.close();for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);}
+});
 test('a new goal escapes a stalled conversation, revokes only its old approvals and starts without old content',async()=>{
  const env={...process.env},h=await openDatabase();
  Object.assign(process.env,{TASK_AGENT_ENABLED:'true',META_TOKEN_ENCRYPTION_KEY:crypto.randomBytes(32).toString('base64')});
@@ -17,7 +30,7 @@ test('a new goal escapes a stalled conversation, revokes only its old approvals 
   }
   await h.db.query("UPDATE agent_tasks SET state=$2::jsonb WHERE id=$1",[old.task.id,JSON.stringify({steps:[{id:'create',kind:'meta',status:'WAITING_APPROVAL',result:{approval:{actionId:'old-approval'}}}],facts:{address:'אלמוג'},messages:[]})]);
   const advice=await send('מה אתה ממליץ לי לשווק?','advice',{deferPlanning:true});
-  assert.match(advice.reply,/מה המוצר או השירות/);assert.doesNotMatch(advice.reply,/אלמוג|7%|דירה|המשך במשימה/);assert.notEqual(advice.task.id,old.task.id);
+  assert.equal(advice.task.status,'WAITING_MODEL');assert.doesNotMatch(advice.reply,/אלמוג|7%|דירה|מה המוצר או השירות/);assert.notEqual(advice.task.id,old.task.id);
   const switched=await send('אני רוצה לשווק משהו אחר','switch',{deferPlanning:true});
   assert.notEqual(switched.task.id,advice.task.id);assert.equal(switched.task.status,'WAITING_INPUT');assert.equal(calls,0);assert.equal(switched.reply,'בטח, מה המוצר או השירות שתרצה לקדם עכשיו?');
   assert.deepEqual(await send('אני רוצה לשווק משהו אחר','switch',{deferPlanning:true}),switched);
