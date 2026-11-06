@@ -13,11 +13,12 @@ const cases=[
 // to be well formed. No client data or executor is involved.
 cases.push({...cases.find(c=>c.id==='professional_calculation'),id:'professional_contract_correction',contractCorrection:true});
 cases.push({...cases.find(c=>c.id==='recruitment_grounded_package'),id:'campaign_contract_continuation',packageContinuation:true});
+cases.push({id:'discovery_before_creative',request:'אני רוצה להביא לקוחות חדשים לעסק דרך פייסבוק ואינסטגרם. תעזור לי לבחור מה כדאי להציע ולמי לפנות. לפני שמכינים מודעה ועיצוב, בוא נדייק יחד את הכיוון. בלי לפרסם כרגע.',business:{businessName:{value:'עסק בדיקה סינתטי',status:'known'},product:{value:'ניהול פרסום לעסקים',status:'known'}},noWrites:true,discovery:true});
 let state={status:'NOT_RUN',providers:[]};
 let inFlight=null;
 const ready=()=>state.status==='PASSED';
 function status(){return structuredClone(state);}
-async function evaluate({decide=require('./taskPlanner').decide,providers}={}){
+async function evaluate({decide=require('./taskPlanner').decide,route=require('./conversationRouter').route,providers}={}){
  if(state.status==='RUNNING')return status();
  state={status:'RUNNING',startedAt:new Date().toISOString(),providers:[]};
  const selected=process.env.AI_PROVIDER||'gemini';
@@ -78,11 +79,20 @@ async function evaluate({decide=require('./taskPlanner').decide,providers}={}){
     if(({ask:'collect',collect:'collect',read:'read',draft:'draft'})[n.op]!==step.kind&&n.op!=='blocked')throw Error('OPERATION_MISMATCH');
     if(n.op==='ask'&&(typeof n.question!=='string'||n.question.length>600||item.forbiddenQuestion?.test(n.question)))throw Error('REDUNDANT_QUESTION');
     if(item.noWrites&&plan.some(s=>s.kind==='meta'))throw Error('DRAFT_ONLY_HAS_WRITE');
+    if(item.discovery&&(!['ask','read','collect','blocked'].includes(n.op)||plan.some(s=>['image','meta'].includes(s.kind))))throw Error('DISCOVERY_SKIPPED');
     if(n.op==='read'&&!require('./taskPlanner').READ_TOOLS.includes(n.tool))throw Error('UNSUPPORTED_TOOL');
     }
     result='PASSED';reason=null;
    }catch(error){reason=/^[A-Z_]+$/.test(error.message)?error.message:'PROVIDER_OR_RESPONSE_FAILED';if(error.contractIssue)contractIssue=error.contractIssue;if(reason==='PROVIDER_OR_RESPONSE_FAILED')providerIssue={status:Number.isInteger(error.status)&&error.status>=400&&error.status<=599?error.status:null,category:/schema|anyOf|nesting|too many states/i.test(error.message)?'SCHEMA_REJECTED':'PROVIDER_OR_RESPONSE_FAILED'};}
    entry.cases.push({id:item.id,result,reason,...(contractIssue?{contractIssue}:{}),...(providerIssue?{providerIssue}:{}),latencyMs:Date.now()-began});
+  }
+  for(const probe of require('./conversationRouter').PROBES){
+   const began=Date.now();let result='FAILED',reason='ROUTING_INTENT_MISMATCH';
+   try{
+    const answer=await route({message:probe.message,...(probe.pendingMessage?{pendingRequest:probe.pendingMessage}:{}),task:{request:'הכן קמפיין לשירות ניהול פרסום',status:'WAITING_REVIEW',planningMode:'REQUESTED_TASK',steps:[{id:'copy',kind:'draft',status:'PREPARED',artifact:{title:'מודעה',content:'ניהול פרסום לבעלי עסקים. לשיחת היכרות השאירו פרטים.'}},{id:'image',kind:'image',status:'PREPARED'},{id:'create',kind:'meta',status:'PENDING'}]},messages:[],business:{product:{value:'ניהול פרסום לעסקים',status:'known'}}},{provider:config.provider,model:config.model});
+    if(probe.allowed.includes(answer?.kind)&&(!probe.needsPending||answer.usePending===true)&&(answer.kind!=='ANSWER'||typeof answer.reply==='string'&&answer.reply.trim()&&answer.reply.length<=900)){result='PASSED';reason=null;}
+   }catch(error){reason=/^[A-Z_]+$/.test(error.message)?error.message:'PROVIDER_OR_RESPONSE_FAILED';}
+   entry.cases.push({id:probe.id,result,reason,latencyMs:Date.now()-began});
   }
   entry.status=entry.cases.every(c=>c.result==='PASSED')?'PASSED':'FAILED';
  }

@@ -6,18 +6,19 @@ const OPS={ask:'collect',collect:'collect',read:'read',draft:'draft',image:'imag
 const generalRecommendation=message=>/^(?:אז\s+)?מה\s+(?:אתה\s+)?(?:ממליץ\s+(?:לי\s+)?לשווק|כדאי\s+לי\s+לשווק)[?؟!.]*$/u.test(message.trim());
 function newGoal(message){
  const m=message.trim().replace(/[.!?؟]+$/u,'').trim();
- return generalRecommendation(m)||/^(?:(?:אני\s+)?(?:רוצה|צריך|צריכה)|בוא(?:י)?|בואו)\s+(?:לשווק|לקדם|לפרסם)\s+(?:משהו|מוצר|שירות)\s+אחר(?:\s|$)/u.test(m)||/^(?:בוא(?:י)?\s+)?(?:נתחיל|נעבור ל|נפתח)\s*(?:משימה|בקשה|קמפיין)\s+חדש(?:ה)?(?:\s|$)/u.test(m);
+ return require('./planningIntent').directionOnly(m)||generalRecommendation(m)||/^(?:(?:אני\s+)?(?:רוצה|צריך|צריכה)|בוא(?:י)?|בואו)\s+(?:לשווק|לקדם|לפרסם)\s+(?:משהו|מוצר|שירות)\s+אחר(?:\s|$)/u.test(m)||/^(?:בוא(?:י)?\s+)?(?:נתחיל|נעבור ל|נפתח)\s*(?:משימה|בקשה|קמפיין)\s+חדש(?:ה)?(?:\s|$)/u.test(m);
 }
 const goalQuestion='בטח, מה המוצר או השירות שתרצה לקדם עכשיו?';
 function vagueGoal(message){return /^(?:(?:אני\s+)?(?:רוצה|צריך|צריכה)|בוא(?:י)?|בואו)\s+(?:לשווק|לקדם|לפרסם)\s+(?:משהו|מוצר|שירות)\s+אחר[.!?؟]*$/u.test(message.trim())||/^(?:בוא(?:י)?\s+)?(?:נתחיל|נעבור ל|נפתח)\s*(?:משימה|בקשה)\s+חדש(?:ה)?[.!?؟]*$/u.test(message.trim());}
 function changedDeliverable(message,task){
  if(!task||message.trim()===task.request.trim()||! /^(?:תכין|תכיני|תיצור|תיצרי|צור|צרי|בנה|בני|תקים|תעשה|תעשי|הכן)(?:\s|$)/u.test(message.trim()))return false;
+ if(require('./planningIntent').directionOnly(task.request)&&!require('./planningIntent').directionOnly(message))return true;
  const family=value=>/דרושים|מועמדות|גיוס עובדים/u.test(value)?'recruitment':/דיר[הת]|נכס|נדל[״"]?ן/u.test(value)?'property':/לעסק|לקוחות חדשים/u.test(value)?'business':null;
  const old=family(task.request),next=family(message);
  const outcomes=requiredOutcomes(message),steps=task.state.steps||[];
  // Explicit creation in a different domain, or a newly requested outcome that
  // the immutable old plan cannot fulfill. Follow-up details/revisions stay put.
- return !!(old&&next&&old!==next)||outcomes.some(o=>steps.length?!steps.some(s=>s.kind==='meta'&&o.intents.includes(s.intent)):!requiredOutcomes(task.request).some(prior=>prior.intents.some(i=>o.intents.includes(i))));
+ return !!(old&&next&&old!==next)||outcomes.some(o=>steps.length?!steps.some(s=>s.kind==='meta'&&o.intents.includes(s.intent)):!requiredOutcomes(task.request,task.state.planningMode).some(prior=>prior.intents.some(i=>o.intents.includes(i))));
 }
 const enabled=()=>process.env.TASK_AGENT_ENABLED==='true'&&(process.env.TASK_AGENT_REQUIRE_EVAL!=='true'||require('./taskEvaluation').ready());
 function text(value,max=2000){if(typeof value!=='string'||!value.trim()||value.length>max)throw Error('INVALID_TASK_TEXT');return value.trim();}
@@ -26,7 +27,8 @@ function safe(value,limit=4000){
  if(!json)return null;
  return json.length<=limit?JSON.parse(json):{excerpt:json.slice(0,limit),truncated:true};
 }
-function requiredOutcomes(request){
+function requiredOutcomes(request,planningMode){
+ if(require('./planningIntent').isDiscovery({request,planningMode}))return[];
  const localOnly=/^(?:(?:תכין|תכיני|הכן|תיצור|צור|אני רוצה)(?:\s+לי)?\s+)?(?:רק\s+)?(?:טיוטה|טיוטת|נוסח|שאלות לטופס|תוכנית|תכנית|תכנון|אסטרטגיה)/.test(request.trim())||/רק\s+(?:טיוטה|טיוטת|נוסח|תכנון)/.test(request);
  if(localOnly)return[];
  const outcomes=[];
@@ -35,7 +37,7 @@ function requiredOutcomes(request){
  if(/פרסם|תפרסם|תפרסמי|תפעיל|הפעל|תעלי? לאוויר/.test(request)&&!/(?:לא|בלי|ללא)\s+(?:לפרסם|פרסום|תפרסם|הפעלה)/.test(request))outcomes.push({label:'הפעלה מאושרת',intents:['ACTIVATE_BUNDLE','RESUME_CAMPAIGN']});
  return outcomes;
 }
-function validatePlan(plan,request=''){
+function validatePlan(plan,request='',planningMode){
 
  if(!Array.isArray(plan)||!plan.length||plan.length>12)throw Error('INVALID_TASK_PLAN');
  const seen=new Set();
@@ -44,8 +46,9 @@ function validatePlan(plan,request=''){
   if(p.kind==='meta'&&!require('./actionPlan').WRITE_INTENTS.has(p.intent))throw Error('UNSUPPORTED_TASK_CAPABILITY');
   seen.add(p.id);return{id:p.id,label:text(p.label,160),kind:p.kind,dependsOn:[...new Set(p.dependsOn)],...(p.kind==='meta'?{intent:p.intent}:{}),status:'PENDING'};
  });
- if(requiredOutcomes(request).some(o=>!steps.some(s=>s.kind==='meta'&&o.intents.includes(s.intent))))throw Error('TASK_PLAN_MISSING_OUTCOME');
- if(require('./campaignPackage').required(request)&&!steps.slice(0,steps.findIndex(s=>s.kind==='meta')<0?steps.length:steps.findIndex(s=>s.kind==='meta')).some(s=>s.kind==='draft'))throw Error('INVALID_TASK_PLAN');
+ if(require('./planningIntent').isDiscovery({request,planningMode})&&steps.some(s=>['image','meta'].includes(s.kind)))throw Error('INVALID_TASK_PLAN');
+ if(requiredOutcomes(request,planningMode).some(o=>!steps.some(s=>s.kind==='meta'&&o.intents.includes(s.intent))))throw Error('TASK_PLAN_MISSING_OUTCOME');
+ if(require('./campaignPackage').required(request,planningMode)&&!steps.slice(0,steps.findIndex(s=>s.kind==='meta')<0?steps.length:steps.findIndex(s=>s.kind==='meta')).some(s=>s.kind==='draft'))throw Error('INVALID_TASK_PLAN');
  return steps;
 }
 function view(task){
@@ -103,7 +106,7 @@ async function cancel(clientId){
   await tx("UPDATE agent_tasks SET status='CANCELLED',lease_token=NULL,lease_until=NULL,revision=revision+1,updated_at=NOW() WHERE id=$1",[task.id]);task.status='CANCELLED';return{handled:true,reply:replyFor(task),task:view(task),externalActionsExecuted:false};
  });
 }
-async function claim(clientId,{message,requestId,channel,taskRevision}){
+async function claim(clientId,{message,requestId,channel,taskRevision},dynamicRouting=false){
  return db.transaction(async tx=>{
   const owner=await tx('SELECT id FROM clients WHERE id=$1 FOR UPDATE',[clientId]);if(!owner.rows.length)throw Error('CLIENT_NOT_FOUND');
   const fingerprint=hash({message,channel,taskRevision});
@@ -113,17 +116,18 @@ async function claim(clientId,{message,requestId,channel,taskRevision}){
   let task=prior?(await tx('SELECT * FROM agent_tasks WHERE id=$1 AND client_id=$2 FOR UPDATE',[prior.task_id,clientId])).rows[0]:(await tx("SELECT * FROM agent_tasks WHERE client_id=$1 AND status NOT IN ('COMPLETE','CANCELLED') FOR UPDATE",[clientId])).rows[0];
   if(taskRevision!==undefined&&(!Number.isInteger(taskRevision)||taskRevision!==task?.revision))throw Error('TASK_STALE');
   if(task?.lease_until&&new Date(task.lease_until)>new Date())return{cached:{handled:true,reply:'אני עדיין עובד על המשימה. ההתקדמות נשמרת; לא התחלתי עותק נוסף.',task:view(task),busy:true,externalActionsExecuted:false}};
-  const replacing=!prior&&(newGoal(message)||changedDeliverable(message,task));
+  const replacing=!dynamicRouting&&!prior&&(newGoal(message)||changedDeliverable(message,task));let advisoryContext=null;
   if(replacing&&task){
    // Never discard uncertain external effects or override an in-flight lease.
    let uncertain=task.status==='MANUAL_REVIEW'||task.state.steps.some(s=>s.status==='RUNNING'&&['image','meta'].includes(s.kind));
    for(const step of task.state.steps){const id=step.result?.approval?.actionId;if(!id)continue;const attempt=(await tx('SELECT status FROM meta_execution_attempts WHERE client_id=$1 AND action_id=$2',[clientId,id])).rows[0];if(attempt&&attempt.status!=='VERIFIED')uncertain=true;}
    if(uncertain)return{cached:{handled:true,reply:'אפשר לעבור לבקשה חדשה, אבל קודם צריך לברר את תוצאת הפעולה הקודמת כדי שלא לבצע אותה פעמיים. המשימה נשמרה לבדיקה.',task:view(task),externalActionsExecuted:false}};
+   if(require('./planningIntent').directionOnly(task.request)&&!newGoal(message)&&changedDeliverable(message,task))advisoryContext={facts:task.state.facts||{},messages:(task.state.messages||[]).slice(-8)};
    for(const step of task.state.steps){const id=step.result?.approval?.actionId;if(!id)continue;await tx("UPDATE approvals SET status='CANCELLED' WHERE client_id=$1 AND action_id=$2 AND status='PENDING'",[clientId,id]);await tx("UPDATE action_plans SET status='CANCELLED' WHERE client_id=$1 AND id=$2 AND status='PROPOSED'",[clientId,id]);}
    await tx("UPDATE agent_tasks SET status='CANCELLED',lease_token=NULL,lease_until=NULL,revision=revision+1,updated_at=NOW() WHERE id=$1 AND client_id=$2",[task.id,clientId]);
    task=null;
   }
-  if(!task){task={id:crypto.randomUUID(),client_id:clientId,request:message,status:'READY',revision:1,state:{steps:[],facts:{},messages:[],...(replacing?{newGoal:true,awaitingGoal:vagueGoal(message)}:{})}};await tx('INSERT INTO agent_tasks(id,client_id,request,state) VALUES($1,$2,$3,$4::jsonb)',[task.id,clientId,message,JSON.stringify(task.state)]);}
+  if(!task){task={id:crypto.randomUUID(),client_id:clientId,request:message,status:'READY',revision:1,state:{steps:[],facts:advisoryContext?.facts||{},messages:advisoryContext?.messages||[],...(replacing?{newGoal:!advisoryContext,awaitingGoal:vagueGoal(message)}:{})}};await tx('INSERT INTO agent_tasks(id,client_id,request,state) VALUES($1,$2,$3,$4::jsonb)',[task.id,clientId,message,JSON.stringify(task.state)]);}
   if(!prior)task.state.messages=[...(task.state.messages||[]),{role:'user',content:message}].slice(-12);
   if((task.state.steps||[]).some(s=>s.status==='RUNNING'&&['image','meta'].includes(s.kind)))task.status='MANUAL_REVIEW';
   else for(const s of task.state.steps||[])if(s.status==='RUNNING')s.status='PENDING';
@@ -144,7 +148,7 @@ async function reconcile(task){
  }
 }
 function contextFor(task,known){
- return{request:task.request,requiredOutcomes:requiredOutcomes(task.request),lastError:task.state.lastError||null,pendingQuestion:task.state.question||null,plan:task.state.steps.map(s=>({...s,result:s.result?.approval?{awaitingExactApproval:true}:safe(s.result,1500)})),facts:task.state.facts,messages:task.state.messages.slice(-6),knownBusiness:known,readTools:planner.READ_TOOLS,professionalReadSchemas:require('./gemini').functionDeclarations.filter(t=>['get_professional_skills','analyze_business_case'].includes(t.name)),writeSchema:require('./gemini').functionDeclarations.find(t=>t.name==='propose_action').parameters,notes:'Only DONE is completed. PREPARED drafts await local review; WAITING_APPROVAL Meta actions have not executed.'};
+ return{request:task.request,planningMode:task.state.planningMode,requiredOutcomes:requiredOutcomes(task.request,task.state.planningMode),lastError:task.state.lastError||null,pendingQuestion:task.state.question||null,plan:task.state.steps.map(s=>({...s,result:s.result?.approval?{awaitingExactApproval:true}:safe(s.result,1500)})),facts:task.state.facts,messages:task.state.messages.slice(-6),knownBusiness:known,readTools:planner.READ_TOOLS,professionalReadSchemas:require('./gemini').functionDeclarations.filter(t=>['get_professional_skills','analyze_business_case'].includes(t.name)),writeSchema:require('./gemini').functionDeclarations.find(t=>t.name==='propose_action').parameters,notes:'Only DONE is completed. PREPARED drafts await local review; WAITING_APPROVAL Meta actions have not executed.'};
 }
 function dependenciesReady(task,step){return step.dependsOn.every(id=>{const dep=task.state.steps.find(s=>s.id===id);return dep.status==='DONE'||step.kind!=='meta'&&dep.status==='PREPARED';});}
 function reviewReady(task){
@@ -156,7 +160,26 @@ function prepareReview(task){
  delete task.state.reviewIssue;delete task.state.lastError;delete task.state.reason;
  task.state.reviewHash=hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash]));task.status='WAITING_REVIEW';
 }
+async function rebaseForTurn(task,lease,requestId,message,kind){
+ const mode=kind==='DISCOVERY'?'DISCOVERY_BEFORE_CREATIVE':'REQUESTED_TASK';
+ if(!task.state.steps.length){
+  task.request=message;task.state.planningMode=mode;delete task.state.awaitingGoal;
+  await db.query('UPDATE agent_tasks SET request=$4 WHERE id=$1 AND client_id=$2 AND lease_token=$3',[task.id,task.client_id,lease,message]);return task;
+ }
+ return db.transaction(async tx=>{
+  const locked=(await tx('SELECT * FROM agent_tasks WHERE id=$1 AND client_id=$2 AND lease_token=$3 AND lease_until>NOW() FOR UPDATE',[task.id,task.client_id,lease])).rows[0];if(!locked)throw Error('TASK_LEASE_LOST');
+  if(locked.status==='MANUAL_REVIEW'||locked.state.steps.some(s=>s.status==='RUNNING'&&['image','meta'].includes(s.kind)))throw Error('TASK_UNCERTAIN_SWITCH');
+  for(const step of locked.state.steps){const id=step.result?.approval?.actionId;if(!id)continue;const attempt=(await tx('SELECT status FROM meta_execution_attempts WHERE client_id=$1 AND action_id=$2',[task.client_id,id])).rows[0];if(attempt&&attempt.status!=='VERIFIED')throw Error('TASK_UNCERTAIN_SWITCH');}
+  for(const step of locked.state.steps){const id=step.result?.approval?.actionId;if(!id)continue;await tx("UPDATE approvals SET status='CANCELLED' WHERE client_id=$1 AND action_id=$2 AND status='PENDING'",[task.client_id,id]);await tx("UPDATE action_plans SET status='CANCELLED' WHERE client_id=$1 AND id=$2 AND status='PROPOSED'",[task.client_id,id]);}
+  const carry=require('./planningIntent').isDiscovery(task),messages=carry?task.state.messages.slice(-8):[{role:'user',content:message}];
+  const state={steps:[],facts:carry?task.state.facts:{},messages,newGoal:!carry,planningMode:mode,plannerCalls:0,routingCalls:1};
+  await tx("UPDATE agent_tasks SET status='CANCELLED',lease_token=NULL,lease_until=NULL,revision=revision+1,updated_at=NOW() WHERE id=$1 AND client_id=$2 AND lease_token=$3",[task.id,task.client_id,lease]);
+  const created=(await tx("INSERT INTO agent_tasks(id,client_id,request,status,state,lease_token,lease_until) VALUES($1,$2,$3,'RUNNING',$4::jsonb,$5,NOW()+INTERVAL '5 minutes') RETURNING *",[crypto.randomUUID(),task.client_id,message,JSON.stringify(state),lease])).rows[0];
+  await tx('UPDATE agent_task_turns SET task_id=$3 WHERE client_id=$1 AND request_id=$2',[task.client_id,requestId,created.id]);return created;
+ });
+}
 function canPresentReview(task,message){
+ if(task?.state?.pendingRouting&&require('./conversationRouter').resume(message))return false;
  return process.env.TASK_AGENT_ENABLED==='true'&&!!task&&['BLOCKED','ERROR','WAITING_MODEL','WAITING_REVIEW'].includes(task.status)&&/^(?:המשך במשימה|נמשיך|המשך|תמשיך|הצג את החבילה|תציג את החבילה|הצג את הקמפיין|תציג את הקמפיין|תראה לי מה הכנת)[.!?]*$/u.test(message.trim())&&reviewReady(task);
 }
 async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={},options={}){
@@ -164,13 +187,39 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
  if(String(meta.context.getStore())!==String(clientId))throw Error('TENANT_CONTEXT_REQUIRED');
  if((await require('./humanSupport').current(clientId))?.bot_paused)return{handled:true,reply:'המענה האוטומטי מושהה למענה אנושי.',externalActionsExecuted:false};
  if(/^(בטל את המשימה|בטלי את המשימה)$/.test(message.trim()))return await cancel(clientId)||{handled:true,reply:'אין משימה פתוחה לביטול.',externalActionsExecuted:false};
- const claimed=await claim(clientId,{message:message.trim(),requestId,channel,taskRevision});if(claimed.cached)return claimed.cached;
- const {task,lease}=claimed;
+ const claimed=await claim(clientId,{message:message.trim(),requestId,channel,taskRevision},!!options.dynamicRouting);if(claimed.cached)return claimed.cached;
+ let {task,lease}=claimed;let semanticRevision=false;
  try{
   if(/^(מצב המשימה|מה מצב המשימה|איפה עומדים|מה כבר עשית)$/.test(message.trim())){const labels={DONE:'הושלם',PREPARED:'מוכן לבדיקה',WAITING_INPUT:'ממתין לפרט ממך',WAITING_APPROVAL:'ממתין לאישור פעולה',PENDING:'טרם בוצע',RUNNING:'בתהליך'};task.customReply='היעד: '+task.request+'\n'+task.state.steps.map(s=>s.label+': '+(labels[s.status]||s.status)).join('\n');return await settle(task,lease,requestId);}
   if(task.status==='MANUAL_REVIEW')return await settle(task,lease,requestId);
-  if(task.status==='PAUSED'&&!/^(המשך במשימה|נמשיך|המשך|תמשיך)$/.test(message.trim()))return await settle(task,lease,requestId);
+  if(task.status==='PAUSED'&&!options.dynamicRouting&&!/^(המשך במשימה|נמשיך|המשך|תמשיך)$/.test(message.trim()))return await settle(task,lease,requestId);
   if(/^(עצור|עצירה|עצור את המשימה)$/.test(message.trim())){task.status='PAUSED';return await settle(task,lease,requestId);}
+  if(options.dynamicRouting){
+   const router=require('./conversationRouter'),pending=task.state.pendingRouting;
+   const routeMessage=pending&&router.resume(message)?pending.nextMessage||pending.message:message;
+   if(!router.exactControl(routeMessage)){
+    task.state.pendingRouting=pending?{...pending,...(routeMessage!==pending.message?{nextMessage:routeMessage}:{})}:{message:routeMessage};
+    if(!options.deferPlanning){
+     if(!await require('./rateLimit').take('task-planner:'+clientId,60,3600))throw Error('TASK_ROUTING_LIMIT');
+     task.state.routingCalls=(task.state.routingCalls||0)+1;await checkpoint(task,lease);
+     const known=planner.businessContext(await require('./marketingStore').context(clientId));
+     const input={message:routeMessage,...(pending?{pendingRequest:pending.message}:{}),task:{request:task.request,status:task.status,planningMode:task.state.planningMode,steps:task.state.steps.map(s=>({id:s.id,kind:s.kind,status:s.status,label:s.label,verified:s.result?.verified===true,artifact:s.artifact?{title:s.artifact.title,content:String(s.artifact.adContent||s.artifact.content||'').slice(0,700)}:null}))},messages:task.state.messages.slice(-6).map(m=>({role:m.role,content:m.content.slice(0,1200)})),business:known.facts};
+     const route=await (options.turnRouter||router.route)(input);
+     if(!router.KINDS.includes(route?.kind))throw Error('ROUTING_RESPONSE_INVALID');
+     if(route.usePending&&!pending)throw Error('ROUTING_RESPONSE_INVALID');
+     delete task.state.pendingRouting;
+     if(route.kind==='ANSWER'){
+      if(typeof route.reply!=='string'||!route.reply.trim()||route.reply.length>900)throw Error('ROUTING_RESPONSE_INVALID');
+      task.customReply=route.reply.trim();return await settle(task,lease,requestId);
+     }
+     if(route.kind==='PAUSE'){task.status='PAUSED';return await settle(task,lease,requestId);}
+     if(route.kind==='RESUME')task.status='RUNNING';
+     if(['DISCOVERY','START'].includes(route.kind))task=await rebaseForTurn(task,lease,requestId,route.usePending?pending.message:routeMessage,route.kind);
+     if(route.kind==='REVISE')semanticRevision=true;
+    }
+   }
+  }
+  if(task.status==='PAUSED'&&!require('./conversationRouter').resume(message))return await settle(task,lease,requestId);
   if(task.state.awaitingGoal){
    const first=task.state.messages.length===1;
    if(first||/^(?:כן|לא|אוקיי|בסדר|המשך|תמשיך|המשך במשימה|היי|תודה|מאשר את התוכן|מאשרת את התוכן|מאשר את החבילה|אשר\s+\d{6})[.!?]*$/u.test(message.trim())){task.status='WAITING_INPUT';task.state.question=goalQuestion;return await settle(task,lease,requestId);}
@@ -184,7 +233,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   if(options.deferPlanning){if(!['MANUAL_REVIEW','PAUSED','HUMAN_PAUSED'].includes(task.status))task.status='WAITING_MODEL';return await settle(task,lease,requestId);}
   // A paused task resumes only on a new explicit user message, never by a timer.
   await reconcile(task);if(task.status==='MANUAL_REVIEW')return await settle(task,lease,requestId);
-  const revisionRequested=/^(?:שנה|שני|תשנה|תשני|תקן|תקני|תתקן|תתקני|עדכן|עדכני|תעדכן|תעדכני|קצר|קצרי|תוסיף|תוסיפי|במקום|בעצם|לא אהבתי)(?:\s|$)/.test(message.trim());
+  const revisionRequested=semanticRevision||/^(?:שנה|שני|תשנה|תשני|תקן|תקני|תתקן|תתקני|עדכן|עדכני|תעדכן|תעדכני|קצר|קצרי|תוסיף|תוסיפי|במקום|בעצם|לא אהבתי)(?:\s|$)/.test(message.trim());
   if(revisionRequested){
    if(task.state.steps.some(s=>s.kind==='meta'&&s.status==='DONE')){task.status='BLOCKED';task.state.reason='כבר בוצעה פעולה בחשבון; נדרשת תוכנית עדכון נפרדת כדי שלא ליצור עותק או לשנות פעולה שכבר אושרה';return await settle(task,lease,requestId);}
    for(const step of task.state.steps){
@@ -230,7 +279,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   }
   task.status='RUNNING';await checkpoint(task,lease);
   const known=planner.businessContext(await require('./marketingStore').context(clientId));
-  if(task.state.newGoal&&!generalRecommendation(task.request)){delete known.facts.product;known.rule+=' The owner explicitly switched goals. Do not reuse a prior product or campaign.';}
+  if(task.state.newGoal&&!generalRecommendation(task.request)&&!require('./planningIntent').isDiscovery(task)){delete known.facts.product;known.rule+=' The owner explicitly switched goals. Do not reuse a prior product or campaign.';}
   let initialRepairs=0,decisionRepairs=0,decisionFeedback=null;
   for(let round=0;round<16;round++){
    const automaticImage=require('./campaignPackage').imageDecision(task,dependenciesReady);
@@ -248,7 +297,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    try{
     decision=automaticImage||await planner.decide(context,options);
     if(!decision||typeof decision!=='object'||!decision.next)throw Error('INVALID_TASK_DECISION');
-    if(!task.state.steps.length){const proposed={...task,state:{...task.state,steps:validatePlan(decision.plan,task.request)}};require('./campaignPackage').ensure(proposed);task.state=proposed.state;}
+    if(!task.state.steps.length){const proposed={...task,state:{...task.state,steps:validatePlan(decision.plan,task.request,task.state.planningMode)}};require('./campaignPackage').ensure(proposed);task.state=proposed.state;}
     const n=decision.next;
     if(['review','meta'].includes(n.op)&&require('./taskDraftReview').issue(task))throw Error(require('./taskDraftReview').issue(task));
     if(n.op==='draft'&&n.campaignDraft!==undefined)require('./campaignPackage').checked(n.campaignDraft);
@@ -279,7 +328,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     prepareReview(task);return await settle(task,lease,requestId);
    }
    if(n.op==='finish'){
-    if(requiredOutcomes(task.request).some(o=>!task.state.steps.some(s=>s.kind==='meta'&&s.status==='DONE'&&s.result?.verified&&o.intents.includes(s.intent)))||task.state.steps.some(s=>s.status!=='DONE')||!task.state.steps.some(s=>['draft','image','meta','read'].includes(s.kind)))throw Error('TASK_NOT_COMPLETE');
+    if(requiredOutcomes(task.request,task.state.planningMode).some(o=>!task.state.steps.some(s=>s.kind==='meta'&&s.status==='DONE'&&s.result?.verified&&o.intents.includes(s.intent)))||task.state.steps.some(s=>s.status!=='DONE')||!task.state.steps.some(s=>['draft','image','meta','read'].includes(s.kind)))throw Error('TASK_NOT_COMPLETE');
     task.status='COMPLETE';return await settle(task,lease,requestId);
    }
    const step=task.state.steps.find(s=>s.id===n.stepId);
@@ -339,7 +388,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    }else if(n.op==='meta'){
     if(task.state.steps.some(s=>s.artifact&&!s.artifact.reviewed))throw Error('TASK_REVIEW_REQUIRED');
     if(n.proposal?.intent!==step.intent)throw Error('TASK_META_INTENT_MISMATCH');
-    if(require('./campaignPackage').required(task.request)){
+    if(require('./campaignPackage').required(task.request,task.state.planningMode)){
      const image=task.state.steps.find(s=>s.packageImage),copy=task.state.steps.find(s=>s.artifact?.campaignDraft);
      if(step.packageUpload&&n.proposal?.parameters?.mediaId!==image?.artifact?.mediaId)throw Error('CAMPAIGN_IMAGE_NOT_REVIEWED');
      if(['CREATE_BUNDLE','CREATE_CREATIVE'].includes(step.intent)){
@@ -373,6 +422,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   }
   task.status='BLOCKED';task.state.reason='נדרשת חלוקה של המשימה לשלבים נוספים לפני המשך בטוח';return await settle(task,lease,requestId);
  }catch(error){
+  if(error.message==='TASK_UNCERTAIN_SWITCH'){task.status='MANUAL_REVIEW';return await settle(task,lease,requestId);}
   if(error.message==='TASK_HUMAN_PAUSED'){await db.query("UPDATE agent_tasks SET state=$4::jsonb,status='HUMAN_PAUSED',lease_token=NULL,lease_until=NULL,revision=revision+1 WHERE id=$1 AND client_id=$2 AND lease_token=$3",[task.id,clientId,lease,JSON.stringify(task.state)]);return{handled:true,reply:'המשימה הושהתה למענה אנושי. ההתקדמות נשמרה.',externalActionsExecuted:false};}
   if(error.message==='TASK_LEASE_LOST')return{handled:true,reply:'המשימה השתנתה בזמן העבודה. ההמשך לא בוצע.',externalActionsExecuted:false};
   if(task.state.steps.some(s=>s.status==='RUNNING'&&['meta','image'].includes(s.kind)))task.status='MANUAL_REVIEW';else{for(const s of task.state.steps)if(s.status==='RUNNING')s.status='PENDING';task.status='ERROR';}
