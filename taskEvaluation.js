@@ -23,7 +23,7 @@ async function evaluate({decide=require('./taskPlanner').decide,providers}={}){
   if(!config.configured||!config.model)continue;
   entry.status='RUNNING';
   for(const item of cases){
-   const began=Date.now();let result='FAILED',reason='INVALID_DECISION',contractIssue;
+   const began=Date.now();let result='FAILED',reason='INVALID_DECISION',contractIssue,providerIssue;
    try{
     const context={request:item.request,requiredOutcomes:require('./taskAgent').requiredOutcomes(item.request),plan:[],facts:{},messages:[{role:'user',content:item.request}],knownBusiness:{facts:item.business},readTools:require('./taskPlanner').READ_TOOLS,professionalReadSchemas:require('./gemini').functionDeclarations.filter(t=>['get_professional_skills','analyze_business_case'].includes(t.name)),writeSchema:require('./gemini').functionDeclarations.find(t=>t.name==='propose_action').parameters};
     if(item.afterClarification)context.messages=[{role:'user',content:'אני רוצה לשווק משהו אחר'},{role:'assistant',content:'בטח, מה המוצר או השירות שתרצה לקדם עכשיו?'},{role:'user',content:item.request}];
@@ -71,8 +71,8 @@ async function evaluate({decide=require('./taskPlanner').decide,providers}={}){
     if(n.op==='read'&&!require('./taskPlanner').READ_TOOLS.includes(n.tool))throw Error('UNSUPPORTED_TOOL');
     }
     result='PASSED';reason=null;
-   }catch(error){reason=/^[A-Z_]+$/.test(error.message)?error.message:'PROVIDER_OR_RESPONSE_FAILED';if(error.contractIssue)contractIssue=error.contractIssue;}
-   entry.cases.push({id:item.id,result,reason,...(contractIssue?{contractIssue}:{}),latencyMs:Date.now()-began});
+   }catch(error){reason=/^[A-Z_]+$/.test(error.message)?error.message:'PROVIDER_OR_RESPONSE_FAILED';if(error.contractIssue)contractIssue=error.contractIssue;if(reason==='PROVIDER_OR_RESPONSE_FAILED')providerIssue={status:Number.isInteger(error.status)&&error.status>=400&&error.status<=599?error.status:null,category:/schema|anyOf|nesting|too many states/i.test(error.message)?'SCHEMA_REJECTED':'PROVIDER_OR_RESPONSE_FAILED'};}
+   entry.cases.push({id:item.id,result,reason,...(contractIssue?{contractIssue}:{}),...(providerIssue?{providerIssue}:{}),latencyMs:Date.now()-began});
   }
   entry.status=entry.cases.every(c=>c.result==='PASSED')?'PASSED':'FAILED';
  }
