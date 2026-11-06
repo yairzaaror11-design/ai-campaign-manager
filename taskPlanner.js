@@ -27,7 +27,16 @@ function repairableInitial(error){return ['INVALID_TASK_PLAN','INVALID_TASK_DECI
 async function decide(context,{planner,provider,model}={}){
  const input={...context,planningPhase:context.plan?.length?'CONTINUE_EXISTING_PLAN':'INITIAL_PLAN_REQUIRED'};
  if(planner)return planner(input);
- const result=await require('./aiService').processMessage(JSON.stringify(input),[],{planningOnly:true,taskPlanning:true,taskPlanningSchema:require('./taskPlanningSchema').responseSchema(input),provider,model});
- return JSON.parse(result.text.replace(/^```(?:json)?\s*|\s*```$/g,''));
+ const call=async value=>{const result=await require('./aiService').processMessage(JSON.stringify(value),[],{planningOnly:true,taskPlanning:true,taskPlanningSchema:require('./taskPlanningSchema').responseSchema(value),provider,model});return JSON.parse(result.text.replace(/^```(?:json)?\s*|\s*```$/g,''));};
+ let answer=await call(input);
+ if(answer.next?.op==='read'&&answer.next.tool==='analyze_business_case'){
+  const valid=n=>{const a=n?.args;return n?.op==='read'&&n.tool==='analyze_business_case'&&a&&Object.hasOwn(require('./businessCase').OPS,a.operation)&&Array.isArray(a.fields)&&a.fields.length<=16&&a.fields.every(f=>f&&Object.hasOwn(require('./businessCase').TYPES,f.key)&&typeof f.value==='string'&&/^\d+(?:\.\d+)?$|^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/.test(f.value)&&typeof f.evidence==='string'&&f.evidence.trim());};
+  if(!valid(answer.next)){
+   // Exactly one model-only formatting correction. Never dispatch a tool here.
+   answer=await call({...input,plannerFeedback:{code:'INVALID_BUSINESS_FIELDS',instruction:'Return the same dependency-ready analyze_business_case read with args:{operation,fields:[{key,value,evidence}],currency?:{value,evidence},period?:{value,evidence}}. fields MUST be an array (at most16), each numeric value an unsigned decimal STRING, key from the supplied business schema, evidence a verbatim user quotation. Do not nest args under another key or replace fields with an object. Keep the accepted plan/step IDs. No executor has run; do not infer facts or approval.'}});
+   if(!valid(answer.next))throw Error('INVALID_BUSINESS_FIELDS');
+  }
+ }
+ return answer;
 }
 module.exports={SYSTEM,READ_TOOLS,decide,businessContext,initialFeedback,repairableInitial};
