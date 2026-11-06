@@ -238,6 +238,10 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    if(initialRepairs&&!task.state.steps.length)context.plannerFeedback=planner.initialFeedback(task.state.lastError);
    if(decisionFeedback)context.plannerFeedback=decisionFeedback;
    else if(task.state.reviewIssue)context.plannerFeedback=require('./taskDraftReview').feedback(task.state.reviewIssue);
+   if(!context.plannerFeedback&&task.state.steps.some(s=>s.kind==='draft'&&s.status==='PREPARED')){
+    const missing=require('./taskDraftReview').issue(task);
+    if(['TASK_FORM_DRAFT_REQUIRED','TASK_CAMPAIGN_DRAFT_REQUIRED'].includes(missing))context.plannerFeedback=require('./taskDraftReview').feedback(missing);
+   }
    let decision;
    try{
     decision=automaticImage||await planner.decide(context,options);
@@ -265,7 +269,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     throw error;
    }
    decisionFeedback=null;
-   delete task.state.lastError;
+   delete task.state.lastError;delete task.state.errorDiagnostic;
    // Later model plans are ignored. Only validated next operations may advance the authoritative persisted plan.
    const n=decision.next;
    if(n.op==='review'){
@@ -370,7 +374,8 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   if(error.message==='TASK_HUMAN_PAUSED'){await db.query("UPDATE agent_tasks SET state=$4::jsonb,status='HUMAN_PAUSED',lease_token=NULL,lease_until=NULL,revision=revision+1 WHERE id=$1 AND client_id=$2 AND lease_token=$3",[task.id,clientId,lease,JSON.stringify(task.state)]);return{handled:true,reply:'המשימה הושהתה למענה אנושי. ההתקדמות נשמרה.',externalActionsExecuted:false};}
   if(error.message==='TASK_LEASE_LOST')return{handled:true,reply:'המשימה השתנתה בזמן העבודה. ההמשך לא בוצע.',externalActionsExecuted:false};
   if(task.state.steps.some(s=>s.status==='RUNNING'&&['meta','image'].includes(s.kind)))task.status='MANUAL_REVIEW';else{for(const s of task.state.steps)if(s.status==='RUNNING')s.status='PENDING';task.status='ERROR';}
-  task.state.lastError=/^[A-Z_]+$/.test(error.message)?error.message:'TASK_STEP_FAILED';
+  task.state.lastError=error instanceof SyntaxError?'INVALID_TASK_JSON':/^[A-Z_]+$/.test(error.message)?error.message:'TASK_STEP_FAILED';
+  task.state.errorDiagnostic={type:['SyntaxError','TypeError','ApiError','Error'].includes(error.name)?error.name:'Error',status:Number.isInteger(error.status)&&error.status>=400&&error.status<=599?error.status:null};
   try{return await settle(task,lease,requestId);}catch{return{handled:true,reply:'המשימה נעצרה. לא ניתן לאמת את שמירת התוצאה; נדרשת בדיקה לפני המשך.',externalActionsExecuted:false};}
  }
 }

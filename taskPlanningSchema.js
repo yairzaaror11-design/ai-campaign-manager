@@ -20,7 +20,7 @@ function responseSchema(context){
  }};
  if(require('./campaignPackage').required(context.request)&&!context.plan?.some(s=>s.artifact?.campaignDraft)){
   const correction=['INVALID_CAMPAIGN_DRAFT','TASK_CAMPAIGN_DRAFT_REQUIRED','TASK_FORM_DRAFT_REQUIRED'].includes(context.plannerFeedback?.code)&&context.plan?.some(s=>s.kind==='draft'&&s.status==='PREPARED');
-  if(correction){next.properties.op.enum=['draft'];next.required=['op','stepId','title','content','campaignDraft',...(/טופס/u.test(context.request)?['formDraft']:[])];}
+  if(correction){next.properties.op.enum=['draft'];next.required=['op','stepId','title','content','campaignDraft',...(/טופס/u.test(context.request)?['formDraft']:[])];next.properties=Object.fromEntries(['op','stepId','title','content','campaignDraft','formDraft'].map(k=>[k,next.properties[k]]));next.properties.stepId.enum=context.plan.filter(s=>s.kind==='draft'&&['PREPARED','PENDING'].includes(s.status)).map(s=>s.id);}
  }
  if(context.plannerFeedback?.code==='INVALID_BUSINESS_FIELDS'){
   next.properties.op.enum=['read'];next.properties.tool.enum=['analyze_business_case'];next.required=['op','stepId','tool','args'];
