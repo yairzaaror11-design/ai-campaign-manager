@@ -9,6 +9,9 @@ const cases=[
  {id:'professional_calculation',request:'בדוק כדאיות בלי לשנות תקציב: תקופה קודמת של 30 יום עם פרסום 3000 ₪ ו-5 לקוחות משלמים, תקופה חדשה של 30 יום עם פרסום 6000 ₪ ו-8 לקוחות משלמים. הנחת הכנסה לחיי לקוח אחרי עלויות משתנות היא 687.50 ₪.',business:{},professional:true},
  {id:'recruitment_grounded_package',request:'תכין לי קמפיין דרושים עם מודעה וטופס מועמדות, בלי לפרסם',business:{businessName:{value:'עסק בדיקה סינתטי',status:'known'}},recruitmentPackage:true}
 ];
+// Exercise the correction transport even when the first numeric answer happens
+// to be well formed. No client data or executor is involved.
+cases.push({...cases.find(c=>c.id==='professional_calculation'),id:'professional_contract_correction',contractCorrection:true});
 let state={status:'NOT_RUN',providers:[]};
 let inFlight=null;
 const ready=()=>state.status==='PASSED';
@@ -28,6 +31,7 @@ async function evaluate({decide=require('./taskPlanner').decide,providers}={}){
     const context={request:item.request,requiredOutcomes:require('./taskAgent').requiredOutcomes(item.request),plan:[],facts:{},messages:[{role:'user',content:item.request}],knownBusiness:{facts:item.business},readTools:require('./taskPlanner').READ_TOOLS,professionalReadSchemas:require('./gemini').functionDeclarations.filter(t=>['get_professional_skills','analyze_business_case'].includes(t.name)),writeSchema:require('./gemini').functionDeclarations.find(t=>t.name==='propose_action').parameters};
     if(item.afterClarification)context.messages=[{role:'user',content:'אני רוצה לשווק משהו אחר'},{role:'assistant',content:'בטח, מה המוצר או השירות שתרצה לקדם עכשיו?'},{role:'user',content:item.request}];
     if(item.professional)context.plan=[{id:'guide',label:'כללי הרחבה',kind:'read',dependsOn:[],status:'DONE',result:require('./professionalSkills').catalog({id:'MKT-06'})},{id:'economics',label:'כלכלה שולית',kind:'read',dependsOn:['guide'],status:'PENDING'}];
+    if(item.contractCorrection)context.plannerFeedback={code:'INVALID_BUSINESS_FIELDS',operation:'scaling',instruction:'Return a corrected analyze_business_case read for the supplied owner figures, using args.operation and fields:[{key,value,evidence}], with numeric strings and exact owner evidence. Keep the accepted plan IDs. No tool has run.'};
     if(item.continuation){context.plan=[{id:'copy',label:'מודעת בית קפה',kind:'draft',dependsOn:[],status:'PREPARED',artifact:{title:'מודעה',content:'ארוחת בוקר ב-45 ₪. לפרטים כתבו לנו.',reviewed:false}}];context.messages.push({role:'user',content:'שנה את הכותרת ל־קפה טרי ליד הבית, בלי לשנות את ההצעה.'});}
     if(item.recruitmentPackage){
      context.plan=[{id:'details',label:'פרטי משרה',kind:'collect',dependsOn:[],status:'DONE'},{id:'recruitment_copy',label:'מודעה וטופס לבדיקה',kind:'draft',dependsOn:['details'],status:'PREPARED',artifact:{title:'טיוטה קודמת',content:'החברה מתרחבת; ניסיון B2B יתרון.',reviewed:false}},{id:'form',label:'טופס',kind:'meta',intent:'CREATE_LEAD_FORM',dependsOn:['recruitment_copy'],status:'PENDING'},{id:'campaign',label:'קמפיין',kind:'meta',intent:'CREATE_BUNDLE',dependsOn:['form'],status:'PENDING'}];
