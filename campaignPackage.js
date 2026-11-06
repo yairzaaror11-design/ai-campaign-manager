@@ -1,6 +1,6 @@
 'use strict';
 const IMAGE_ID='campaign_package_image';
-function required(request){return /קמפיין/u.test(request)&&!/^(?:תכין|תכיני|הכן)(?: לי)?\s+(?:רק\s+)?(?:דוח|דו[״"]?ח|סיכום|ניתוח|בדיקה|סטטוס|אסטרטגיה|תוכנית|תכנית|תכנון|נוסח|טקסט|מודעה|גרפיקה|תמונה|טופס)/u.test(request)&&/תכין|תכיני|תיצור|תיצרי|צור|צרי|בנה|בני|הכן|תקים|להקים|לבנות|תעשה|אני רוצה|אני צריך|טיוטת|טיוטה|חבילת|קמפיין חדש/u.test(request)&&!/קמפיין ריק|מסגרת קמפיין|רק\s+(?:נוסח|טקסט)|בלי גרפיקה|ללא גרפיקה|בלי תמונות|ללא תמונות|לא צריך גרפיקה|לא צריך תמונה/u.test(request);}
+function required(request,planningMode){if(require('./planningIntent').isDiscovery({request,planningMode}))return false;return /קמפיין/u.test(request)&&!/^(?:תכין|תכיני|הכן)(?: לי)?\s+(?:רק\s+)?(?:דוח|דו[״"]?ח|סיכום|ניתוח|בדיקה|סטטוס|אסטרטגיה|תוכנית|תכנית|תכנון|נוסח|טקסט|מודעה|גרפיקה|תמונה|טופס)/u.test(request)&&/תכין|תכיני|תיצור|תיצרי|צור|צרי|בנה|בני|הכן|תקים|להקים|לבנות|תעשה|אני רוצה|אני צריך|טיוטת|טיוטה|חבילת|קמפיין חדש/u.test(request)&&!/קמפיין ריק|מסגרת קמפיין|רק\s+(?:נוסח|טקסט)|בלי גרפיקה|ללא גרפיקה|בלי תמונות|ללא תמונות|לא צריך גרפיקה|לא צריך תמונה/u.test(request);}
 function checked(value){
  const fields=['objective','audience','geography','placements','budgetNote','scheduleNote','headline','cta','designBrief'];
  const invalid=fields.filter(k=>typeof value?.[k]!=='string'||!value[k].trim()),overLimit=fields.filter(k=>typeof value?.[k]==='string'&&value[k].length>(['headline','cta'].includes(k)?100:400)),unknownCount=value&&typeof value==='object'?Object.keys(value).filter(k=>!fields.includes(k)&&k!=='referenceMediaIds').length:0;
@@ -11,7 +11,7 @@ function checked(value){
 }
 function draft(task){return task.state.steps.map(s=>s.artifact?.campaignDraft).find(Boolean);}
 function ensure(task){
- if(!required(task.request)||!task.state.steps.length||task.state.campaignPackageVersion===1)return;
+ if(!required(task.request,task.state.planningMode)||!task.state.steps.length||task.state.campaignPackageVersion===1)return;
  // Server-owned preparation upgrade only, before external work or uncertainty.
  if(task.state.steps.some(s=>s.kind==='meta'&&s.status!=='PENDING'||['RUNNING','WAITING_APPROVAL','STALE'].includes(s.status)))return;
  const firstMeta=task.state.steps.findIndex(s=>s.kind==='meta'),at=firstMeta<0?task.state.steps.length:firstMeta;
@@ -36,7 +36,7 @@ function ensure(task){
  task.state.campaignPackageVersion=1;
 }
 function issue(task){
- if(!required(task.request))return null;
+ if(!required(task.request,task.state.planningMode))return null;
  const d=draft(task);if(!d)return 'TASK_CAMPAIGN_DRAFT_REQUIRED';
  try{checked(d);}catch{return 'INVALID_CAMPAIGN_DRAFT';}
  const image=task.state.steps.find(s=>s.packageImage&&s.kind==='image');
@@ -45,7 +45,7 @@ function issue(task){
 }
 function feedback(code){return{code,instruction:'Prepare the complete campaign package, not just copy. Keep accepted step IDs. Revise an existing draft with campaignDraft:{objective,audience,geography,placements,budgetNote,scheduleNote,headline,cta,designBrief,referenceMediaIds?:[]}, concrete ad content and requested formDraft. All setting strings at most 400 characters, headline/cta at most 100; all nine fields are mandatory. The audience must match this goal (applicants for recruitment). Unprovided budget/schedule stay explicitly not set; recommendations are proposals, not authority. Headline/cta are the exact short Hebrew text for the graphic. The server owns the packageImage step and generates it after the draft; do not add duplicate image steps or request review before it exists. Meta creation and activation still require separate approvals.'};}
 function imageDecision(task,ready){
- if(!required(task.request))return null;const d=draft(task),step=task.state.steps.find(s=>s.packageImage&&s.status==='PENDING');
+ if(!required(task.request,task.state.planningMode))return null;const d=draft(task),step=task.state.steps.find(s=>s.packageImage&&s.status==='PENDING');
  if(!d||!step||!ready(task,step))return null;const p=checked(d);
  return{next:{op:'image',stepId:step.id,prompt:[p.designBrief,'Create one advertisement graphic. Render this exact Hebrew headline and CTA legibly, right-to-left, without extra text: '+JSON.stringify({headline:p.headline,cta:p.cta}),'Use supplied owned references as visual brand/product references. Do not invent a logo, salary, guarantees or requirements.'].join('\n').slice(0,2000),referenceMediaIds:p.referenceMediaIds,imageText:{headline:p.headline,cta:p.cta}}};
 }

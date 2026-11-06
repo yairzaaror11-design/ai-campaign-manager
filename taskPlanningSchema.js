@@ -18,7 +18,7 @@ function responseSchema(context){
   formDraft:{type:'object',additionalProperties:false,properties:{title:{type:'string'},questions:{type:'array',minItems:2,maxItems:8,items:{type:'string'}}},required:['title','questions']},
   proposal:{type:'object',additionalProperties:false,properties:{intent:{type:'string',enum:[...require('./actionPlan').WRITE_INTENTS]},summary:string,target:{type:'object',additionalProperties:true},parameters:{type:'object',additionalProperties:true}},required:['intent','summary','target','parameters']},reason:string
  }};
- if(require('./campaignPackage').required(context.request)&&!context.plan?.some(s=>s.artifact?.campaignDraft)){
+ if(require('./campaignPackage').required(context.request,context.planningMode)&&!context.plan?.some(s=>s.artifact?.campaignDraft)){
   const correction=['INVALID_CAMPAIGN_DRAFT','TASK_CAMPAIGN_DRAFT_REQUIRED','TASK_FORM_DRAFT_REQUIRED'].includes(context.plannerFeedback?.code)&&context.plan?.some(s=>s.kind==='draft'&&s.status==='PREPARED');
   if(correction){next.properties.op.enum=['draft'];next.required=['op','stepId','title','content','campaignDraft',...(/טופס/u.test(context.request)?['formDraft']:[])];next.properties=Object.fromEntries(['op','stepId','title','content','campaignDraft','formDraft'].map(k=>[k,next.properties[k]]));next.properties.stepId.enum=context.plan.filter(s=>s.kind==='draft'&&['PREPARED','PENDING'].includes(s.status)).map(s=>s.id);}
  }
@@ -32,7 +32,9 @@ function responseSchema(context){
   next.properties=Object.fromEntries(['op','stepId','tool','args'].map(k=>[k,next.properties[k]]));
  }
  const properties={next};
+ if(require('./planningIntent').isDiscovery(context))next.properties.op.enum=['ask','collect','read','draft','blocked'];
  if(initial)properties.plan={type:'array',minItems:1,maxItems:12,items:{type:'object',additionalProperties:false,properties:{id:{type:'string',description:'Unique lowercase ASCII identifier, starting with a letter, then letters/digits/underscores, at most 40 characters.'},label:string,kind:{type:'string',enum:['collect','read','draft','image','meta']},dependsOn:{type:'array',items:{type:'string',description:'Id of an EARLIER step in this plan.'}},intent:{type:'string',enum:[...require('./actionPlan').WRITE_INTENTS]}},required:['id','label','kind','dependsOn']}};
+ if(initial&&require('./planningIntent').isDiscovery(context)){properties.plan.items.properties.kind.enum=['collect','read','draft'];delete properties.plan.items.properties.intent;}
  return{type:'object',additionalProperties:false,properties:initial?{plan:properties.plan,next}:{next},required:initial?['plan','next']:['next']};
 }
 module.exports={responseSchema};
