@@ -15,14 +15,31 @@ const PROBES=[
  {id:'semantic_discovery',message:'אני רוצה להביא לקוחות חדשים לעסק. תעזור לי לבחור מה כדאי להציע ולמי לפנות. לפני שמכינים מודעה ועיצוב, בוא נדייק יחד את הכיוון.',allowed:['DISCOVERY']},
  {id:'semantic_question',message:'רגע, מה בעצם הכוונה במיקומים שכתבת פה?',allowed:['ANSWER']},
  {id:'semantic_revision',message:'הנוסח מצוין וגם ההצעה מתאימה. רק הצילום לא מדבר אליי, הייתי מעדיף משהו בלי אדם בחליפה.',allowed:['REVISE']},
+ {id:'semantic_revenue_advice',message:'בוא תעזור לי להגדיל הכנסות לעסק',allowed:['DISCOVERY','ANSWER']},
  {id:'semantic_pending',message:'כן, קדימה, בוא נתקדם עם זה.',pendingMessage:'עוד לא ברור לי מה להציע ולמי כדאי לפנות. אני רוצה לחשוב על הכיוון יחד לפני שמכינים מודעה.',needsPending:true,allowed:['DISCOVERY']}
 ];
 function exactControl(message){return /^(?:אשר\s+\d{6}|מאשר את התוכן|מאשרת את התוכן|מאשר את החבילה|מאשרת את החבילה|עצור|עצירה|עצור את המשימה|בטל את המשימה|בטלי את המשימה|המשך במשימה|נמשיך|המשך|תמשיך|מצב המשימה|מה מצב המשימה|איפה עומדים|מה כבר עשית|הצג את החבילה|תציג את החבילה|הצג את הקמפיין|תציג את הקמפיין|תראה לי מה הכנת)[.!?]*$/u.test(message.trim());}
 function resume(message){return /^(?:המשך במשימה|נמשיך|המשך|תמשיך)[.!?]*$/u.test(message.trim());}
-async function route(context,{provider,model}={}){
- const response=await require('./aiService').processMessage(JSON.stringify(context),[],{planningOnly:true,taskPlanning:true,routingOnly:true,taskPlanningSchema:SCHEMA,provider,model});
+function parseRoute(response,hasPending){
  let value;try{value=JSON.parse(response.text.replace(/^```(?:json)?\s*|\s*```$/g,''));}catch{throw Error('ROUTING_RESPONSE_INVALID');}
- if(!value||Object.keys(value).some(k=>!['kind','reply','usePending'].includes(k))||!KINDS.includes(value.kind)||value.usePending!==undefined&&typeof value.usePending!=='boolean'||value.usePending&&!context.pendingRequest||value.kind==='ANSWER'&&(typeof value.reply!=='string'||!value.reply.trim()||value.reply.length>900))throw Error('ROUTING_RESPONSE_INVALID');
- return{kind:value.kind,...(value.kind==='ANSWER'?{reply:value.reply.trim()}:{}),...(value.usePending?{usePending:true}:{})};
+ if(!value||Object.keys(value).some(k=>!['kind','reply','usePending'].includes(k))||!KINDS.includes(value.kind)||value.usePending!==undefined&&typeof value.usePending!=='boolean'||value.kind==='ANSWER'&&(typeof value.reply!=='string'||!value.reply.trim()||value.reply.length>900))throw Error('ROUTING_RESPONSE_INVALID');
+ return{kind:value.kind,...(value.kind==='ANSWER'?{reply:value.reply.trim()}:{}),...(hasPending&&value.usePending?{usePending:true}:{})};
+}
+async function route(context,{provider,model}={}){
+ const hasPending=Boolean(context.pendingRequest);
+ const schema=hasPending?SCHEMA:{
+  ...SCHEMA,properties:{kind:SCHEMA.properties.kind,reply:SCHEMA.properties.reply}
+ };
+ const options={planningOnly:true,taskPlanning:true,routingOnly:true,taskPlanningSchema:schema,provider,model};
+ const ai=require('./aiService');
+ const response=await ai.processMessage(JSON.stringify(context),[],options);
+ try{return parseRoute(response,hasPending);}
+ catch(error){
+  if(error.message!=='ROUTING_RESPONSE_INVALID')throw error;
+ }
+ const corrected=await ai.processMessage(JSON.stringify({
+  ...context,routerFeedback:'Return a JSON object with a supported kind. For ANSWER include a brief nonempty Hebrew reply. Use usePending only when pendingRequest exists.'
+ }),[],options);
+ return parseRoute(corrected,hasPending);
 }
 module.exports={SYSTEM,SCHEMA,PROBES,KINDS,route,exactControl,resume};
