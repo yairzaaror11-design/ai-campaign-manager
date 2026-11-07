@@ -16,7 +16,59 @@ cases.push({...cases.find(c=>c.id==='recruitment_grounded_package'),id:'campaign
 cases.push({id:'discovery_before_creative',request:'אני רוצה להביא לקוחות חדשים לעסק דרך פייסבוק ואינסטגרם. תעזור לי לבחור מה כדאי להציע ולמי לפנות. לפני שמכינים מודעה ועיצוב, בוא נדייק יחד את הכיוון. בלי לפרסם כרגע.',business:{businessName:{value:'עסק בדיקה סינתטי',status:'known'},product:{value:'ניהול פרסום לעסקים',status:'known'}},noWrites:true,discovery:true});
 let state={status:'NOT_RUN',providers:[]};
 let inFlight=null;
-const ready=()=>state.status==='PASSED';
+const ACCEPTANCE_MS=24*60*60*1000;
+let validUntil=Infinity;
+const ready=()=>state.status==='PASSED'&&Date.now()<validUntil;
+function cacheIdentity(){
+ const release=process.env.RENDER_GIT_COMMIT;
+ const provider=process.env.AI_PROVIDER||'gemini';
+ const model=provider==='gemini'?process.env.GEMINI_MODEL:provider==='claude'?process.env.CLAUDE_MODEL:null;
+ const credential=provider==='gemini'?process.env.GEMINI_API_KEY:provider==='claude'?process.env.ANTHROPIC_API_KEY:null;
+ if(!/^[a-f0-9]{40}$/i.test(release||'')||!model||!credential||!require('./db').configured())return null;
+ const fingerprint=require('node:crypto').createHash('sha256').update(JSON.stringify([
+  release,provider,model,credential,process.env.DYNAMIC_CONVERSATION_ENABLED
+ ])).digest('hex');
+ return{service:process.env.RENDER_SERVICE_ID||'default',fingerprint,provider,model};
+}
+function completePass(result,identity){
+ const provider=result?.providers?.find?.(p=>p.provider===identity.provider&&p.model===identity.model);
+ const expected=[...cases,...require('./conversationRouter').PROBES].map(item=>item.id);
+ return result?.status==='PASSED'&&provider?.status==='PASSED'&&Array.isArray(provider.cases)&&
+  provider.cases.length===expected.length&&expected.every(id=>provider.cases.some(c=>c.id===id&&c.result==='PASSED'));
+}
+async function evaluateWithCache(options){
+ const identity=options?null:cacheIdentity();
+ const db=require('./db');
+ if(identity){
+  state={status:'NOT_RUN',providers:[]};
+  try{
+   const {rows:[cached]}=await db.query(
+    'SELECT result, expires_at FROM model_acceptance_cache WHERE service=$1 AND fingerprint=$2 AND expires_at>NOW()',
+    [identity.service,identity.fingerprint]
+   );
+   if(cached&&completePass(cached.result,identity)){
+    validUntil=Date.parse(cached.expires_at);
+    if(Date.now()<validUntil){
+     state={...cached.result,source:'cached'};
+     return status();
+    }
+   }
+  }catch{require('./logger').logger.warn('Model acceptance cache read unavailable');}
+ }
+ validUntil=Infinity;
+ const result=await evaluate(options);
+ if(identity&&completePass(result,identity)){
+  validUntil=Date.parse(result.finishedAt)+ACCEPTANCE_MS;
+  try{
+   await db.query(
+    `INSERT INTO model_acceptance_cache(service,fingerprint,result,expires_at) VALUES($1,$2,$3,$4)
+     ON CONFLICT(service) DO UPDATE SET fingerprint=EXCLUDED.fingerprint,result=EXCLUDED.result,expires_at=EXCLUDED.expires_at`,
+    [identity.service,identity.fingerprint,JSON.stringify(result),new Date(validUntil)]
+   );
+  }catch{require('./logger').logger.warn('Model acceptance cache write unavailable');}
+ }
+ return result;
+}
 function status(){return structuredClone(state);}
 async function evaluate({decide=require('./taskPlanner').decide,route=require('./conversationRouter').route,providers}={}){
  if(state.status==='RUNNING')return status();
@@ -102,11 +154,11 @@ async function evaluate({decide=require('./taskPlanner').decide,route=require('.
 }
 function run(options){
  if(inFlight)return inFlight;
- inFlight=evaluate(options).catch(()=>{state.status='FAILED';return status();}).finally(()=>{inFlight=null;});
+ inFlight=evaluateWithCache(options).catch(()=>{state.status='FAILED';return status();}).finally(()=>{inFlight=null;});
  return inFlight;
 }
 function start(){if(process.env.TASK_AGENT_EVALUATE_ON_START==='true')void run();}
-function ensure(){if(inFlight)return inFlight;if(state.status==='PASSED')return Promise.resolve(status());if(state.startedAt&&Date.now()-Date.parse(state.startedAt)<60000)return Promise.resolve(status());return run();}
+function ensure(){if(inFlight)return inFlight;if(ready())return Promise.resolve(status());if(state.startedAt&&Date.now()-Date.parse(state.startedAt)<60000)return Promise.resolve(status());return run();}
 async function waitUntilReady(timeoutMs=45000){
  if(ready())return true;
  let timer;
