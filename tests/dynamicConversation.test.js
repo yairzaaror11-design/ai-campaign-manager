@@ -5,9 +5,22 @@ test('semantic router uses the dedicated no-tool Gemini transport and rejects ma
  const ai={chats:{create:c=>{config=c;return{sendMessage:async()=>({text:JSON.stringify(response),functionCalls:[]})};}}};
  require('../aiService').registerProvider('router_transport_fixture',(text,history,options)=>require('../gemini').processWithGemini(text,history,{...options,ai}));
  const router=require('../conversationRouter');const r=await router.route({message:'מה הכוונה במיקומים?'},{provider:'router_transport_fixture'});
- assert.equal(r.kind,'ANSWER');assert.equal(config.config.systemInstruction,router.SYSTEM);assert.equal(config.config.tools,undefined);assert.equal(config.config.responseJsonSchema,router.SCHEMA);assert.equal(config.config.maxOutputTokens,2048);
+ assert.equal(r.kind,'ANSWER');assert.equal(config.config.systemInstruction,router.SYSTEM);assert.equal(config.config.tools,undefined);assert.equal(config.config.responseJsonSchema.properties.usePending,undefined);assert.equal(config.config.maxOutputTokens,2048);
  response={kind:'EXECUTE',reply:'private'};await assert.rejects(router.route({message:'שאלה'},{provider:'router_transport_fixture'}),/ROUTING_RESPONSE_INVALID/);
  for(const m of ['אשר 123456','מאשר את התוכן','עצור','המשך במשימה'])assert.equal(router.exactControl(m),true);
+});
+test('routing repairs malformed model output once and ignores an unavailable pending request',async()=>{
+ const router=require('../conversationRouter');
+ let calls=0;
+ require('../aiService').registerProvider('router_repair_fixture',async input=>{
+  calls++;
+  if(calls===1)return {text:'{"kind":"ANSWER"}',actionPlans:[]};
+  assert.ok(JSON.parse(input).routerFeedback);
+  return {text:'{"kind":"DISCOVERY","usePending":true}',actionPlans:[]};
+ });
+ const result=await router.route({message:'בוא תעזור לי להגדיל הכנסות לעסק'},{provider:'router_repair_fixture'});
+ assert.deepEqual(result,{kind:'DISCOVERY'});
+ assert.equal(calls,2);
 });
 test('semantic understanding answers, discovers, continues, revises and starts work without stale review or keyword matching',async()=>{
  const env={...process.env},h=await require('./helpers/database').openDatabase();process.env.TASK_AGENT_ENABLED='true';
