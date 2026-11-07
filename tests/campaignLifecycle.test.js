@@ -57,3 +57,18 @@ test('mutating plan after approval is blocked before mock writes', async () => {
   await assert.rejects(createPaused(altered, mock), /Plan changed after approval/);
   assert.throws(() => approveStage({ ...flow, status: 'AWAITING_ACTIVATION_APPROVAL', plan: altered.plan }, 'ACTIVATE', 'owner', flow.planHash), /stale plan/);
 });
+
+
+test('creating a paused campaign never invokes activation before separate approval', async () => {
+ const calls=[];
+ const adapter={createPaused:async()=>{calls.push('createPaused');return objects;},verifyPaused:async()=>true,activate:async()=>{calls.push('activate');return true;},verifyActive:async()=>true};
+ let flow=createLifecycle(plan);
+ flow=approveStage(flow,'CREATE_PAUSED','owner',flow.planHash);
+ flow=await createPaused(flow,adapter);
+ assert.deepEqual(calls,['createPaused']);
+ await assert.rejects(activate(flow,adapter),/Separate activation approval/);
+ assert.deepEqual(calls,['createPaused']);
+ flow=approveStage(flow,'ACTIVATE','owner',flow.planHash);
+ await activate(flow,adapter);
+ assert.deepEqual(calls,['createPaused','activate']);
+});
