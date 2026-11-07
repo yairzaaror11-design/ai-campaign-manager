@@ -3,6 +3,47 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const evaluation=require('../taskEvaluation');
 const route=async c=>{const p=require('../conversationRouter').PROBES.find(p=>p.message===c.message);return{kind:p.allowed[0],...(p.needsPending?{usePending:true}:{}),...(p.allowed[0]==='ANSWER'?{reply:'מיקומים הם המקומות שבהם המודעה מוצגת.'}:{})};};
 const providers=[{provider:'gemini',model:'synthetic-test',configured:true}];
+test('a restarted release reuses a complete pass and reevaluates expired or mismatched results',async()=>{
+ const env={...process.env};
+ const database=await require('./helpers/database').openDatabase();
+ const modulePath=require.resolve('../taskEvaluation');
+ const restart=()=>{delete require.cache[modulePath];return require(modulePath);};
+ let calls=0;
+ try{
+  Object.assign(process.env,{
+   AI_PROVIDER:'gemini',GEMINI_MODEL:'synthetic-cache-test',GEMINI_API_KEY:'fixture',
+   RENDER_SERVICE_ID:'test-service',RENDER_GIT_COMMIT:'a'.repeat(40)
+  });
+  delete process.env.ANTHROPIC_API_KEY;
+  require('../aiService').registerProvider('gemini',async(text,history,options)=>{
+   calls++;
+   const context=JSON.parse(text);
+   const result=options.routingOnly?await route(context):answer(context);
+   return {text:JSON.stringify(result),actionPlans:[]};
+  });
+  const first=await restart().run();
+  assert.equal(first.status,'PASSED');
+  const checks=calls;
+  assert.ok(checks>0);
+  const boot=restart();
+  assert.equal((await boot.ensure()).source,'cached');
+  assert.equal(boot.ready(),true);
+  assert.equal(calls,checks);
+  await database.db.query("UPDATE model_acceptance_cache SET expires_at=NOW()-INTERVAL '1 second'");
+  assert.equal((await restart().ensure()).status,'PASSED');
+  assert.equal(calls,2*checks);
+  process.env.GEMINI_MODEL='synthetic-cache-other-model';
+  assert.equal((await restart().ensure()).status,'PASSED');
+  assert.equal(calls,3*checks);
+  await database.db.query("UPDATE model_acceptance_cache SET result=jsonb_set(result,'{providers,0,cases}','[]'::jsonb)");
+  assert.equal((await restart().ensure()).status,'PASSED');
+  assert.equal(calls,4*checks);
+ }finally{
+  await database.close();
+  for(const key of Object.keys(process.env))if(!(key in env))delete process.env[key];
+  Object.assign(process.env,env);
+ }
+});
 test('semantic routing probes are mandatory acceptance cases and a bad route closes the gate',async()=>{
  const env=process.env.AI_PROVIDER;process.env.AI_PROVIDER='gemini';
  try{
