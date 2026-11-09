@@ -147,6 +147,25 @@ async function reconcile(task){
   else if(row.status!=='PROPOSED'||new Date(a.expiresAt)<=new Date()){step.status='PENDING';delete step.result;}
  }
 }
+function collectFacts(task,decision,known){
+ if(!Array.isArray(decision.facts)||decision.facts.length>12||!Array.isArray(decision.knownFields||[]))throw Error('INVALID_TASK_FACTS');
+ const facts={...task.state.facts};
+ const sources=[task.request,...task.state.messages.filter(message=>message.role==='user').map(message=>message.content)];
+ for(const fact of decision.facts){
+  if(!fact||!/^[a-z][a-z0-9_]{0,49}$/.test(fact.key||'')||typeof fact.value!=='string'||!fact.value.trim()||fact.value.length>1000||typeof fact.evidence!=='string'||!sources.some(source=>source.includes(fact.evidence))||!fact.evidence.includes(fact.value.trim()))throw Error('UNGROUNDED_TASK_FACT');
+  facts[fact.key]={value:fact.value,evidence:fact.evidence};
+ }
+ for(const field of decision.knownFields||[]){
+  if(!known.facts?.[field]?.value)throw Error('UNKNOWN_TASK_FACT');
+  facts[field]={value:known.facts[field].value,source:'known_business'};
+ }
+ if(!decision.facts.length&&!decision.knownFields?.length||JSON.stringify(facts).length>10000)throw Error('INVALID_TASK_FACTS');
+ return facts;
+}
+const FACT_REPAIR={
+ code:'UNGROUNDED_TASK_FACT',
+ instruction:'Collect failed before saving facts. Copy each evidence quote and its value directly from the original request or a USER message, preserving every character and space. Keep price qualifiers such as starting from. Omit unsupported details. If a necessary detail is missing, ask one focused question using the same collect step.'
+};
 function contextFor(task,known){
  return{request:task.request,planningMode:task.state.planningMode,requiredOutcomes:requiredOutcomes(task.request,task.state.planningMode),lastError:task.state.lastError||null,pendingQuestion:task.state.question||null,plan:task.state.steps.map(s=>({...s,result:s.result?.approval?{awaitingExactApproval:true}:safe(s.result,1500)})),facts:task.state.facts,messages:task.state.messages.slice(-6),knownBusiness:known,readTools:planner.READ_TOOLS,professionalReadSchemas:require('./gemini').functionDeclarations.filter(t=>['get_professional_skills','analyze_business_case'].includes(t.name)),writeSchema:require('./gemini').functionDeclarations.find(t=>t.name==='propose_action').parameters,notes:'Only DONE is completed. PREPARED drafts await local review; WAITING_APPROVAL Meta actions have not executed.'};
 }
@@ -280,7 +299,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   task.status='RUNNING';await checkpoint(task,lease);
   const known=planner.businessContext(await require('./marketingStore').context(clientId));
   if(task.state.newGoal&&!generalRecommendation(task.request)&&!require('./planningIntent').isDiscovery(task)){delete known.facts.product;known.rule+=' The owner explicitly switched goals. Do not reuse a prior product or campaign.';}
-  let initialRepairs=0,decisionRepairs=0,decisionFeedback=null;
+  let initialRepairs=0,decisionRepairs=0,decisionFeedback=task.state.lastError==='UNGROUNDED_TASK_FACT'?FACT_REPAIR:null;
   for(let round=0;round<16;round++){
    const automaticImage=require('./campaignPackage').imageDecision(task,dependenciesReady);
    if(!automaticImage&&( (task.state.plannerCalls||0)>=64||!await require('./rateLimit').take('task-planner:'+clientId,60,3600))){task.status='BLOCKED';task.state.reason='המשימה הגיעה למגבלת התכנון כדי לעצור לולאה או עלות לא צפויה';return await settle(task,lease,requestId);}
@@ -293,7 +312,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     const missing=require('./taskDraftReview').issue(task);
     if(['TASK_FORM_DRAFT_REQUIRED','TASK_CAMPAIGN_DRAFT_REQUIRED'].includes(missing))context.plannerFeedback=require('./taskDraftReview').feedback(missing);
    }
-   let decision;
+   let decision,collectedFacts;
    try{
     decision=automaticImage||await planner.decide(context,options);
     if(!decision||typeof decision!=='object'||!decision.next)throw Error('INVALID_TASK_DECISION');
@@ -308,10 +327,18 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
      if(!step||step.status==='STALE'||step.status==='DONE'&&!(step.kind==='read'&&n.op==='read'&&step.lastReadTurn!==requestId)&&!(task.state.revising&&step.kind==='collect'&&n.op==='collect')||step.status==='WAITING_APPROVAL'||!dependenciesReady(task,step))throw Error('TASK_STEP_NOT_READY');
      if(n.op!=='blocked'&&OPS[n.op]!==step.kind)throw Error('TASK_OPERATION_MISMATCH');
     }
+    if(n.op==='collect')collectedFacts=collectFacts(task,n,known);
    }catch(error){
     // One model-only correction before any step is accepted; never retry an executor.
     if(!task.state.steps.length&&initialRepairs<1&&planner.repairableInitial(error)){
      initialRepairs++;task.state.lastError=error instanceof SyntaxError?'INVALID_TASK_JSON':error.message;await checkpoint(task,lease);continue;
+    }
+    if(decisionRepairs<1&&error.message==='UNGROUNDED_TASK_FACT'){
+     decisionRepairs++;
+     decisionFeedback=FACT_REPAIR;
+     task.state.lastError=error.message;
+     await checkpoint(task,lease);
+     continue;
     }
     if(decisionRepairs<1&&['TASK_STEP_NOT_READY','TASK_OPERATION_MISMATCH','TASK_FORM_DRAFT_REQUIRED','INVALID_FORM_DRAFT','TASK_CAMPAIGN_DRAFT_REQUIRED','INVALID_CAMPAIGN_DRAFT','TASK_CAMPAIGN_GRAPHIC_REQUIRED'].includes(error.message)){
      decisionRepairs++;decisionFeedback=(/^TASK_(?:FORM_DRAFT|CAMPAIGN_)/.test(error.message)||error.message==='INVALID_CAMPAIGN_DRAFT')?require('./taskDraftReview').feedback(error.message):{code:error.message,instruction:'The proposed next step was rejected BEFORE execution. Keep the existing plan, step IDs, facts and completed effects unchanged. Select a dependency-ready step of the matching kind; use review for prepared artifacts, or blocked on a ready step when access is missing. Never repeat completed writes or infer approval.'};
@@ -337,11 +364,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    if(OPS[n.op]!==step.kind)throw Error('TASK_OPERATION_MISMATCH');
    if(n.op==='ask'){task.state.question=text(n.question,600);step.status='WAITING_INPUT';task.status='WAITING_INPUT';return await settle(task,lease,requestId);}
    if(n.op==='collect'){
-    if(!Array.isArray(n.facts)||n.facts.length>12||!Array.isArray(n.knownFields||[]))throw Error('INVALID_TASK_FACTS');
-    const facts={...task.state.facts},sources=[task.request,...task.state.messages.filter(m=>m.role==='user').map(m=>m.content)];
-    for(const f of n.facts){if(!/^[a-z][a-z0-9_]{0,49}$/.test(f.key||'')||typeof f.evidence!=='string'||!sources.some(s=>s.includes(f.evidence))||!f.evidence.includes(text(f.value,1000)))throw Error('UNGROUNDED_TASK_FACT');facts[f.key]={value:f.value,evidence:f.evidence};}
-    for(const field of n.knownFields||[]){if(!known.facts?.[field]?.value)throw Error('UNKNOWN_TASK_FACT');facts[field]={value:known.facts[field].value,source:'known_business'};}
-    if(!n.facts.length&&!n.knownFields?.length||JSON.stringify(facts).length>10000)throw Error('INVALID_TASK_FACTS');
+    const facts=collectedFacts;
     if(task.state.revising&&hash(facts)!==hash(task.state.facts)){for(const dependent of task.state.steps)if(dependent.kind==='draft'){dependent.status='PENDING';delete dependent.artifact;}if(task.state.steps.some(s=>s.kind==='image'&&s.result?.mediaId)){for(const imageStep of task.state.steps)if(imageStep.kind==='image'&&imageStep.result?.mediaId)imageStep.status='STALE';task.status='BLOCKED';task.state.reason='פרטי המשימה השתנו אחרי יצירת תמונה; יש לבדוק ולהכין מחדש את התמונה לפני שימוש בה';task.state.facts=facts;return await settle(task,lease,requestId);}}
     task.state.facts=facts;step.status='DONE';
    }else if(n.op==='draft'){
