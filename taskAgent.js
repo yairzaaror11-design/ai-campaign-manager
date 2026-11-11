@@ -186,8 +186,12 @@ function prepareReview(task){
 }
 async function rebaseForTurn(task,lease,requestId,message,kind){
  const mode=kind==='DISCOVERY'?'DISCOVERY_BEFORE_CREATIVE':'REQUESTED_TASK';
+ const carry=require('./planningIntent').isDiscovery(task);
+ const messages=carry?task.state.messages.slice(-8):[{role:'user',content:message}];
+ const firstRequest=task.request===message&&task.state.messages.length===1&&!task.state.steps.length;
+ const state={steps:[],facts:carry?task.state.facts:{},messages,newGoal:!carry&&!firstRequest,planningMode:mode,plannerCalls:0,routingCalls:1};
  if(!task.state.steps.length){
-  task.request=message;task.state.planningMode=mode;delete task.state.awaitingGoal;
+  task.request=message;task.state=state;
   await db.query('UPDATE agent_tasks SET request=$4 WHERE id=$1 AND client_id=$2 AND lease_token=$3',[task.id,task.client_id,lease,message]);return task;
  }
  return db.transaction(async tx=>{
@@ -195,8 +199,6 @@ async function rebaseForTurn(task,lease,requestId,message,kind){
   if(locked.status==='MANUAL_REVIEW'||locked.state.steps.some(s=>s.status==='RUNNING'&&['image','meta'].includes(s.kind)))throw Error('TASK_UNCERTAIN_SWITCH');
   for(const step of locked.state.steps){const id=step.result?.approval?.actionId;if(!id)continue;const attempt=(await tx('SELECT status FROM meta_execution_attempts WHERE client_id=$1 AND action_id=$2',[task.client_id,id])).rows[0];if(attempt&&attempt.status!=='VERIFIED')throw Error('TASK_UNCERTAIN_SWITCH');}
   for(const step of locked.state.steps){const id=step.result?.approval?.actionId;if(!id)continue;await tx("UPDATE approvals SET status='CANCELLED' WHERE client_id=$1 AND action_id=$2 AND status='PENDING'",[task.client_id,id]);await tx("UPDATE action_plans SET status='CANCELLED' WHERE client_id=$1 AND id=$2 AND status='PROPOSED'",[task.client_id,id]);}
-  const carry=require('./planningIntent').isDiscovery(task),messages=carry?task.state.messages.slice(-8):[{role:'user',content:message}];
-  const state={steps:[],facts:carry?task.state.facts:{},messages,newGoal:!carry,planningMode:mode,plannerCalls:0,routingCalls:1};
   await tx("UPDATE agent_tasks SET status='CANCELLED',lease_token=NULL,lease_until=NULL,revision=revision+1,updated_at=NOW() WHERE id=$1 AND client_id=$2 AND lease_token=$3",[task.id,task.client_id,lease]);
   const created=(await tx("INSERT INTO agent_tasks(id,client_id,request,status,state,lease_token,lease_until) VALUES($1,$2,$3,'RUNNING',$4::jsonb,$5,NOW()+INTERVAL '5 minutes') RETURNING *",[crypto.randomUUID(),task.client_id,message,JSON.stringify(state),lease])).rows[0];
   await tx('UPDATE agent_task_turns SET task_id=$3 WHERE client_id=$1 AND request_id=$2',[task.client_id,requestId,created.id]);return created;
@@ -227,7 +229,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
      if(!await require('./rateLimit').take('task-planner:'+clientId,60,3600))throw Error('TASK_ROUTING_LIMIT');
      task.state.routingCalls=(task.state.routingCalls||0)+1;await checkpoint(task,lease);
      const known=planner.businessContext(await require('./marketingStore').context(clientId));
-     const input={message:routeMessage,...(pending?{pendingRequest:pending.message}:{}),task:{request:task.request,status:task.status,planningMode:task.state.planningMode,steps:task.state.steps.map(s=>({id:s.id,kind:s.kind,status:s.status,label:s.label,verified:s.result?.verified===true,artifact:s.artifact?{title:s.artifact.title,content:String(s.artifact.adContent||s.artifact.content||'').slice(0,700)}:null}))},messages:task.state.messages.slice(-6).map(m=>({role:m.role,content:m.content.slice(0,1200)})),business:known.facts};
+     const input={message:routeMessage,...(pending?{pendingRequest:pending.message}:{}),task:{request:task.request,status:task.status,planningMode:task.state.planningMode,pendingQuestion:task.state.question||null,steps:task.state.steps.map(s=>({id:s.id,kind:s.kind,status:s.status,label:s.label,verified:s.result?.verified===true,artifact:s.artifact?{title:s.artifact.title,content:String(s.artifact.adContent||s.artifact.content||'').slice(0,700)}:null}))},messages:task.state.messages.slice(-6).map(m=>({role:m.role,content:m.content.slice(0,1200)})),business:known.facts};
      const route=await (options.turnRouter||router.route)(input);
      if(!router.KINDS.includes(route?.kind))throw Error('ROUTING_RESPONSE_INVALID');
      if(route.usePending&&!pending)throw Error('ROUTING_RESPONSE_INVALID');
