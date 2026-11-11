@@ -24,6 +24,10 @@ test('one WhatsApp conversation owner preserves recruitment through a cold start
   await send('unified-1',request);
   assert.equal(planned,0);assert.deepEqual(waits,[120000]);assert.match(sent.at(-1),/הבקשה נשמרה/);assert.doesNotMatch(sent.at(-1),/תוכן לסושיאל|להגדיל את ההכנסות|נכין תוכנית/);
   const saved=await require('../taskAgent').current(client.id);assert.equal(saved.request,request);assert.equal(saved.status,'WAITING_MODEL');
+  await send('unified-greeting','היי');
+  assert.equal(sent.at(-1),'היי! איך אפשר לעזור?');
+  assert.deepEqual(waits,[120000]);
+  assert.equal((await require('../taskAgent').current(client.id)).revision,saved.revision);
   ready=true;await send('unified-2','המשך במשימה');assert.equal(planned,1);assert.match(sent.at(-1),/לאיזו משרה ובאיזה אזור/);assert.equal(contexts[0].request,request);assert.equal(contexts[0].knownBusiness.localDraft,undefined);assert.equal(contexts[0].knownBusiness.pendingQuestion,undefined);assert.equal(contexts[0].knownBusiness.facts.businessGoal,undefined);assert.equal(contexts[0].knownBusiness.facts.product.value,'תוכן לסושיאל');
   await send('unified-3','למה צריך אזור?');assert.equal(planned,2);assert.equal(contexts[1].request,request);assert.equal((await require('../taskAgent').current(client.id)).id,saved.id);
   assert.equal((await h.db.query('SELECT COUNT(*)::int AS n FROM action_plans')).rows[0].n,0);
@@ -38,7 +42,7 @@ test('unified controller does not authorize legacy approvals or turn a greeting 
  try{
   const client=(await h.db.query("INSERT INTO clients(phone) VALUES('972500066113') RETURNING *")).rows[0],controller=require('../conversationController');
   assert.equal(controller.acceptsInteractive({ui:{decisionKey:'creative_review'}}),false);assert.equal(controller.acceptsInteractive({ui:{decisionKey:'plan_review'}}),false);assert.equal(controller.acceptsInteractive({ui:{decisionKey:'action_approval'}}),true);assert.equal(controller.acceptsInteractive({ui:{decisionKey:'account_selection'}}),true);
-  const greeting=await controller.handle(client.id,{message:'היי',requestId:'hello',channel:'WHATSAPP'});assert.match(greeting.reply,/מה תרצה/);
+  const greeting=await controller.handle(client.id,{message:'היי',requestId:'hello',channel:'WHATSAPP'});assert.equal(greeting.reply,'היי! איך אפשר לעזור?');
   const stale=await controller.handle(client.id,{message:'אשר 123456',requestId:'stale',channel:'WHATSAPP'});assert.equal(stale.delegateApproval,undefined);assert.match(stale.reply,/אין פעולה ממתינה/);
   const media=await controller.media(client.id,{message:'תמונה',requestId:'photo',channel:'WHATSAPP'});assert.match(media.reply,/מה תרצה להכין/);
   assert.equal(await require('../taskAgent').current(client.id),null);

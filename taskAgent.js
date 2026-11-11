@@ -147,12 +147,17 @@ async function reconcile(task){
   else if(row.status!=='PROPOSED'||new Date(a.expiresAt)<=new Date()){step.status='PENDING';delete step.result;}
  }
 }
+function normalizeFactQuote(value){
+ return value.normalize('NFC').replace(/\s+/gu,' ').trim();
+}
 function collectFacts(task,decision,known){
  if(!Array.isArray(decision.facts)||decision.facts.length>12||!Array.isArray(decision.knownFields||[]))throw Error('INVALID_TASK_FACTS');
  const facts={...task.state.facts};
- const sources=[task.request,...task.state.messages.filter(message=>message.role==='user').map(message=>message.content)];
+ const sources=[task.request,...task.state.messages.filter(message=>message.role==='user').map(message=>message.content)].map(normalizeFactQuote);
  for(const fact of decision.facts){
-  if(!fact||!/^[a-z][a-z0-9_]{0,49}$/.test(fact.key||'')||typeof fact.value!=='string'||!fact.value.trim()||fact.value.length>1000||typeof fact.evidence!=='string'||!sources.some(source=>source.includes(fact.evidence))||!fact.evidence.includes(fact.value.trim()))throw Error('UNGROUNDED_TASK_FACT');
+  if(!fact||!/^[a-z][a-z0-9_]{0,49}$/.test(fact.key||'')||typeof fact.value!=='string'||!fact.value.trim()||fact.value.length>1000||typeof fact.evidence!=='string')throw Error('UNGROUNDED_TASK_FACT');
+  const evidence=normalizeFactQuote(fact.evidence);
+  if(!evidence||!sources.some(source=>source.includes(evidence))||!evidence.includes(normalizeFactQuote(fact.value)))throw Error('UNGROUNDED_TASK_FACT');
   facts[fact.key]={value:fact.value,evidence:fact.evidence};
  }
  for(const field of decision.knownFields||[]){
