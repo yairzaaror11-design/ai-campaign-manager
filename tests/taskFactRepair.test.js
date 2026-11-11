@@ -9,7 +9,7 @@ test('an inexact price quote gets one correction before the ad draft is prepared
   process.env.TASK_AGENT_ENABLED='true';
   const client=(await h.db.query("INSERT INTO clients(phone) VALUES('972500066141') RETURNING *")).rows[0];
   const request='תיצור לי פרסומת להדפסת חולצות לאירועים ולעסקים החל מ30  שקל';
-  const offer='החל מ30  שקל';
+  const offer='החל מ30 שקל';
   let calls=0;
   const planner=async context=>{
    calls++;
