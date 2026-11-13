@@ -10,6 +10,13 @@ function enabled() {
 
 async function connect(clientId, pageId, formId) {
   const { access } = await forms.inspect(clientId, pageId, formId);
+  const subscriptions = await meta.graph('/'+pageId+'/subscribed_apps', access.token, {
+    fields:'id,subscribed_fields', limit:100
+  });
+  const subscribed = subscriptions.data?.some(app =>
+    app.id === process.env.META_APP_ID && app.subscribed_fields?.includes('leadgen')
+  );
+  if (!subscribed) throw Error('META_LEAD_SUBSCRIPTION_REQUIRED');
   return db.transaction(async tx => {
     const client = (await tx('SELECT meta_generation FROM clients WHERE id=$1 FOR UPDATE', [clientId])).rows[0];
     if (!client || String(client.meta_generation) !== String(access.connection.meta_generation)) {

@@ -91,7 +91,12 @@ router.get('/app/api/meta/lead-source/pages',endpoint(async(req,res)=>{
 router.post('/app/api/meta/lead-source',endpoint(async(req,res)=>{
  const importer=require('./metaLeadImport');
  if(!importer.enabled())return res.sendStatus(404);
- await importer.connect(req.portal.clientId,req.body?.pageId,req.body?.formId);
+ try {
+  await importer.connect(req.portal.clientId,req.body?.pageId,req.body?.formId);
+ } catch (error) {
+  if(error.message!=='META_LEAD_SUBSCRIPTION_REQUIRED')throw error;
+  return res.status(409).json({error:'ב־Meta יש להפעיל את המינוי לאירועי לידים עבור הדף הזה, ואז לנסות לחבר את הטופס שוב.'});
+ }
  res.json({ok:true});
 }));
 router.post('/app/api/meta/check',endpoint(async(req,res)=>res.json(await require('./metaConversation').verify(req.portal.clientId))));
