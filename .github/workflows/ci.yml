@@ -1,0 +1,55 @@
+name: CI
+on:
+  push:
+    branches: [audit-security-hardening-20261025]
+  pull_request:
+    branches: [render-safe-deploy, audit-security-hardening-20261025]
+permissions:
+  contents: write
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: campaign_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd=pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://test:test@localhost:5432/campaign_test
+      DB_SSL: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Reconcile stale lockfile against current manifest
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Apply npm security patches without suppressing audit
+        run: npm audit fix --package-lock-only --ignore-scripts
+      - name: Verify reproducible dependency install
+        run: npm ci --ignore-scripts
+      - run: npm run check
+      - run: npm test
+      - name: Enforce production dependency security
+        run: npm audit --omit=dev --audit-level=high
+      - name: Commit lockfile only after all gates pass
+        if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'audit-security-hardening-20261025')
+        run: |
+          if ! git diff --quiet -- package-lock.json; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add package-lock.json
+            git commit -m 'fix(deps): verified lockfile security refresh'
+            git push origin HEAD:audit-security-hardening-20261025
+          fi
