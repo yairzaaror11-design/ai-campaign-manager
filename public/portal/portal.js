@@ -41,6 +41,7 @@ async function loadLeads(){
  if(!data.leads.length)list.append(text('p','עדיין אין פניות. אפשר להוסיף פנייה ידנית או לחבר מקור פניות.'));
  for(const lead of data.leads){
   const card=text('article','','card lead'),details=text('div','');details.append(text('h3',lead.name),text('p',[lead.phone,lead.email].filter(Boolean).join(' · ')),text('p','מקור: '+lead.source),text('p',lead.note));
+  card.id='lead-'+lead.id;card.tabIndex=-1;
   const select=document.createElement('select');select.setAttribute('aria-label','מצב הטיפול ב-'+lead.name);
   for(const [v,label]of Object.entries(statuses)){const option=document.createElement('option');option.value=v;option.textContent=label;option.selected=v===lead.status;select.append(option);}
   select.addEventListener('change',async()=>{select.disabled=true;try{await api('leads/'+lead.id,{status:select.value,version:lead.version},'PATCH');await loadLeads();await refresh();tell('מצב הפנייה עודכן.');}catch(e){tell(e.message,true);select.disabled=false;}});

@@ -37,6 +37,16 @@ router.post('/', async (req, res) => {
     return res.sendStatus(401);
   }
 
+  if (req.body?.object === 'page' && require('./metaLeadImport').enabled()) {
+    try {
+      await require('./metaLeadImport').enqueue(req.body);
+      return res.status(200).send('EVENT_RECEIVED');
+    } catch {
+      logger.error('Meta lead import failed');
+      return res.sendStatus(503);
+    }
+  }
+
   if (req.body?.object !== 'whatsapp_business_account') {
     return res.status(200).send('EVENT_RECEIVED');
   }

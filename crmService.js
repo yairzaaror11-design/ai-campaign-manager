@@ -9,16 +9,26 @@ function validate(input){
  if(input.phone&&!/^\+?[\d ()-]{7,30}$/.test(input.phone))throw Error('INVALID_LEAD_PHONE');
  return{name:input.name.trim(),phone:input.phone||null,email:input.email||null,source:input.source||'manual',note:input.note||'',campaignId:input.campaignId||null,sourceEventId:input.sourceEventId||null};
 }
-async function create(clientId,input){
+async function create(clientId,input,canSave){
  const x=validate(input);
  return db.transaction(async tx=>{
   const c=await tx('SELECT id FROM clients WHERE id=$1 FOR UPDATE',[clientId]);if(!c.rows.length)throw Error('CLIENT_NOT_FOUND');
+  if(canSave && !await canSave(tx))return{revoked:true};
   const r=await tx(`INSERT INTO crm_leads(id,client_id,name,phone,email,source,source_event_id,campaign_id,note) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(client_id,source,source_event_id) DO NOTHING RETURNING *`,[crypto.randomUUID(),clientId,x.name,x.phone,x.email,x.source,x.sourceEventId,x.campaignId,x.note]);
   if(!r.rows.length)return{duplicate:true};
   await tx("INSERT INTO tenant_audit(client_id,event,result) VALUES($1,'CRM_LEAD','CREATED')",[clientId]);return r.rows[0];
  });
 }
 async function list(clientId){return(await db.query('SELECT * FROM crm_leads WHERE client_id=$1 ORDER BY created_at DESC,id DESC LIMIT 100',[clientId])).rows;}
+async function newMetaLeads(clientId, before) {
+ const filter = "client_id=$1 AND source='meta_lead_ads' AND status='NEW'";
+ const count = await db.query(`SELECT COUNT(*)::int AS count FROM crm_leads WHERE ${filter}`,[clientId]);
+ const page = await db.query(`SELECT * FROM crm_leads WHERE ${filter}
+  AND ($2::uuid IS NULL OR (created_at,id)<(SELECT created_at,id FROM crm_leads WHERE client_id=$1 AND id=$2))
+  ORDER BY created_at DESC,id DESC LIMIT 101`,[clientId,before||null]);
+ const leads=page.rows.slice(0,100);
+ return {count:count.rows[0].count,leads,next:page.rows.length>100?leads.at(-1).id:null};
+}
 async function update(clientId,id,{status,version,note,revenueMinor,currency}={}){
  if(!/^[a-f0-9-]{36}$/i.test(id||'')||!STATUSES.includes(status)||!Number.isInteger(version)||note!=null&&(typeof note!=='string'||note.length>2000)||revenueMinor!=null&&(!Number.isSafeInteger(revenueMinor)||revenueMinor<0||!['ILS','USD','EUR'].includes(currency)))throw Error('INVALID_LEAD_UPDATE');
  return db.transaction(async tx=>{
@@ -32,4 +42,4 @@ async function summary(clientId){
  const revenue=await db.query("SELECT currency,SUM(revenue_minor)::text AS amount FROM crm_leads WHERE client_id=$1 AND status='WON' AND revenue_minor IS NOT NULL GROUP BY currency",[clientId]);
  return{counts:Object.fromEntries(r.rows.map(x=>[x.status,x.count])),revenue:revenue.rows,source:'customer_crm',attribution:'user_reported; not independently verified campaign attribution'};
 }
-module.exports={STATUSES,validate,create,list,update,summary};
+module.exports={STATUSES,validate,create,list,newMetaLeads,update,summary};

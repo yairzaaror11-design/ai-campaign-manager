@@ -33,6 +33,11 @@ router.post('/app/api/logout',endpoint(async(req,res)=>{
  res.setHeader('Set-Cookie',['cb_session=; Path=/app; HttpOnly; Secure; SameSite=Strict; Max-Age=0','cb_csrf=; Path=/app; Secure; SameSite=Strict; Max-Age=0']);res.json({ok:true});
 }));
 router.get('/app/api/leads',endpoint(async(req,res)=>res.json({leads:await require('./crmService').list(req.portal.clientId)})));
+router.get('/app/api/leads/new-meta',endpoint(async(req,res)=>{
+ const before=req.query.before;
+ if(before!==undefined&&(typeof before!=='string'||!/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(before)))return res.sendStatus(400);
+ res.json(await require('./crmService').newMetaLeads(req.portal.clientId,before));
+}));
 router.post('/app/api/leads',endpoint(async(req,res)=>{
  const account=(await db.query('SELECT client_id FROM customer_accounts WHERE client_id=$1',[req.portal.clientId])).rows[0];if(!account)return res.status(403).json({error:'יש להשלים את פתיחת החשבון לפני הוספת פניות.'});
  res.json(await require('./crmService').create(req.portal.clientId,{...req.body,source:'manual'}));
@@ -62,6 +67,32 @@ router.post('/app/api/meta/connect',endpoint(async(req,res)=>{
  const result=await require('./metaConversation').verify(req.portal.clientId);
  if(result.status==='CONNECTED')return res.json({status:result.status});
  res.json({url:await require('./metaConnection').createInvite(req.portal.clientId)});
+}));
+router.get('/app/api/meta/lead-source',endpoint(async(req,res)=>{
+ const importer=require('./metaLeadImport');
+ if(!importer.enabled())return res.json({enabled:false});
+ const clientId=req.portal.clientId;
+ const sources=(await db.query(`SELECT s.form_id,s.page_id,
+   s.meta_generation=c.meta_generation AND s.app_id=$2 AND m.expires_at>NOW()
+     AND m.app_id=$2 AS current_connection,
+   (SELECT COUNT(*)::int FROM meta_lead_events e
+    WHERE e.form_id=s.form_id AND e.generation=s.meta_generation AND e.status='FAILED') AS failed
+   FROM meta_lead_sources s JOIN clients c ON c.id=s.client_id
+   LEFT JOIN meta_connections m ON m.client_id=c.id WHERE s.client_id=$1 ORDER BY s.form_id`,
+   [clientId,process.env.META_APP_ID])).rows;
+ const forms=require('./metaLeadForms');
+ if(req.query.pageId)return res.json(await forms.list(req.query.pageId));
+ res.json({enabled:true,sources});
+}));
+router.get('/app/api/meta/lead-source/pages',endpoint(async(req,res)=>{
+ if(!require('./metaLeadImport').enabled())return res.sendStatus(404);
+ res.json(await require('./metaLeadForms').pages());
+}));
+router.post('/app/api/meta/lead-source',endpoint(async(req,res)=>{
+ const importer=require('./metaLeadImport');
+ if(!importer.enabled())return res.sendStatus(404);
+ await importer.connect(req.portal.clientId,req.body?.pageId,req.body?.formId);
+ res.json({ok:true});
 }));
 router.post('/app/api/meta/check',endpoint(async(req,res)=>res.json(await require('./metaConversation').verify(req.portal.clientId))));
 router.post('/app/api/meta/select',endpoint(async(req,res)=>{

@@ -19,6 +19,8 @@ function startBackgroundJobs({intervalMs=1000}={}) {
   await require('./whatsappInboundStore').markExpiredInboundForReview();
   await require('./whatsappWebhookWorker').runOne();
  },'inbound');
+ const leadImport=require('./metaLeadImport');
+ if(leadImport.enabled()) startLoop(()=>leadImport.runOne(),'meta-leads');
  startLoop(()=>require('./whatsappDelivery').runOne(),'outbound');
  startLoop(async()=>{
   if(cycles++%60===0) await require('./maintenance').maintain();

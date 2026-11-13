@@ -117,15 +117,39 @@
   form.addEventListener('submit',e=>{e.preventDefault();run(send,async()=>{const message=input.value.trim();if(!message)return;pending=pending?.message===message?pending:{message,screen:'home',requestId:crypto.randomUUID()};messages.replaceChildren(el('p','הסוכן מכין תשובה…','muted'));try{const r=await api('agent',pending);pending=null;messages.replaceChildren(el('p',message,'inline-user-message'),el('p',r.reply,'inline-agent-message'));input.value='';}catch(e){messages.replaceChildren(el('p',e.message,'error'));throw e;}});});return c;
  }
  async function home(){
-  const [tasks,leads]=await Promise.all([api('workspace/tasks'),api('leads')]),counts=state.crm.counts,total=Object.values(counts).reduce((a,b)=>a+b,0),open=tasks.items.filter(x=>x.payload.status==='OPEN');
+  const [tasks,leads,newMeta]=await Promise.all([api('workspace/tasks'),api('leads'),api('leads/new-meta')]),counts=state.crm.counts,total=Object.values(counts).reduce((a,b)=>a+b,0),open=tasks.items.filter(x=>x.payload.status==='OPEN');
   const overview=stats([['הוצאות פרסום','—','טרם נטענו נתוני פלטפורמה'],['לידים שהתקבלו',total,'סך הפניות ב־CRM'],['קמפיינים פעילים','—','נדרש דוח מהחשבון המחובר'],['עלות ממוצעת לפנייה','—','טרם חושבה מנתוני פרסום']]);overview.classList.add('home-metrics');
   const center=el('div','','home-main-grid');center.append(inlineAgentCard(),performanceCard());
   const lower=el('div','','home-lower-grid'),campaigns=card('קמפיינים אחרונים'),recentLeads=card('לידים חדשים'),todo=card('משימות פתוחות');
   if(state.draft){campaigns.append(badge('טיוטה'),el('h3',state.draft.product||state.business.product||'תוכנית הקמפיין שלך'),el('p',state.draft.stale?'פרטי העסק השתנו. צריך לבדוק שוב את הטיוטה.':'הטיוטה נשמרה וממתינה לבדיקה.','muted'),go('פתיחת הקמפיין','campaign'));}else campaigns.append(empty('אין עדיין קמפיינים','אפשר להתחיל מתכנון טיוטה פרטית.',button('צור לי קמפיין',()=>openAgent(true),'primary')));
   if(leads.leads.length){leads.leads.slice(0,4).forEach(l=>{const row=el('div','','home-list-row');row.append(el('strong',l.name),badge(statuses[l.status]));recentLeads.append(row);});recentLeads.append(go('כל הלידים','leads'));}else recentLeads.append(empty('עדיין אין פניות','פניות חדשות יוצגו כאן לאחר שמירה ב־CRM.',go('פתיחת הלידים','leads')));
   if(open.length){open.slice(0,4).forEach(x=>{const row=el('div','','home-list-row');row.append(el('span',x.payload.title),el('small',x.payload.date||'ללא תאריך'));todo.append(row);});todo.append(go('כל המשימות','tasks'));}else todo.append(empty('אין משימות פתוחות','אפשר לשמור את הצעד הבא של העסק.',go('הוספת משימה','tasks')));lower.append(campaigns,recentLeads,todo);
+  const alerts=[];
+  if(newMeta.count){
+   const alert=card('פניות חדשות מ־Meta · '+newMeta.count);
+   const openLeads=button('הצגת הפניות',()=>run(openLeads,async()=>{
+    const d=dialog('פניות חדשות מ־Meta');
+    const list=el('div');
+    const show=async before=>{
+     const page=await api('leads/new-meta'+(before?'?before='+encodeURIComponent(before):''));
+     for(const lead of page.leads)list.append(leadCard(lead));
+     if(page.next){
+      const more=button('הצגת פניות נוספות',()=>run(more,async()=>{
+       await show(page.next);
+       more.remove();
+      }));
+      list.append(more);
+     }
+    };
+    await show();
+    d.append(list);
+    d.showModal();
+   }));
+   alert.append(openLeads);
+   alerts.push(alert);
+  }
   const directory=el('details','','home-page-directory');directory.append(el('summary','כל דפי השיווק והכלים של העסק'),marketingDirectory());
-  return [heading('שלום, '+(state.account?.display_name||'ברוכים הבאים'),'מה שקורה בעסק שלך, במקום אחד',[go('כל הדפים','pages')]),overview,center,lower,directory];
+  return [heading('שלום, '+(state.account?.display_name||'ברוכים הבאים'),'מה שקורה בעסק שלך, במקום אחד',[go('כל הדפים','pages')]),...alerts,overview,center,lower,directory];
  }
  function brand(){
   const out=[heading('ניהול מותג','ערכת מותג, זהות ואסטרטגיית תוכן',[button('עדכון פרטי העסק עם הסוכן',()=>openAgent(true),'secondary')]),tabs([['kit','ערכת מותג'],['identity','זהות ותוכן'],['products','מוצרים ושירותים'],['context','הקשר עסקי']],brandTab,async id=>{if(!await allowLeave())return;if(id==='products')navigate('products');else{brandTab=id;navigate('brand');}})];
@@ -207,9 +231,47 @@
   if(!data.leads.length)leads.append(empty('אין פניות עדיין','לחצו על ״ליד חדש״ בראש המסך כדי להוסיף את הפנייה הראשונה. לאחר מכן אפשר לעדכן את שלב הטיפול בפייפליין.'));else data.leads.slice(0,4).forEach(l=>leads.append(leadCard(l)));grid.append(leads,side);const taskCard=card('משימות');if(tasks.items.length)tasks.items.slice(0,4).forEach(x=>taskCard.append(el('p',(x.payload.status==='DONE'?'✓ ':'○ ')+x.payload.title)));else taskCard.append(empty('אין משימות עדיין','אפשר לשמור את פעולת ההמשך הראשונה.',go('ניהול משימות','tasks')));return [...out,summary,grid,taskCard];
  }
  function leadCard(lead){const c=card(lead.name);c.append(el('p',[lead.phone,lead.email].filter(Boolean).join(' · '),'muted'));const s=el('select');s.setAttribute('aria-label','מצב הטיפול ב־'+lead.name);Object.entries(statuses).forEach(([v,l])=>{const o=el('option',l);o.value=v;o.selected=lead.status===v;s.append(o);});s.addEventListener('change',()=>run(s,async()=>{try{await api('leads/'+lead.id,{status:s.value,version:lead.version},'PATCH');await refresh();tell('שלב הפנייה נשמר.');}catch(e){s.value=lead.status;throw e;}}));c.append(s);return c;}
+ async function leadSources(){
+  const data=await api('meta/lead-source');
+  if(!data.enabled)return null;
+  const panel=card('טופסי לידים של Meta','בחרו דף וטופס שמהם ייקלטו פניות ל־CRM.');
+  for(const source of data.sources){
+   const status=!source.current_connection?'נדרש חיבור מחדש':source.failed?'יש אירועים שנכשלו':'הטופס משויך';
+   panel.append(el('p',source.form_id+' · '+status));
+  }
+  const load=button('בחירת דף וטופס',()=>run(load,async()=>{
+   const {pages}=await api('meta/lead-source/pages');
+   const d=dialog('חיבור טופס לידים');
+   const list=el('div');
+   d.append(list);
+   if(!pages.length)list.append(el('p','לא נמצאו דפים זמינים בחיבור Meta.'));
+   for(const page of pages){
+    const choose=button(page.name||page.id,()=>run(choose,async()=>{
+     const {forms}=await api('meta/lead-source?pageId='+encodeURIComponent(page.id));
+     list.replaceChildren(el('p',page.name||page.id));
+     if(!forms.length)list.append(el('p','לא נמצאו טפסים בדף הזה.'));
+     for(const form of forms){
+      const save=button(form.name||form.id,()=>run(save,async()=>{
+       await api('meta/lead-source',{pageId:page.id,formId:form.id});
+       d.close();
+       await navigate('integrations');
+       tell('הטופס שויך. יש לבדוק קליטת ליד מ־Meta.');
+      }));
+      list.append(save);
+     }
+    }));
+    list.append(choose);
+   }
+   d.showModal();
+  }));
+  panel.append(load);
+  return panel;
+ }
  async function integrations(){
   const grid=el('div','','grid'),meta=card('Meta Business','קריאת חשבונות ונתוני פרסום לפי ההרשאות שתאשרו');meta.append(badge(state.connection?.status==='CONNECTED'?'חיבור נבדק בעבר':'נדרש חיבור'),el('p','חיבור אינו מפעיל קמפיין. לפני המעבר ל־Meta תראו את ההרשאות המבוקשות.'),button('בדיקת חיבור Meta',()=>{showCampaignTools=true;navigate('campaign').then(()=>$('meta-connect').click());},'primary'));
   const other=card('Google, WhatsApp ומודלי AI');other.append(el('h3','WhatsApp'),el('p','שיחת העסק משתמשת בחיבור הקיים. הגדרת מספרים והרשאות ספק אינה זמינה כאן.'),el('h3','Google'),el('p','Gemini משמש לעיבוד AI במערכת הקיימת. Google Ads ו־Google Calendar טרם חוברו. חיבור YouTube הקיים מופיע בהמשך המסך.'),el('h3','מנועי AI'),el('p','ספקי ה־AI נשמרים לפי הגדרות השרת הקיימות.'));grid.append(meta,other);
+  const leadPanel=await leadSources();
+  if(leadPanel)grid.append(leadPanel);
   const connections=await api('integrations');
   connections.social.forEach(provider=>{const c=card(provider.name,'חיבור תוכן מהמודול הקיים של המערכת');c.append(badge(provider.connected?'מחובר':provider.selectionRequired?'נדרשת בחירת חשבון':provider.configured?'מוכן לחיבור':'לא הוגדר בשרת'));if(provider.displayName)c.append(el('p',provider.displayName));
    if(provider.configured)c.append(el('p',({facebook:'הספק יבקש גישה לדפים ולפרסום פוסטים.',instagram:'הספק יבקש גישה לדפים ולחשבון Instagram לצורך פרסום תוכן.',linkedin:'הספק יבקש פרטי פרופיל והרשאה לפרסום תוכן.',tiktok:'הספק יבקש פרטי חשבון והרשאה לפרסום וידאו.',youtube:'הספק יבקש גישה לערוץ ולהעלאת סרטונים.',x:'הספק יבקש פרטי חשבון וגישה לקריאה ולפרסום תוכן.'})[provider.id],'muted'));if(!provider.configured)c.append(el('p','נשמרו משתני הסביבה והתהליך הקיימים. נדרשת הגדרת ספק בסביבת העבודה לפני חיבור.','muted'));
