@@ -22,18 +22,18 @@ test('one WhatsApp conversation owner preserves recruitment through a cold start
  const request='תיצור לי קמפיין דרושים עם מודעה וטופס מועמדות';
  try{
   await send('unified-1',request);
-  assert.equal(planned,0);assert.deepEqual(waits,[120000]);assert.match(sent.at(-1),/הבקשה נשמרה/);assert.doesNotMatch(sent.at(-1),/תוכן לסושיאל|להגדיל את ההכנסות|נכין תוכנית/);
+  assert.equal(planned,0);assert.deepEqual(waits,[180000]);assert.match(sent.at(-1),/הבקשה נשמרה/);assert.doesNotMatch(sent.at(-1),/תוכן לסושיאל|להגדיל את ההכנסות|נכין תוכנית/);
   const saved=await require('../taskAgent').current(client.id);assert.equal(saved.request,request);assert.equal(saved.status,'WAITING_MODEL');
   await send('unified-greeting','היי');
   assert.equal(sent.at(-1),'היי! איך אפשר לעזור?');
-  assert.deepEqual(waits,[120000]);
+  assert.deepEqual(waits,[180000]);
   assert.equal((await require('../taskAgent').current(client.id)).revision,saved.revision);
   ready=true;await send('unified-2','המשך במשימה');assert.equal(planned,1);assert.match(sent.at(-1),/לאיזו משרה ובאיזה אזור/);assert.equal(contexts[0].request,request);assert.equal(contexts[0].knownBusiness.localDraft,undefined);assert.equal(contexts[0].knownBusiness.pendingQuestion,undefined);assert.equal(contexts[0].knownBusiness.facts.businessGoal,undefined);assert.equal(contexts[0].knownBusiness.facts.product.value,'תוכן לסושיאל');
   await send('unified-3','למה צריך אזור?');assert.equal(planned,2);assert.equal(contexts[1].request,request);assert.equal((await require('../taskAgent').current(client.id)).id,saved.id);
   assert.equal((await h.db.query('SELECT COUNT(*)::int AS n FROM action_plans')).rows[0].n,0);
   assert.equal((await h.db.query('SELECT COUNT(*)::int AS n FROM meta_execution_attempts')).rows[0].n,0);
   ready=false;await send('unified-4','המשך במשימה');assert.equal(planned,2);assert.match(sent.at(-1),/הבקשה נשמרה/);assert.doesNotMatch(sent.at(-1),/נכין תוכנית|תוכן לסושיאל/);
-  evaluation.waitUntilReady=async timeout=>{assert.equal(timeout,120000);ready=true;return true;};await send('unified-5','המשך במשימה');assert.equal(planned,3);assert.match(sent.at(-1),/לאיזו משרה/);
+  evaluation.waitUntilReady=async timeout=>{assert.equal(timeout,180000);ready=true;return true;};await send('unified-5','המשך במשימה');assert.equal(planned,3);assert.match(sent.at(-1),/לאיזו משרה/);
  }finally{wa.safeSend=before.send;evaluation.ready=before.ready;evaluation.waitUntilReady=before.wait;marketing.handleMarketingMessage=before.marketing;reads.handle=before.read;delete require.cache[require.resolve('../messageHandler')];await h.close();for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);}
 });
 test('unified controller does not authorize legacy approvals or turn a greeting into a new task',async()=>{

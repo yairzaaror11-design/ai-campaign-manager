@@ -70,7 +70,7 @@ function replyFor(task){
   if(analysis)return require('./businessCase').format(analysis.result);
  }
  if(task.status==='WAITING_INPUT')return s.question;
- if(task.status==='WAITING_MODEL')return 'בדיקת התקינות של הסוכן טרם הושלמה בהצלחה. הבקשה נשמרה; הכנה ופעולות חדשות ימתינו לסיום הבדיקה.';
+ if(task.status==='WAITING_MODEL')return 'בדיקת התקינות של הסוכן טרם הושלמה בהצלחה. הבקשה נשמרה. כדי להמשיך בלי להקליד אותה שוב, כתבו ״המשך במשימה״ בעוד כמה דקות.';
  if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nתעבור על מה שהכנתי ותגיד לי מה תרצה לשנות. אם הכול מתאים, כתוב ״מאשר את התוכן״. זה אישור לתוכן בלבד; פרסום והפעלת תקציב דורשים אישור נפרד.';
  const waiting=s.steps?.find(x=>x.status==='WAITING_APPROVAL');
  if(waiting){const a=waiting.result.approval;return require('./actionPlan').formatActionPlan(a.plan)+'\n\nכדי לאשר את הפעולה המדויקת, שלח: אשר '+meta.decrypt(a.codeCiphertext,task.client_id)+'\nהאישור תקף עד '+a.expiresAt+'. האישור מתייחס רק לפעולה הזו.';}

@@ -26,10 +26,10 @@ async function handle(clientId,input,options={}){
  if(!active&&analysis.intent==='capabilities')return{handled:true,reply:'אפשר להכין מודעה, עיצוב וטופס לידים, לבדוק נתוני קמפיינים ולהציע פעולות בחשבון המחובר. אברר רק מה שחסר לבקשה ואציג את התוצרים לבדיקה. יצירה ב־Meta והפעלה דורשות אישורים נפרדים.'};
  if(!skills.check().ok)return{handled:true,externalActionsExecuted:false,reply:'בדיקת החיבור של היכולות נכשלה. לא אבצע משימות חדשות עד לתיקון החיבור.'};
  if(!tasks.canPresentReview(active,message)&&(!tasks.needsGoalClarification(message)||dynamicRouting)&&!tasks.enabled()&&process.env.TASK_AGENT_ENABLED==='true'&&process.env.TASK_AGENT_REQUIRE_EVAL==='true'){
-  try{await options.onProgress?.('המערכת מתעוררת ובודקת את החיבור למודל. הבקשה שלך תמשיך באותו תהליך לאחר שהבדיקה תעבור.');}catch{require('./logger').logger.warn('Model readiness notice unavailable');}
-  // Eight sequential model probes can exceed45s. Stay within the existing
+  try{await options.onProgress?.('המערכת מתעוררת ובודקת את החיבור למודל. אמשיך בבקשה אם הבדיקה תסתיים בזמן.');}catch{require('./logger').logger.warn('Model readiness notice unavailable');}
+  // Sequential model probes can take more than two minutes. Stay within the existing
   // five-minute inbound lease and continue this original event, never replay it.
-  await require('./taskEvaluation').waitUntilReady(120000);
+  await require('./taskEvaluation').waitUntilReady(180000);
  }
  return tasks.send(clientId,{...input,message:message==='/start'?'היי':message},{...options,dynamicRouting,deferPlanning:!tasks.enabled()});
 }

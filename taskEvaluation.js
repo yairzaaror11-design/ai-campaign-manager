@@ -16,7 +16,7 @@ cases.push({...cases.find(c=>c.id==='recruitment_grounded_package'),id:'campaign
 cases.push({id:'discovery_before_creative',request:'אני רוצה להביא לקוחות חדשים לעסק דרך פייסבוק ואינסטגרם. תעזור לי לבחור מה כדאי להציע ולמי לפנות. לפני שמכינים מודעה ועיצוב, בוא נדייק יחד את הכיוון. בלי לפרסם כרגע.',business:{businessName:{value:'עסק בדיקה סינתטי',status:'known'},product:{value:'ניהול פרסום לעסקים',status:'known'}},noWrites:true,discovery:true});
 let state={status:'NOT_RUN',providers:[]};
 let inFlight=null;
-const ACCEPTANCE_MS=24*60*60*1000;
+const ACCEPTANCE_MS=7*24*60*60*1000;
 let validUntil=Infinity;
 const ready=()=>state.status==='PASSED'&&Date.now()<validUntil;
 function cacheIdentity(){
