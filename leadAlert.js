@@ -35,7 +35,7 @@ function alertText(lead, reply) {
     lines.push(`https://wa.me/${number}?text=${encodeURIComponent(reply)}`);
   }
   lines.push('');
-  lines.push('כדי לעדכן מה קרה עם הפנייה, כתבו: לידים');
+  lines.push('כדי לעדכן מה קרה עם הפנייה, כתבו: הלידים שלי');
   return lines.join('\n');
 }
 
