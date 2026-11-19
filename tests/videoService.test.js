@@ -51,6 +51,7 @@ test('the worker submits, waits, then delivers the video and records its cost', 
   const { db, close } = await openDatabase();
   try {
     const video = require('../videoService');
+    await db.query("UPDATE video_jobs SET status='FAILED' WHERE status IN ('PENDING','SUBMITTED')");
     const client = (await db.query("INSERT INTO clients(phone) VALUES('972500000082') RETURNING id")).rows[0].id;
     await video.request(client, '972500000082', video.videoRequest('תכין לי סרטון למבצע'), { eventId: 'wamid.2' });
     let statusCalls = 0;
@@ -85,6 +86,7 @@ test('moderation and timeouts fail the job and tell the owner', env({ VIDEO_ENAB
   const { db, close } = await openDatabase();
   try {
     const video = require('../videoService');
+    await db.query("UPDATE video_jobs SET status='FAILED' WHERE status IN ('PENDING','SUBMITTED')");
     const client = (await db.query("INSERT INTO clients(phone) VALUES('972500000083') RETURNING id")).rows[0].id;
     await video.request(client, '972500000083', video.videoRequest('תכין לי סרטון'), { eventId: 'wamid.3' });
     const provider = { estimate: async () => null, submit: async () => ({ requestId: 'req_abcdef' }), status: async () => ({ status: 'nsfw', terminal: true }) };

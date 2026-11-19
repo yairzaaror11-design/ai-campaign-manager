@@ -35,19 +35,20 @@ test('SCORPIO asks about an untouched lead once, with status buttons, and does n
     const dana = await lead(db, client, 'דנה כהן', 'NEW', 3);
     await lead(db, client, 'יוסי', 'NEW', 5);
     await lead(db, client, 'טרי', 'NEW', 1); // not due yet
-    const first = await checkins.runDue({ now: TUESDAY });
-    assert.deepEqual(first.results, ['ASKED']);
+    await checkins.runDue({ now: TUESDAY });
     const sent = await outbox(db, client);
     assert.equal(sent.length, 1);
     assert.equal(sent[0].type, 'interactive');
     assert.match(JSON.stringify(sent[0]), /יוסי השאיר\/ה פרטים לפני 5 שעות/, 'oldest lead first');
     assert.match(JSON.stringify(sent[0]), /נקבעה פגישה/);
     // The owner has an open status decision now, and the quiet window applies.
-    assert.deepEqual((await checkins.runDue({ now: TUESDAY })).results, []);
-    await db.query("UPDATE lead_checkins SET sent_at=NOW()-INTERVAL '4 hours'");
+    await checkins.runDue({ now: TUESDAY });
+    assert.equal((await outbox(db, client)).length, 1);
+    await db.query("UPDATE lead_checkins SET sent_at=NOW()-INTERVAL '4 hours' WHERE client_id=$1", [client]);
     const profile = require('../marketingStore');
     await profile.update(client, null, (p) => { delete p.crmFocus; delete p.ui; return { handled: false, changed: true }; });
-    assert.deepEqual((await checkins.runDue({ now: TUESDAY })).results, ['ASKED']);
+    await checkins.runDue({ now: TUESDAY });
+    assert.equal((await outbox(db, client)).length, 2);
     assert.match(JSON.stringify((await outbox(db, client)).at(-1)), /דנה כהן/);
     assert.ok(dana);
   } finally { await close(); }
@@ -81,11 +82,11 @@ test('the weekly report goes out once on Sunday morning to active clients', asyn
     await lead(db, active, 'ליד', 'NEW', 30);
     const idle = await owner(db, '972500000115');
     const build = async () => 'דוח בדיקה';
-    const run = await reports.runDue({ now: SUNDAY, build });
-    assert.deepEqual(run.results, ['SENT']);
+    assert.equal((await reports.runDue({ now: SUNDAY, build })).status, 'RAN');
     assert.equal((await outbox(db, active))[0].text.body, 'דוח בדיקה');
     assert.equal((await outbox(db, idle)).length, 0);
-    assert.deepEqual((await reports.runDue({ now: SUNDAY, build })).results, [], 'once per week');
+    await reports.runDue({ now: SUNDAY, build });
+    assert.equal((await outbox(db, active)).length, 1, 'once per week');
   } finally {
     if (prior === undefined) delete process.env.WEEKLY_REPORTS_ENABLED; else process.env.WEEKLY_REPORTS_ENABLED = prior;
     await close();

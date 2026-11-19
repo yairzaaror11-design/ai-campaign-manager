@@ -18,7 +18,7 @@ const due = (now = new Date()) => { const t = israelNow(now); return t.weekday =
 const periodKey = (now = new Date()) => 'week:' + israelNow(now).date;
 
 // Clients with something to report: a connected ad account or leads in the last 30 days.
-async function candidates(key, limit = 20) {
+async function candidates(key, limit = 200) {
   return (await db.query(`SELECT c.id, c.phone, w.opted_in, w.last_inbound_at>NOW()-INTERVAL '24 hours' AS open
     FROM clients c LEFT JOIN whatsapp_contacts w ON w.phone=c.phone
     WHERE (c.meta_ad_account_id IS NOT NULL OR EXISTS(SELECT 1 FROM crm_leads l WHERE l.client_id=c.id AND l.created_at>NOW()-INTERVAL '30 days'))

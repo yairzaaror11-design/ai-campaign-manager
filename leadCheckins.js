@@ -26,7 +26,7 @@ function businessHours(now = new Date()) {
 }
 
 // The oldest lead per owner that is due for a question it has not been asked yet.
-async function dueLeads(limit = 10) {
+async function dueLeads(limit = 200) {
   return (await db.query(`SELECT DISTINCT ON (l.client_id) l.id, l.client_id, l.name, l.status, l.version,
       EXTRACT(EPOCH FROM NOW()-l.updated_at)/3600 AS hours_in_stage, c.phone
     FROM crm_leads l

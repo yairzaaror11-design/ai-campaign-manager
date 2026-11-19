@@ -34,10 +34,42 @@ async function metaSpend(clientId, preset) {
       const c = await meta.credentials(clientId);
       if (!c?.meta_ad_account_id) return null;
       const report = await require('./metaAds').getCampaignPerformance(c.meta_ad_account_id, preset);
-      const spend = (report.data || []).reduce((t, row) => t + (Number(row.spend) || 0), 0);
-      return Number.isFinite(spend) ? spend : null;
+      const campaigns = {};
+      for (const row of report.data || []) {
+        if (!/^\d{1,40}$/.test(String(row.campaign_id || ''))) continue;
+        const entry = campaigns[row.campaign_id] || (campaigns[row.campaign_id] = { name: String(row.campaign_name || '').slice(0, 40), spend: 0 });
+        entry.spend += Number(row.spend) || 0;
+      }
+      const total = Object.values(campaigns).reduce((t, x) => t + x.spend, 0);
+      return Number.isFinite(total) ? { total, campaigns } : null;
     });
   } catch { return null; }
+}
+
+// Source -> outcome: the same funnel per campaign, joined with that campaign's spend.
+async function byCampaign(clientId, days, campaigns = {}) {
+  const r = await db.query(`SELECT campaign_id, COUNT(*)::int AS leads,
+      COUNT(*) FILTER (WHERE status IN ('APPOINTMENT','WON'))::int AS meetings,
+      COUNT(*) FILTER (WHERE status='WON')::int AS won,
+      COALESCE(SUM(CASE WHEN status='WON' AND currency='ILS' THEN revenue_minor END),0)::bigint AS revenue_minor
+    FROM crm_leads WHERE client_id=$1 AND campaign_id IS NOT NULL AND created_at>=NOW()-make_interval(days=>$2::int)
+    GROUP BY campaign_id ORDER BY COUNT(*) DESC LIMIT 10`, [clientId, days]);
+  return r.rows.map((x) => {
+    const spend = campaigns[x.campaign_id]?.spend ?? null;
+    const won = x.won, leads = x.leads, revenue = Number(x.revenue_minor) / 100;
+    return { id: x.campaign_id, name: campaigns[x.campaign_id]?.name || 'קמפיין ' + String(x.campaign_id).slice(-4), leads, meetings: x.meetings, won, revenue, spend,
+      costPerLead: spend !== null && leads ? spend / leads : null, costPerCustomer: spend !== null && won ? spend / won : null };
+  });
+}
+
+// A data-backed budget suggestion between campaigns; shown, never executed.
+function budgetSuggestion(rows) {
+  const enough = rows.filter((x) => x.leads >= 3 && x.spend !== null);
+  if (enough.length < 2) return null;
+  const best = [...enough].sort((a, b) => (b.won / b.leads) - (a.won / a.leads))[0];
+  const worst = [...enough].sort((a, b) => (a.won / a.leads) - (b.won / b.leads))[0];
+  if (best === worst || best.won === 0 || worst.won / worst.leads >= best.won / best.leads / 2) return null;
+  return `״${best.name}״ סוגר ${Math.round(best.won / best.leads * 100)}% מהפניות לעומת ${Math.round(worst.won / worst.leads * 100)}% ב״${worst.name}״. כדאי לשקול להעביר אליו חלק מהתקציב. שום שינוי לא יבוצע בלי אישור שלך.`;
 }
 
 function metrics(f, spend) {
@@ -72,9 +104,14 @@ async function build(clientId, preset = 'last_7d', { spendFor = metaSpend } = {}
   const days = PRESET_DAYS[preset];
   if (!days) throw Error('UNSUPPORTED_REPORT_PERIOD');
   const f = await funnel(clientId, days);
-  const spend = await spendFor(clientId, preset);
+  const raw = await spendFor(clientId, preset);
+  const spend = raw === null || raw === undefined ? null : typeof raw === 'number' ? raw : raw.total;
+  const campaigns = await byCampaign(clientId, days, raw && typeof raw === 'object' ? raw.campaigns : {});
   const m = metrics(f, spend);
-  return { preset, days, funnel: f, spend, metrics: m, nextSteps: nextSteps(f, m, spend || 0) };
+  const steps = nextSteps(f, m, spend || 0);
+  const suggestion = budgetSuggestion(campaigns);
+  if (suggestion) steps.splice(1, 0, suggestion);
+  return { preset, days, funnel: f, spend, metrics: m, campaigns, nextSteps: steps.slice(0, 3) };
 }
 
 function format(report) {
@@ -86,6 +123,17 @@ function format(report) {
   lines.push(`🤝 פגישות: ${f.meetings} (${pct(m.meetingRate)})`);
   lines.push(`✅ עסקאות שנסגרו: ${f.won} (${pct(m.closeRate)})` + (m.costPerCustomer !== null ? `, ${ils(m.costPerCustomer)} ללקוח` : ''));
   lines.push('💵 הכנסות מהפניות: ' + ils(f.revenue) + (m.revenuePerShekel !== null ? ` (כל ₪1 בפרסום החזיר ₪${m.revenuePerShekel.toFixed(1)})` : ''));
+  if (report.campaigns?.length) {
+    lines.push('');
+    lines.push('לפי קמפיין:');
+    for (const c of report.campaigns.slice(0, 3)) {
+      lines.push(`• ${c.name}: ${c.leads} פניות, ${c.won} נסגרו` + (c.revenue ? `, ${ils(c.revenue)} הכנסות` : '') + (c.costPerCustomer !== null ? `, ${ils(c.costPerCustomer)} ללקוח` : c.costPerLead !== null ? `, ${ils(c.costPerLead)} לפנייה` : ''));
+    }
+  }
+  if (report.funnel.leads > 0 && report.funnel.won === 0) {
+    lines.push('');
+    lines.push('שימו לב: עוד אין עסקאות מסומנות, אז אפשר למדוד פניות אבל עדיין לא להוכיח מאיזה קמפיין נוצרה הכנסה.');
+  }
   lines.push('');
   lines.push('מה כדאי לעשות עכשיו:');
   report.nextSteps.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
@@ -98,4 +146,4 @@ async function businessReport(clientId, preset = 'last_7d', options = {}) {
   return format(await build(clientId, preset, options));
 }
 
-module.exports = { build, format, businessReport, funnel, metrics, nextSteps };
+module.exports = { build, format, businessReport, funnel, metrics, nextSteps, byCampaign, budgetSuggestion };

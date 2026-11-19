@@ -259,6 +259,10 @@ async function routeText(from, text, prefix = '') {
     await require('./db').query('UPDATE whatsapp_contacts SET opted_in=$2 WHERE phone=$1',[from,text==='/notifications-on']);
     await safeSend(from,text==='/notifications-on'?'הסכמת לקבלת עדכונים נרשמה. ניתן לבטל עם /notifications-off.':'הסכמת העדכונים בוטלה.');return;
   }
+  if (/^(?:בדיקת מוכנות|\/readiness|האם אני מוכן לפרסם\??)$/.test(text)) {
+    try {const client=await getOrCreateClient(from);const rc=require('./readinessCheck');await safeSend(from,rc.format(await rc.run(client.id)));}
+    catch {await safeSend(from,'לא הצלחתי להשלים את בדיקת המוכנות כרגע. אפשר לנסות שוב בעוד כמה דקות.');}return;
+  }
   const businessReportMatch=text.match(/^(?:\/business-report|דוח עסקי)(?:\s+(7|14|30))?$/);
   if (businessReportMatch) {
     try {const client=await getOrCreateClient(from);await safeSend(from,await require('./businessReport').businessReport(client.id,'last_'+(businessReportMatch[1]||'7')+'d'));}
