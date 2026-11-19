@@ -41,3 +41,14 @@ test('OpenAI generations and reference edits send the right request and return a
     await assert.rejects(g.generate('x'), /GRAPHIC_PROVIDER_FAILED/);
   } finally { axios.post = post; }
 }));
+
+test('Gemini retries once when the answer has no image', withEnv({ GRAPHICS_PROVIDER: undefined, GEMINI_API_KEY: 'g-test', GEMINI_IMAGE_MODEL: 'gemini-test-image' }, async () => {
+  const post = axios.post; let n = 0;
+  axios.post = async () => { n++; return n === 1 ? { data: { candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: 'x' }] } }] } } : { data: { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: PNG.toString('base64') } }] } }] } }; };
+  try {
+    const image = await g.generate('מבצע');
+    assert.equal(image.mimeType, 'image/png'); assert.equal(n, 2);
+    n = 0; axios.post = async () => { n++; return { data: { candidates: [{ content: { parts: [] } }] } }; };
+    await assert.rejects(g.generate('x'), /GRAPHIC_IMAGE_REQUIRED/); assert.equal(n, 2);
+  } finally { axios.post = post; }
+}));
