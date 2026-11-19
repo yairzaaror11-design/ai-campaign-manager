@@ -45,7 +45,7 @@ async function createCampaign(plan) {
 }
 async function createAdSet(plan) {
  const p=plan.parameters;
- return post(plan,'/'+plan.target.accountId+'/adsets',{name:p.name,campaign_id:p.campaignId,daily_budget:p.dailyBudgetMinor,billing_event:p.billingEvent,optimization_goal:p.optimizationGoal,bid_strategy:p.bidStrategy,targeting:p.targeting,promoted_object:p.promotedObject,start_time:p.startTime,end_time:p.endTime,status:'PAUSED'});
+ return post(plan,'/'+plan.target.accountId+'/adsets',{name:p.name,campaign_id:p.campaignId,daily_budget:p.dailyBudgetMinor,billing_event:p.billingEvent,optimization_goal:p.optimizationGoal,bid_strategy:p.bidStrategy,targeting:require('./geoTargeting').forMeta(p.targeting),promoted_object:p.promotedObject,start_time:p.startTime,end_time:p.endTime,status:'PAUSED'});
 }
 async function createCreative(plan) {
  const p=plan.parameters;
@@ -67,7 +67,7 @@ async function createBundle(plan) {
  if(!/^\d+$/.test(creative.id || '')) throw Error('CREATIVE_RESULT_UNCERTAIN');
  const adsetIds=[],adIds=[];
  for(const set of p.adSets) {
-   const adset=await post(plan,'/'+plan.target.accountId+'/adsets',{name:set.name,campaign_id:campaign.id,daily_budget:set.dailyBudgetMinor,billing_event:set.billingEvent,optimization_goal:set.optimizationGoal,bid_strategy:set.bidStrategy,targeting:set.targeting,promoted_object:set.promotedObject,start_time:set.startTime,end_time:set.endTime,status:'PAUSED'});
+   const adset=await post(plan,'/'+plan.target.accountId+'/adsets',{name:set.name,campaign_id:campaign.id,daily_budget:set.dailyBudgetMinor,billing_event:set.billingEvent,optimization_goal:set.optimizationGoal,bid_strategy:set.bidStrategy,targeting:require('./geoTargeting').forMeta(set.targeting),promoted_object:set.promotedObject,start_time:set.startTime,end_time:set.endTime,status:'PAUSED'});
    if(!/^\d+$/.test(adset.id || '')) throw Error('ADSET_RESULT_UNCERTAIN');
    adsetIds.push(adset.id);
    const ad=await post(plan,'/'+plan.target.accountId+'/ads',{name:set.name+' — '+p.headline,adset_id:adset.id,creative:{creative_id:creative.id},status:'PAUSED'});
