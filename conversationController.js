@@ -7,6 +7,13 @@ async function owns(clientId){
  const client=(await db.query('SELECT phone FROM clients WHERE id=$1',[clientId])).rows[0];
  return String(process.env.AUTHORIZED_PHONE_NUMBERS||'').split(',').map(require('./auth').normalizePhone).filter(Boolean).includes(client?.phone);
 }
+// Commands with their own deterministic handlers in messageHandler.
+function passesThrough(message){
+ if(/^\/(?:meta-|report(?:\s|$)|notifications-|business-report(?:\s|$)|readiness$|video\s)/.test(message))return true;
+ if(/^(?:דוח עסקי(?:\s+(?:7|14|30))?|בדיקת מוכנות|האם אני מוכן לפרסם\??)$/.test(message))return true;
+ const video=require('./videoService');
+ return video.enabled()&&!!video.videoRequest(message);
+}
 async function handle(clientId,input,options={}){
  if(!await owns(clientId))return null;
  const message=input.message.trim(),eventId=input.requestId,dynamicRouting=process.env.DYNAMIC_CONVERSATION_ENABLED==='true';
@@ -17,7 +24,9 @@ async function handle(clientId,input,options={}){
  const active=await tasks.active(clientId);
  if(/^אשר\s+\d{6}$/.test(message)&&!active)return{handled:true,reply:'אין פעולה ממתינה במשימה הנוכחית. לא אשתמש באישור מתוכנית קודמת. אפשר לבקש להכין את הפעולה מחדש לבדיקה.'};
  // Only explicit infrastructure commands may reach their existing adapters.
- if(/^\/(?:meta-|report(?:\s|$)|notifications-)/.test(message))return null;
+ if(passesThrough(message))return null;
+ // Lead status updates (also the buttons of proactive check-ins) and CRM commands.
+ const crm=await require('./crmConversation').handle(clientId,message);if(crm)return crm;
  if(message.startsWith('/')&&message!=='/start')return{handled:true,reply:'אפשר לכתוב כאן במילים מה תרצה להשיג. אמשיך מאותה בקשה ואציג את התוצרים לבדיקה לפני כל פעולה.'};
  const profile=await require('./marketingStore').load(clientId);
  const connection=['connect','disconnect','renew','connection_status','select_account'].includes(analysis.intent)||profile?.connection?.status==='ACCOUNT_SELECTION_REQUIRED'&&/^\d{1,3}$/.test(message)||profile?.connection?.status==='CONNECTION_OFFERED'&&analysis.intent==='yes';
@@ -39,4 +48,4 @@ async function media(clientId,input,options={}){
  return handle(clientId,input,options);
 }
 function acceptsInteractive(profile){return ['action_approval','account_selection','connection_offer','connected'].includes(profile?.ui?.decisionKey);}
-module.exports={owns,handle,media,acceptsInteractive};
+module.exports={passesThrough,owns,handle,media,acceptsInteractive};

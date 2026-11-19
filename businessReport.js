@@ -138,7 +138,7 @@ function format(report) {
   lines.push('מה כדאי לעשות עכשיו:');
   report.nextSteps.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
   lines.push('');
-  lines.push('ההכנסות כאן הן לפני עלויות המוצר או השירות. לעדכון פניות כתבו: לידים');
+  lines.push('ההכנסות כאן הן לפני עלויות המוצר או השירות. לעדכון פניות כתבו: הלידים שלי');
   return lines.join('\n');
 }
 

@@ -426,9 +426,15 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
       if(!copy?.artifact.reviewed||p.message!==copy.artifact.adContent||p.headline!==copy.artifact.campaignDraft.headline||!upload||p.imageHash!==upload.result.id)throw Error('CAMPAIGN_CONTENT_NOT_REVIEWED');
      }
     }
+    // An image upload only needs the reviewed media id; extra model-written fields
+    // (names, captions) would be refused by the approval policy.
+    if(step.intent==='UPLOAD_IMAGE'&&n.proposal?.parameters&&typeof n.proposal.parameters==='object')n.proposal.parameters={mediaId:n.proposal.parameters.mediaId};
     const plan={...require('./actionPlan').createActionPlan(n.proposal),taskId:task.id,taskStepId:step.id,taskCreationLease:lease};
     step.status='RUNNING';await checkpoint(task,lease);
-    const a=await require('./approvalEngine').createApprovalForClient(clientId,plan);
+    let a;
+    // Creating the approval sends nothing to Meta; a refusal here is not an uncertain write.
+    try{a=await require('./approvalEngine').createApprovalForClient(clientId,plan);}
+    catch(error){step.status='PENDING';throw error;}
     step.result={approval:{actionId:a.actionId,planHash:require('./approvalPolicy').planHash(a.actionPlan),plan:a.actionPlan,codeCiphertext:meta.encrypt(a.code,clientId),expiresAt:a.expiresAt}};step.status='WAITING_APPROVAL';task.status='WAITING_APPROVAL';
     if(require('./scopedAuthority').enabled()){
      await checkpoint(task,lease);

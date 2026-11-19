@@ -28,10 +28,16 @@ function sdk() {
 function creator(options, timeout) {
   if (options.client) return (body) => options.client.create(body);
   return async (body) => {
+    const Anthropic = require('@anthropic-ai/sdk').default;
+    const send = (b) => sdk().beta.messages.create({ ...b, betas: [FALLBACK_BETA], fallbacks: 'default' }, { timeout });
     try {
-      return await sdk().beta.messages.create({ ...body, betas: [FALLBACK_BETA], fallbacks: 'default' }, { timeout });
+      return await send(body);
     } catch (error) {
-      const Anthropic = require('@anthropic-ai/sdk').default;
+      // A schema the constrained decoder does not accept falls back to prompt-only JSON.
+      if (error instanceof Anthropic.BadRequestError && body.output_config?.format) {
+        const { format, ...rest } = body.output_config;
+        try { return await send({ ...body, output_config: rest }); } catch (retry) { if (retry instanceof Anthropic.APIError) throw Error('AI_REQUEST_FAILED'); throw retry; }
+      }
       if (error instanceof Anthropic.APIError) throw Error('AI_REQUEST_FAILED');
       throw error;
     }
@@ -63,7 +69,7 @@ function systemFor(options) {
 }
 
 // Routing and short chat stay fast at low effort; planning gets medium.
-const effortFor = (options) => (options.taskPlanning ? 'medium' : 'low');
+const effortFor = (options) => (options.taskPlanning ? (['low','medium','high'].includes(process.env.CLAUDE_PLANNING_EFFORT) ? process.env.CLAUDE_PLANNING_EFFORT : 'medium') : 'low');
 
 async function processWithClaude(text, history = [], options = {}) {
   if (!process.env.ANTHROPIC_API_KEY && !options.client) throw Error('ANTHROPIC_API_KEY_REQUIRED');
@@ -78,7 +84,7 @@ async function processWithClaude(text, history = [], options = {}) {
       model: name,
       max_tokens: 16000,
       cache_control: { type: 'ephemeral' },
-      output_config: { effort: effortFor(options) },
+      output_config: { effort: effortFor(options), ...(options.taskPlanning && options.taskPlanningSchema && process.env.CLAUDE_STRUCTURED_PLANNING !== 'false' ? { format: { type: 'json_schema', schema: options.taskPlanningSchema } } : {}) },
       system: systemFor(options),
       messages,
       ...(tools ? { tools } : {})

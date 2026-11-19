@@ -27,8 +27,9 @@ services:
         value: "100"
       - key: GEMINI_IMAGE_MODEL
         value: gemini-nano-banana-2.1
+      # Owned by the Render dashboard (primary model can be switched without a code change).
       - key: AI_PROVIDER
-        value: gemini
+        sync: false
       # Second provider that answers when the primary fails (claude|gemini). Set in the dashboard.
       - key: AI_FALLBACK_PROVIDER
         sync: false
