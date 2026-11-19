@@ -412,7 +412,11 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     require('./graphicService').references({referenceImages});
     try{await options.onProgress?.(step.packageImage?'מכין את העיצוב לקמפיין. אשלח אותו יחד עם שאר הדברים שהכנתי לבדיקה.':'מכין את העיצוב. אשלח אותו לבדיקה כשהוא יהיה מוכן.');}catch{require('./logger').logger.warn('Task progress notice unavailable');}
     step.status='RUNNING';await checkpoint(task,lease);
-    const output=await require('./whatsappDelivery').messageContext.run({eventId:'task:'+task.id+':'+step.id},()=>require('./graphicService').createGraphic(clientId,prompt,{...(options.imageOptions||{}),referenceImages}));
+    let output;
+    // A failed createGraphic stores no media: the step may be retried under a fresh attempt id
+    // (the per-event dedupe would otherwise refuse it); only a concurrent in-flight job stays uncertain.
+    try{output=await require('./whatsappDelivery').messageContext.run({eventId:'task:'+task.id+':'+step.id+(step.imageAttempts?':'+step.imageAttempts:'')},()=>require('./graphicService').createGraphic(clientId,prompt,{...(options.imageOptions||{}),referenceImages}));}
+    catch(error){if(error?.message!=='GRAPHIC_ALREADY_ATTEMPTED'){step.status='PENDING';step.imageAttempts=(step.imageAttempts||0)+1;}throw error;}
     if(!output?.id)throw Error('TASK_IMAGE_NOT_VERIFIED');
     step.result={mediaId:output.id,kind:'image',verified:true};step.artifact={title:step.label,content:'התמונה שנוצרה נשלחה כאן לבדיקה.',mediaId:output.id,...(n.imageText?{imageText:n.imageText}:{}),reviewed:false,hash:hash({mediaId:output.id,imageText:n.imageText||null})};step.status='PREPARED';task.newMedia=[...(task.newMedia||[]),output.id];
    }else if(n.op==='meta'){
