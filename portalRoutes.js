@@ -33,7 +33,7 @@ router.post('/app/api/logout',endpoint(async(req,res)=>{
  await db.query('DELETE FROM portal_sessions WHERE token_hash=$1',[req.portal.tokenHash]);
  res.setHeader('Set-Cookie',['cb_session=; Path=/app; HttpOnly; Secure; SameSite=Strict; Max-Age=0','cb_csrf=; Path=/app; Secure; SameSite=Strict; Max-Age=0']);res.json({ok:true});
 }));
-router.get('/app/api/leads',endpoint(async(req,res)=>res.json({leads:await require('./crmService').list(req.portal.clientId)})));
+router.get('/app/api/leads',endpoint(async(req,res)=>res.json({leads:await require('./crmService').list(req.portal.clientId),speed:await require('./leadSpeed').stats(req.portal.clientId,30).catch(()=>null)})));
 router.get('/app/api/leads/export.csv',endpoint(async(req,res)=>{const crm=require('./crmService');res.set({'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="leads.csv"'});res.send(crm.csv(await crm.list(req.portal.clientId,{limit:5000})));}));
 router.get('/app/api/leads/:id/timeline',endpoint(async(req,res)=>res.json({events:await require('./crmService').timeline(req.portal.clientId,req.params.id)})));
 router.post('/app/api/leads/:id/reminder',endpoint(async(req,res)=>{if(!/^[a-f0-9-]{36}$/i.test(req.params.id))return res.sendStatus(400);res.json(await require('./crmService').addReminder(req.portal.clientId,req.params.id,{date:req.body?.date,requestId:req.body?.requestId}));}));

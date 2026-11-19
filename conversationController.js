@@ -58,5 +58,5 @@ async function media(clientId,input,options={}){
  if(!await tasks.active(clientId))return{handled:true,reply:'הקובץ נשמר לשיחה. מה תרצה להכין איתו?'};
  return handle(clientId,input,options);
 }
-function acceptsInteractive(profile){return ['action_approval','account_selection','connection_offer','connected','task_review','guard_alert','billing_cancel'].includes(profile?.ui?.decisionKey);}
+function acceptsInteractive(profile){return ['action_approval','account_selection','connection_offer','connected','task_review','guard_alert','billing_cancel','lead_contact'].includes(profile?.ui?.decisionKey);}
 module.exports={passesThrough,owns,handle,media,acceptsInteractive};

@@ -109,12 +109,14 @@ async function build(clientId, preset = 'last_7d', { spendFor = metaSpend } = {}
   const campaigns = await byCampaign(clientId, days, raw && typeof raw === 'object' ? raw.campaigns : {});
   const m = metrics(f, spend);
   const steps = nextSteps(f, m, spend || 0);
+  const speed = await require('./leadSpeed').stats(clientId, days).catch(() => null);
+  if (speed?.leads >= 3 && speed.avgMinutes > 60) steps.splice(f.staleUntouched > 0 ? 1 : 0, 0, `זמן התגובה הממוצע ללידים הוא ${speed.label}. מי שחוזר תוך 15 דקות סוגר הרבה יותר. ההודעה המוכנה בהתראה חוסכת את רוב הזמן.`);
   const suggestion = budgetSuggestion(campaigns);
   if (suggestion) steps.splice(1, 0, suggestion);
   // Every campaign that spent in the period, with its CRM results when there are any.
   const byId = Object.fromEntries(campaigns.map((x) => [x.id, x]));
   const metaCampaigns = Object.entries(raw && typeof raw === 'object' ? raw.campaigns : {}).map(([id, x]) => ({ id, name: x.name || 'קמפיין ' + id.slice(-4), spend: x.spend, leads: byId[id]?.leads || 0, won: byId[id]?.won || 0, revenue: byId[id]?.revenue || 0 })).sort((a, b) => b.spend - a.spend).slice(0, 20);
-  return { preset, days, funnel: f, spend, metrics: m, campaigns, metaCampaigns, nextSteps: steps.slice(0, 3) };
+  return { preset, days, funnel: f, spend, metrics: m, speed, campaigns, metaCampaigns, nextSteps: steps.slice(0, 3) };
 }
 
 function format(report) {
@@ -129,6 +131,7 @@ function format(report) {
   lines.push('💰 סכום שהוצא: ' + (spend === null ? 'אין חשבון Meta מחובר (אפשר לחבר עם /meta-connect)' : ils(spend)));
   lines.push(`📥 לידים: ${f.leads}` + (m.costPerLead !== null ? ` (${ils(m.costPerLead)} עלות לליד)` : ''));
   lines.push(`📞 קיבלו מענה: ${f.contacted} (${pct(m.contactRate)})`);
+  if (report.speed?.leads) lines.push(`⏱ זמן תגובה ממוצע: ${report.speed.label}` + (report.speed.fastShare !== null ? ` (${pct(report.speed.fastShare)} תוך 15 דקות)` : ''));
   lines.push(`🤝 פגישות: ${f.meetings} (${pct(m.meetingRate)})`);
   lines.push(`✅ מכירות: ${f.won} (${pct(m.closeRate)})` + (m.costPerCustomer !== null ? `, ${ils(m.costPerCustomer)} עלות למכירה` : ''));
   lines.push('💵 הכנסות מהלידים: ' + ils(f.revenue) + (m.revenuePerShekel !== null ? ` (כל ₪1 בפרסום החזיר ₪${m.revenuePerShekel.toFixed(1)})` : ''));
