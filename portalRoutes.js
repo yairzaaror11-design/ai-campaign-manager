@@ -2,7 +2,7 @@
 const router=require('express').Router(),path=require('node:path'),db=require('./db'),auth=require('./portalStore');
 router.use('/app',(req,res,next)=>{res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"});next();});
 router.get('/app',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/index.html')));
-router.get('/app/:screen',(req,res,next)=>{if(![...require('./portalAgent').SCREENS,'pages','performance'].includes(req.params.screen))return next();res.sendFile(path.join(__dirname,'public/portal/index.html'));});
+router.get('/app/:screen',(req,res,next)=>{if(![...require('./portalAgent').SCREENS,'pages','performance','approvals'].includes(req.params.screen))return next();res.sendFile(path.join(__dirname,'public/portal/index.html'));});
 router.get('/app/portal.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/portal.js')));
 router.get('/app/dashboard.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/dashboard.js')));
 router.get('/app/components.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/components.js')));
@@ -114,6 +114,14 @@ router.post('/app/api/billing/manage',endpoint(async(req,res)=>res.json(await re
 router.get('/app/api/billing/invoices',endpoint(async(req,res)=>{const r=await db.query('SELECT amount_paid_minor,currency,status,hosted_url,created_at FROM billing_invoices WHERE client_id=$1 ORDER BY created_at DESC LIMIT 50',[req.portal.clientId]);res.json({invoices:r.rows});}));
 router.post('/billing/webhook',require('./rateLimit').middleware('billing-webhook',120),async(req,res)=>{try{const event=require('./billingService').verify(req.rawBody,req.headers['stripe-signature']);res.json(await require('./billingService').apply(event));}catch{res.status(400).json({error:'Invalid billing event'});}});
 // Structured business report: spend, funnel, per-campaign results and next steps.
+// Today, setup checklist, trend, campaigns and approvals: the dashboard's operating view.
+router.get('/app/api/today',endpoint(async(req,res)=>{const f=require('./dashboardFeed');const [items,setup]=await Promise.all([f.today(req.portal.clientId),f.checklist(req.portal.clientId)]);res.json({items,setup});}));
+router.get('/app/api/trend',endpoint(async(req,res)=>res.json(await require('./dashboardFeed').trend(req.portal.clientId,req.query.days==='30'?30:14))));
+router.get('/app/api/campaigns',endpoint(async(req,res)=>res.json(await require('./dashboardFeed').campaigns(req.portal.clientId))));
+router.post('/app/api/campaigns/:id/action',require('./rateLimit').middleware('portal-campaign-action',20),endpoint(async(req,res)=>res.json(await require('./dashboardApprovals').prepareCampaignAction(req.portal.clientId,req.params.id,req.body?.kind))));
+router.get('/app/api/approvals',endpoint(async(req,res)=>res.json({approvals:await require('./dashboardApprovals').pending(req.portal.clientId)})));
+router.post('/app/api/approvals/:id/approve',endpoint(async(req,res)=>{if(req.body?.confirm!==true)return res.sendStatus(400);res.json(await require('./dashboardApprovals').approve(req.portal.clientId,req.params.id));}));
+router.post('/app/api/approvals/:id/reject',endpoint(async(req,res)=>res.json(await require('./dashboardApprovals').reject(req.portal.clientId,req.params.id))));
 router.get('/app/api/business-report',endpoint(async(req,res)=>{
  const preset=['last_7d','last_14d','last_30d'].includes(req.query.period)?req.query.period:'last_7d';
  res.json(await require('./businessReport').build(req.portal.clientId,preset));

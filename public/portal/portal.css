@@ -503,3 +503,18 @@ a.button{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--b
 .lead{align-items:flex-start}.lead select{height:auto;align-self:flex-start}.lead>button,.lead .secondary{align-self:flex-start}
 .performance-body .stats-row{grid-template-columns:repeat(2,minmax(0,1fr))}.performance-body .stat{border-bottom:1px solid var(--border)}.performance-body .stat strong{font-size:24px}
 .performance-body td,.performance-body th{white-space:normal}
+.today-card .today-body{display:grid;gap:10px}
+.today-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:var(--surface)}
+.today-row small{display:block;margin-top:2px}
+.today-row.urgency-3{border-inline-start:4px solid var(--danger)}.today-row.urgency-2{border-inline-start:4px solid var(--warning)}.today-row.urgency-1{border-inline-start:4px solid var(--primary)}
+.today-clear{color:var(--success);font-weight:600}
+.setup-steps{display:grid;gap:8px;padding:14px 16px;border-radius:14px;background:var(--primary-soft);margin-bottom:6px}
+.setup-row{display:flex;align-items:center;gap:10px}.setup-row button{margin-inline-start:auto;min-height:34px;padding:4px 14px}.setup-row.done{color:var(--muted);text-decoration:line-through}
+.setup-mark{font-weight:700;color:var(--primary);width:18px;text-align:center}
+.trend-chart{width:100%;height:auto;max-height:220px;display:block}.trend-bar{fill:var(--primary);opacity:.8}.trend-line{fill:none;stroke:var(--warning);stroke-width:2.5}
+.trend-legend{display:flex;gap:18px;font-size:12px;color:var(--muted)}.legend-bars{color:var(--primary)}.legend-line{color:var(--warning)}
+.trend-up{color:var(--success);font-weight:600}.trend-down{color:var(--danger);font-weight:600}
+.bell-count{position:absolute;top:-4px;inset-inline-end:-4px;background:var(--danger);color:#fff;border-radius:999px;font-size:11px;min-width:18px;height:18px;display:grid;place-items:center;padding:0 4px}
+[aria-label^="התראות"]{position:relative}
+.approval-summary{background:var(--canvas);border-radius:12px;padding:14px;font-size:14px}
+@media (max-width:700px){.today-row{flex-direction:column;align-items:stretch}.today-row button{width:100%}}
