@@ -130,6 +130,7 @@ router.post('/app/api/organic/approve-all',endpoint(async(req,res)=>res.json({ap
 router.post('/app/api/organic/status',endpoint(async(req,res)=>res.json(await require('./organicContent').setStatus(req.portal.clientId,req.body?.status))));
 router.post('/app/api/organic/posts/:id',endpoint(async(req,res)=>res.json(await require('./organicContent').updatePost(req.portal.clientId,req.params.id,{action:req.body?.action,caption:req.body?.caption}))));
 router.post('/app/api/organic/photo-shoot',endpoint(async(req,res)=>res.json(await require('./organicContent').requestShoot(req.portal.clientId,String(req.body?.details||'')))));
+router.get('/app/api/activity',endpoint(async(req,res)=>res.json({items:await require('./activityLog').list(req.portal.clientId,{days:30})})));
 router.get('/app/api/approvals',endpoint(async(req,res)=>res.json({approvals:await require('./dashboardApprovals').pending(req.portal.clientId)})));
 router.post('/app/api/approvals/:id/approve',endpoint(async(req,res)=>{if(req.body?.confirm!==true)return res.sendStatus(400);res.json(await require('./dashboardApprovals').approve(req.portal.clientId,req.params.id));}));
 router.post('/app/api/approvals/:id/reject',endpoint(async(req,res)=>res.json(await require('./dashboardApprovals').reject(req.portal.clientId,req.params.id))));

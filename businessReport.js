@@ -119,29 +119,35 @@ async function build(clientId, preset = 'last_7d', { spendFor = metaSpend } = {}
 
 function format(report) {
   const { funnel: f, metrics: m, spend } = report;
-  const lines = [`📊 דוח עסקי ל־${report.days} הימים האחרונים`, ''];
-  lines.push('💰 פרסום: ' + (spend === null ? 'אין חשבון מטא מחובר (אפשר לחבר עם /meta-connect)' : ils(spend)));
-  lines.push(`📥 פניות: ${f.leads}` + (m.costPerLead !== null ? ` (${ils(m.costPerLead)} לפנייה)` : ''));
+  const lines = [`📊 הדוח העסקי שלך, ${report.days} הימים האחרונים`, ''];
+  // The bottom line first: what the advertising brought in money, not clicks.
+  if (f.won > 0) {
+    const left = spend !== null ? f.revenue - spend : null;
+    lines.push(`🏆 השורה התחתונה: ${f.won} מכירות` + (m.costPerCustomer !== null ? ` · ${ils(m.costPerCustomer)} עלות למכירה` : '') + (f.revenue ? ` · ${ils(f.revenue)} הכנסות` : '') + (left !== null && f.revenue ? ` · ${left >= 0 ? 'נשאר לך' : 'חסר'} ${ils(Math.abs(left))} אחרי הפרסום` : ''));
+    lines.push('');
+  }
+  lines.push('💰 סכום שהוצא: ' + (spend === null ? 'אין חשבון Meta מחובר (אפשר לחבר עם /meta-connect)' : ils(spend)));
+  lines.push(`📥 לידים: ${f.leads}` + (m.costPerLead !== null ? ` (${ils(m.costPerLead)} עלות לליד)` : ''));
   lines.push(`📞 קיבלו מענה: ${f.contacted} (${pct(m.contactRate)})`);
   lines.push(`🤝 פגישות: ${f.meetings} (${pct(m.meetingRate)})`);
-  lines.push(`✅ עסקאות שנסגרו: ${f.won} (${pct(m.closeRate)})` + (m.costPerCustomer !== null ? `, ${ils(m.costPerCustomer)} ללקוח` : ''));
-  lines.push('💵 הכנסות מהפניות: ' + ils(f.revenue) + (m.revenuePerShekel !== null ? ` (כל ₪1 בפרסום החזיר ₪${m.revenuePerShekel.toFixed(1)})` : ''));
+  lines.push(`✅ מכירות: ${f.won} (${pct(m.closeRate)})` + (m.costPerCustomer !== null ? `, ${ils(m.costPerCustomer)} עלות למכירה` : ''));
+  lines.push('💵 הכנסות מהלידים: ' + ils(f.revenue) + (m.revenuePerShekel !== null ? ` (כל ₪1 בפרסום החזיר ₪${m.revenuePerShekel.toFixed(1)})` : ''));
   if (report.campaigns?.length) {
     lines.push('');
     lines.push('לפי קמפיין:');
     for (const c of report.campaigns.slice(0, 3)) {
-      lines.push(`• ${c.name}: ${c.leads} פניות, ${c.won} נסגרו` + (c.revenue ? `, ${ils(c.revenue)} הכנסות` : '') + (c.costPerCustomer !== null ? `, ${ils(c.costPerCustomer)} ללקוח` : c.costPerLead !== null ? `, ${ils(c.costPerLead)} לפנייה` : ''));
+      lines.push(`• ${c.name}: ${c.leads} לידים, ${c.won} מכירות` + (c.revenue ? `, ${ils(c.revenue)} הכנסות` : '') + (c.costPerCustomer !== null ? `, ${ils(c.costPerCustomer)} עלות למכירה` : c.costPerLead !== null ? `, ${ils(c.costPerLead)} עלות לליד` : ''));
     }
   }
   if (report.funnel.leads > 0 && report.funnel.won === 0) {
     lines.push('');
-    lines.push('שימו לב: עוד אין עסקאות מסומנות, אז אפשר למדוד פניות אבל עדיין לא להוכיח מאיזה קמפיין נוצרה הכנסה.');
+    lines.push('שים לב: עוד לא סימנת מכירות, אז אפשר למדוד לידים אבל עוד לא לדעת מאיזה קמפיין נוצרה הכנסה. כדי לסמן מכירה כתוב: הלידים שלי');
   }
   lines.push('');
   lines.push('מה כדאי לעשות עכשיו:');
   report.nextSteps.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
   lines.push('');
-  lines.push('ההכנסות כאן הן לפני עלויות המוצר או השירות. לעדכון פניות כתבו: הלידים שלי');
+  lines.push('ההכנסות כאן לפני עלויות המוצר או השירות. לעדכון לידים כתוב: הלידים שלי');
   lines.push(require('./dashboardLink').hint('performance'));
   return lines.join('\n');
 }

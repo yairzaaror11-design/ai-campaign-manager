@@ -28,7 +28,7 @@ test('the report connects spend to leads, meetings, sales and revenue', async ()
     assert.ok(Math.abs(r.metrics.revenuePerShekel - 2500 / 1200) < 1e-9);
     assert.match(r.nextSteps[0], /1 לידים שמחכים יותר מיום/);
     const text = report.format(r);
-    assert.match(text, /פניות: 6 \(₪200 לפנייה\)/);
+    assert.match(text, /לידים: 6 \(₪200 עלות לליד\)/);
     assert.match(text, /כל ₪1 בפרסום החזיר ₪2\.1/);
   } finally { await close(); }
 });
@@ -38,7 +38,7 @@ test('no connected ad account and no leads still produce a useful report', async
   try {
     const client = (await db.query("INSERT INTO clients(phone) VALUES('972500000102') RETURNING id")).rows[0].id;
     const text = await report.businessReport(client, 'last_7d', { spendFor: async () => null });
-    assert.match(text, /אין חשבון מטא מחובר/);
+    assert.match(text, /אין חשבון Meta מחובר/);
     assert.match(text, /עוד אין (פניות|לידים)/);
     await assert.rejects(report.build(client, 'last_year'), /UNSUPPORTED_REPORT_PERIOD/);
   } finally { await close(); }
@@ -65,12 +65,12 @@ test('outcomes are split by campaign and a better-closing campaign is suggested,
     assert.ok(r.nextSteps.some((s) => /״מבצע קיץ״ סוגר 50% מהלידים לעומת 0%/.test(s) && /בלי אישור שלך/.test(s)));
     const text = report.format(r);
     assert.match(text, /לפי קמפיין:/);
-    assert.match(text, /מבצע קיץ: 4 פניות, 2 נסגרו/);
+    assert.match(text, /מבצע קיץ: 4 לידים, 2 מכירות/);
   } finally { await close(); }
 });
 
 test('the report says plainly when there is no sales data yet', () => {
   const f = { leads: 4, untouched: 4, staleUntouched: 0, contacted: 0, meetings: 0, won: 0, lost: 0, revenue: 0 };
   const text = report.format({ days: 7, funnel: f, spend: 100, metrics: report.metrics(f, 100), campaigns: [], nextSteps: ['x'] });
-  assert.match(text, /עדיין לא להוכיח מאיזה קמפיין נוצרה הכנסה/);
+  assert.match(text, /עוד לא לדעת מאיזה קמפיין נוצרה הכנסה/);
 });
