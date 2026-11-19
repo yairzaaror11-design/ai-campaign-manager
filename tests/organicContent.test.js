@@ -10,7 +10,7 @@ test('three-month organic calendar: slots, AI writer with fallback, approvals an
   const { db, close } = await openDatabase();
   try {
     const o = require('../organicContent');
-    const id = (await db.query("INSERT INTO clients(phone) VALUES('972500000461') RETURNING id")).rows[0].id;
+    const id = (await db.query("INSERT INTO clients(phone) VALUES('972500000871') RETURNING id")).rows[0].id;
     assert.equal(o.slots('2026-11-22', 3).length, 39, 'three posts a week for 13 weeks');
     assert.ok(o.slots('2026-11-22', 5).every((d) => ![5, 6].includes(new Date(d + 'T12:00:00Z').getUTCDay())), 'no Friday or Saturday posts');
     // The writer returns a good first post, a post with a link (rejected) and then fails.
@@ -50,7 +50,7 @@ test('WhatsApp: setup choice, calendar, approve all, pause, photo shoot with det
   process.env.AI_PROVIDER = 'none'; // no AI in tests: posts come from the fallback writer
   try {
     const o = require('../organicContent');
-    const id = (await db.query("INSERT INTO clients(phone) VALUES('972500000462') RETURNING id")).rows[0].id;
+    const id = (await db.query("INSERT INTO clients(phone) VALUES('972500000872') RETURNING id")).rows[0].id;
     assert.equal(await o.handle(id, 'מה שלומך'), null);
     let r = await o.handle(id, 'תוכן שוטף');
     assert.equal(r.decisionKey, 'organic_setup'); assert.match(r.reply, /איך תרצה את התמונות/);
@@ -79,14 +79,14 @@ test('background: approved posts are delivered on their day inside the WhatsApp 
   const { db, close } = await openDatabase();
   try {
     const o = require('../organicContent');
-    const id = (await db.query("INSERT INTO clients(phone) VALUES('972500000463') RETURNING id")).rows[0].id;
+    const id = (await db.query("INSERT INTO clients(phone) VALUES('972500000873') RETURNING id")).rows[0].id;
     await o.create(id, { perWeek: 3, media: 'AI_GRAPHIC', writer: async () => { throw Error('X'); }, now: new Date('2026-11-21T08:00:00Z') });
     await o.approveAll(id, { now: new Date('2026-11-21T08:00:00Z') });
     const sent = [];
     // No inbound message in 24 hours: WhatsApp would refuse, so nothing is sent yet.
     let r = await o.runDue({ now: SUNDAY, send: async (post) => sent.push(post.id) });
     assert.deepEqual(r.results, []);
-    await db.query("INSERT INTO whatsapp_contacts(phone,last_inbound_at) VALUES('972500000463',NOW())");
+    await db.query("INSERT INTO whatsapp_contacts(phone,last_inbound_at) VALUES('972500000873',NOW())");
     let fail = true;
     r = await o.runDue({ now: SUNDAY, send: async (post) => { if (fail) { fail = false; throw Error('GRAPHIC_RATE_LIMIT'); } sent.push(post.id); } });
     assert.deepEqual(r.results, ['FAILED', 'SENT'], 'one retry within the same run');
@@ -95,7 +95,7 @@ test('background: approved posts are delivered on their day inside the WhatsApp 
     assert.equal((await o.runDue({ now: SUNDAY, send: async () => sent.push('x') })).results.length, 0, 'sent once only');
     assert.equal((await o.runDue({ now: new Date('2026-11-21T08:00:00Z') })).status, 'NOT_DUE', 'no messages on Saturday');
     // The real delivery: without AI graphics it still sends the ready text, and says so.
-    await db.query("UPDATE whatsapp_contacts SET last_inbound_at=NOW() WHERE phone='972500000463'");
+    await db.query("UPDATE whatsapp_contacts SET last_inbound_at=NOW() WHERE phone='972500000873'");
     r = await o.runDue({ now: new Date('2026-11-24T08:00:00Z') });
     assert.deepEqual(r.results, ['SENT']);
     const out = (await db.query("SELECT payload FROM whatsapp_outbox WHERE client_id=$1 ORDER BY created_at DESC LIMIT 1", [id])).rows[0].payload;
