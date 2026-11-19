@@ -10,7 +10,8 @@ const enabled = () => process.env.CAMPAIGN_GUARD_ENABLED !== 'false';
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const SYMBOL = { ILS: '₪', USD: '$', EUR: '€' };
 const money = (v, cur) => Math.round(v) + ' ' + (SYMBOL[cur] || cur || '');
-const RULES = { learningHours: 72, minImpressions: 3000, wasteMinSpend: 150, wasteCplMultiple: 2.5, winnerMinLeads: 5, winnerCplRatio: 0.7, winnerMinAgeDays: 7, fatigueFrequency: 3.5, fatigueCtrDrop: 0.7, alertCooldownDays: 3 };
+const RULES = { learningHours: 72, minImpressions: 3000, wasteMinSpend: 150, wasteCplMultiple: 2.5, winnerMinLeads: 5, winnerCplRatio: 0.7, winnerMinAgeDays: 7, fatigueFrequency: 3.5, fatigueCtrDrop: 0.7, alertCooldownDays: 3, burnBudgetShare: 0.75, burnMinSpend: 20, highCplMultiple: 3, highCplMinSpend: 50, middayHour: 12, intradaySlots: [12, 16], intradayCooldownHours: 20 };
+const INTRADAY_KINDS = ['SPEND_CAP', 'BURN_NO_LEADS', 'HIGH_CPL'];
 const LEAD_ACTIONS = ['lead', 'onsite_conversion.lead_grouped', 'leadgen_grouped', 'offsite_conversion.fb_pixel_lead', 'onsite_conversion.messaging_conversation_started_7d'];
 function leadsOf(row) {
   const counts = (row?.actions || []).filter((a) => LEAD_ACTIONS.includes(a.action_type)).map((a) => num(a.value));
@@ -80,7 +81,8 @@ async function load(clientId) {
 }
 
 async function recentlyAlerted(clientId, f) {
-  return (await db.query(`SELECT 1 FROM campaign_guard_alerts WHERE client_id=$1 AND campaign_id=$2 AND kind=$3 AND sent_at>NOW()-make_interval(days=>$4::int)`, [clientId, String(f.campaignId), f.kind, RULES.alertCooldownDays])).rows.length > 0;
+  const hours = INTRADAY_KINDS.includes(f.kind) ? RULES.intradayCooldownHours : RULES.alertCooldownDays * 24;
+  return (await db.query(`SELECT 1 FROM campaign_guard_alerts WHERE client_id=$1 AND campaign_id=$2 AND kind=$3 AND sent_at>NOW()-make_interval(hours=>$4::int)`, [clientId, String(f.campaignId), f.kind, hours])).rows.length > 0;
 }
 
 async function send(client, finding, accountId) {
@@ -89,7 +91,7 @@ async function send(client, finding, accountId) {
     let actionId = null;
     if (finding.pause) {
       const { createActionPlan, formatActionPlan } = require('./actionPlan');
-      const approval = await require('./approvalEngine').createApprovalForClient(client.id, createActionPlan({ intent: 'PAUSE_CAMPAIGN', summary: `השהיית הקמפיין "${finding.campaignName}" שמוציא כסף בלי פניות`, target: { accountId, campaignId: finding.campaignId } }));
+      const approval = await require('./approvalEngine').createApprovalForClient(client.id, createActionPlan({ intent: 'PAUSE_CAMPAIGN', summary: finding.pauseSummary || `השהיית הקמפיין "${finding.campaignName}" שמוציא כסף בלי פניות`, target: { accountId, campaignId: finding.campaignId } }));
       actionId = approval.actionId;
       await db.query('INSERT INTO campaign_guard_alerts(client_id,campaign_id,kind,action_id) VALUES($1,$2,$3,$4)', [client.id, String(finding.campaignId), finding.kind, actionId]);
       const ui = await require('./conversationUi').prepareApproval(client.id, approval, finding.text + '\n\n' + formatActionPlan(approval.actionPlan));
@@ -115,8 +117,13 @@ async function dueClients(limit = 100) {
     LIMIT $1`, [limit])).rows;
 }
 
-async function runDue({ now = new Date(), loader = load } = {}) {
+async function runDue({ now = new Date(), loader = load, intradayLoader = loadToday } = {}) {
   if (!enabled() || !db.configured() || !require('./leadCheckins').businessHours(now)) return { status: 'NOT_DUE' };
+  const daily = await runDaily({ now, loader });
+  return { ...daily, intraday: await runIntraday({ now, loader: intradayLoader }) };
+}
+
+async function runDaily({ now, loader }) {
   const results = [];
   for (const client of await dueClients()) {
     try {
@@ -140,9 +147,107 @@ async function runDue({ now = new Date(), loader = load } = {}) {
   return { status: 'RAN', results };
 }
 
+// ---- Spend safety: a midday look at today's money (the owner's cap and runaway campaigns).
+const israelHour = (now) => Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', hourCycle: 'h23' }).format(now));
+
+// Pure decision on today's numbers. Proposes pausing, never pauses.
+function evaluateToday({ account = {}, campaigns = [], cap = null, now = new Date() }) {
+  const findings = [], cur = account.currency || 'ILS';
+  if (account.account_status && account.account_status !== 1) return findings;
+  const cpl30 = account.leads30 > 0 ? account.spend30 / account.leads30 : null;
+  const midday = israelHour(now) >= RULES.middayHour;
+  let total = 0;
+  for (const c of campaigns) {
+    const spend = num(c.today?.spend), leads = Math.max(leadsOf(c.today), num(c.crmLeadsToday)), budget = num(c.dailyBudget);
+    total += spend;
+    if (c.effective_status !== 'ACTIVE') continue;
+    const name = String(c.name || 'הקמפיין').slice(0, 40);
+    if (midday && leads === 0 && budget > 0 && spend >= budget * RULES.burnBudgetShare && spend >= RULES.burnMinSpend) {
+      findings.push({ kind: 'BURN_NO_LEADS', campaignId: c.id, campaignName: name, priority: 1, pause: true,
+        pauseSummary: `השהיית הקמפיין "${name}" שהוציא היום ${money(spend, cur)} בלי פניות`,
+        text: `🚨 שים לב: הקמפיין "${name}" כבר הוציא היום ${money(spend, cur)} מתוך תקציב יומי של ${money(budget, cur)} (${Math.round((spend / budget) * 100)}%), ועוד אין אף פנייה.\nזה לא נראה כמו יום רגיל. אני ממליץ לעצור אותו עכשיו ולבדוק מה קרה, לפני שהיום נגמר.\nלא עצרתי כלום בלי אישור שלך.` });
+      continue;
+    }
+    const cpl = leads ? spend / leads : null;
+    if (cpl && cpl30 && cpl >= cpl30 * RULES.highCplMultiple && spend >= Math.max(RULES.highCplMinSpend, cpl30 * RULES.highCplMultiple)) {
+      findings.push({ kind: 'HIGH_CPL', campaignId: c.id, campaignName: name, priority: 2, pause: true,
+        pauseSummary: `השהיית הקמפיין "${name}" שהעלות לליד בו היום גבוהה מאוד`,
+        text: `⚠️ הקמפיין "${name}" יקר היום בצורה חריגה: עלות לליד ${money(cpl, cur)}, בערך פי ${Math.round(cpl / cpl30)} מהממוצע שלך בחודש האחרון (${money(cpl30, cur)}).\nסכום שהוצא היום: ${money(spend, cur)}, לידים: ${leads}.\nאפשר לעצור אותו להיום ולבדוק. לא עצרתי כלום בלי אישור שלך.` });
+    }
+  }
+  if (cap && total > cap) {
+    findings.push({ kind: 'SPEND_CAP', campaignId: 'account', priority: 0,
+      text: `💰 היום כבר הוצאו ${money(total, cur)} על פרסום, מעל תקרת ההוצאה היומית שקבעת (${money(cap, cur)}).\nלא עצרתי כלום בלי אישור שלך. אם תרצה לעצור קמפיין, כתוב לי "תעצור את הקמפיין" ואת השם שלו.\nאם התקרה נמוכה מדי, כתוב "תקרה יומית" ומספר חדש.` });
+  }
+  return findings.sort((a, b) => a.priority - b.priority);
+}
+
+async function loadToday(clientId) {
+  const meta = require('./metaConnection');
+  return meta.context.run(String(clientId), async () => {
+    const c = await meta.credentials(clientId);
+    if (!c.meta_ad_account_id) return null;
+    const acc = c.meta_ad_account_id, read = (path, params) => meta.tenantRead(path, params);
+    const account = await read('/' + acc, { fields: 'account_status,currency' });
+    const list = (await read('/' + acc + '/campaigns', { fields: 'id,name,effective_status,daily_budget', effective_status: JSON.stringify(['ACTIVE']), limit: 50 })).data || [];
+    if (!list.length) return { account, accountId: acc, campaigns: [] };
+    // SCORPIO sets budgets on the ad sets; campaign budgets (CBO) win when present.
+    const sets = (await read('/' + acc + '/adsets', { fields: 'campaign_id,daily_budget', effective_status: JSON.stringify(['ACTIVE']), limit: 200 })).data || [];
+    const setBudget = {};
+    for (const s of sets) setBudget[s.campaign_id] = (setBudget[s.campaign_id] || 0) + num(s.daily_budget);
+    const rows = (await read('/' + acc + '/insights', { level: 'campaign', fields: 'campaign_id,spend,actions', date_preset: 'today', limit: 100 })).data || [];
+    const today = Object.fromEntries(rows.map((r) => [String(r.campaign_id), r]));
+    const month = ((await read('/' + acc + '/insights', { fields: 'spend,actions', date_preset: 'last_30d' })).data || [])[0] || {};
+    account.spend30 = num(month.spend); account.leads30 = leadsOf(month);
+    const crm = (await db.query(`SELECT campaign_id, COUNT(*)::int AS n FROM crm_leads WHERE client_id=$1 AND campaign_id IS NOT NULL AND created_at>=date_trunc('day', NOW() AT TIME ZONE 'Asia/Jerusalem') AT TIME ZONE 'Asia/Jerusalem' GROUP BY campaign_id`, [clientId])).rows;
+    const crmBy = Object.fromEntries(crm.map((r) => [String(r.campaign_id), r.n]));
+    return { account, accountId: acc, campaigns: list.map((x) => ({ ...x, dailyBudget: (num(x.daily_budget) || setBudget[x.id] || 0) / 100, today: today[x.id], crmLeadsToday: crmBy[x.id] || 0 })) };
+  });
+}
+
+// Owners with active Meta + open WhatsApp window, and a midday slot not yet checked today.
+async function dueToday(slot, limit = 100) {
+  return (await db.query(`SELECT c.id, c.phone FROM clients c
+    JOIN meta_connections m ON m.client_id=c.id AND m.expires_at>NOW()
+    JOIN whatsapp_contacts w ON w.phone=c.phone AND w.last_inbound_at>NOW()-INTERVAL '24 hours'
+    WHERE c.meta_ad_account_id IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM campaign_guard_intraday_runs r WHERE r.client_id=c.id AND r.day=(NOW() AT TIME ZONE 'Asia/Jerusalem')::date AND r.slot=$1)
+    LIMIT $2`, [slot, limit])).rows;
+}
+
+async function runIntraday({ now = new Date(), loader = loadToday } = {}) {
+  const hour = israelHour(now), slot = [...RULES.intradaySlots].reverse().find((h) => hour >= h);
+  if (!enabled() || !db.configured() || !slot || !require('./leadCheckins').businessHours(now)) return { status: 'NOT_DUE' };
+  const results = [];
+  for (const client of await dueToday(slot)) {
+    try {
+      // Creating a pause approval would supersede a pending one, so wait for a calm moment.
+      const task = await require('./taskAgent').active(client.id).catch(() => null);
+      if (task?.status === 'WAITING_APPROVAL' || await require('./leadCheckins').ownerBusy(client.id)) { results.push('BUSY'); continue; }
+      const claim = await db.query(`INSERT INTO campaign_guard_intraday_runs(client_id,day,slot) VALUES($1,(NOW() AT TIME ZONE 'Asia/Jerusalem')::date,$2) ON CONFLICT DO NOTHING RETURNING client_id`, [client.id, slot]);
+      if (!claim.rows.length) { results.push('ALREADY_RAN'); continue; }
+      const data = await loader(client.id);
+      if (!data) { results.push('NO_ACCOUNT'); continue; }
+      const cap = await require('./spendCap').get(client.id);
+      const sent = [];
+      let proposed = false;
+      for (const f of evaluateToday({ ...data, cap, now })) {
+        if ((f.pause && proposed) || await recentlyAlerted(client.id, f)) continue;
+        sent.push(await send(client, f, data.accountId));
+        if (f.pause) proposed = true; // one pause button at a time
+      }
+      results.push(sent.length ? sent.join('+') : 'QUIET');
+    } catch (error) {
+      logger.warn('Spend guard skipped', { error: /^[A-Z_]+$/.test(error.message) ? error.message : 'GUARD_FAILED' });
+      results.push('FAILED');
+    }
+  }
+  return { status: 'RAN', results };
+}
+
 // A pause proposal raised by the guard may be approved even while a task owns the conversation.
 async function ownsApproval(clientId, actionId) {
   return (await db.query('SELECT 1 FROM campaign_guard_alerts WHERE client_id=$1 AND action_id=$2', [clientId, String(actionId)])).rows.length > 0;
 }
 
-module.exports = { enabled, evaluate, runDue, ownsApproval, leadsOf, RULES };
+module.exports = { enabled, evaluate, evaluateToday, runDue, runIntraday, ownsApproval, leadsOf, RULES };

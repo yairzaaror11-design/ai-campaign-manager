@@ -9,6 +9,8 @@ async function createApprovalForClient(clientId,input) {
   if(!input?.requiresApproval || input.missing?.length) throw Error('INCOMPLETE_ACTION');
   const client=(await db.query('SELECT id,phone FROM clients WHERE id=$1',[clientId])).rows[0];if(!client)throw Error('CLIENT_NOT_FOUND');
   const plan=await policy.preparePlan(client.id,input);
+  // Spend safety: nothing above the owner's daily cap is ever offered for approval.
+  await require('./spendCap').assertWithinCap(client.id,plan);
   const hash=policy.planHash(plan);
   const code=String(crypto.randomInt(100000,1000000));
   const minutes=Math.max(1,Math.min(30,Number(process.env.APPROVAL_TTL_MINUTES)||10));
