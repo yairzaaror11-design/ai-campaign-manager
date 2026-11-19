@@ -122,6 +122,13 @@ router.get('/app/api/today',endpoint(async(req,res)=>{const f=require('./dashboa
 router.get('/app/api/trend',endpoint(async(req,res)=>res.json(await require('./dashboardFeed').trend(req.portal.clientId,req.query.days==='30'?30:14))));
 router.get('/app/api/campaigns',endpoint(async(req,res)=>res.json(await require('./dashboardFeed').campaigns(req.portal.clientId))));
 router.post('/app/api/campaigns/:id/action',require('./rateLimit').middleware('portal-campaign-action',20),endpoint(async(req,res)=>res.json(await require('./dashboardApprovals').prepareCampaignAction(req.portal.clientId,req.params.id,req.body?.kind))));
+// Ongoing organic content: three-month calendar, approvals, pause, photo shoots.
+router.get('/app/api/organic',endpoint(async(req,res)=>res.json(await require('./organicContent').overview(req.portal.clientId))));
+router.post('/app/api/organic/plan',endpoint(async(req,res)=>{const o=require('./organicContent');res.json(await o.create(req.portal.clientId,{perWeek:req.body?.perWeek,media:req.body?.media,extend:req.body?.extend===true}));}));
+router.post('/app/api/organic/approve-all',endpoint(async(req,res)=>res.json({approved:await require('./organicContent').approveAll(req.portal.clientId)})));
+router.post('/app/api/organic/status',endpoint(async(req,res)=>res.json(await require('./organicContent').setStatus(req.portal.clientId,req.body?.status))));
+router.post('/app/api/organic/posts/:id',endpoint(async(req,res)=>res.json(await require('./organicContent').updatePost(req.portal.clientId,req.params.id,{action:req.body?.action,caption:req.body?.caption}))));
+router.post('/app/api/organic/photo-shoot',endpoint(async(req,res)=>res.json(await require('./organicContent').requestShoot(req.portal.clientId,String(req.body?.details||'')))));
 router.get('/app/api/approvals',endpoint(async(req,res)=>res.json({approvals:await require('./dashboardApprovals').pending(req.portal.clientId)})));
 router.post('/app/api/approvals/:id/approve',endpoint(async(req,res)=>{if(req.body?.confirm!==true)return res.sendStatus(400);res.json(await require('./dashboardApprovals').approve(req.portal.clientId,req.params.id));}));
 router.post('/app/api/approvals/:id/reject',endpoint(async(req,res)=>res.json(await require('./dashboardApprovals').reject(req.portal.clientId,req.params.id))));
