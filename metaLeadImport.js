@@ -68,6 +68,8 @@ async function ingest(pageId, value, expectedGeneration) {
     return current.rows.length > 0;
   });
   if (saved.revoked) throw Error('CONNECTION_REVOKED');
+  // A newly saved lead (not a duplicate) alerts the owner immediately.
+  if (saved.id) await require('./leadAlert').notifyOwner(clientId, saved);
 }
 
 async function enqueue(body) {

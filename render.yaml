@@ -14,9 +14,9 @@ services:
       - key: NODE_ENV
         value: production
       - key: META_WRITES_ENABLED
-        value: "false"
+        sync: false
       - key: WHATSAPP_SEND_ENABLED
-        value: "false"
+        sync: false
       - key: WHATSAPP_WORKER_IN_WEB
         value: "true"
       - key: META_LEGACY_SINGLE_TENANT
@@ -29,6 +29,13 @@ services:
         value: gemini-nano-banana-2.1
       - key: AI_PROVIDER
         value: gemini
+      # Second provider that answers when the primary fails (claude|gemini). Set in the dashboard.
+      - key: AI_FALLBACK_PROVIDER
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CLAUDE_MODEL
+        sync: false
       - key: TRUST_PROXY_HOPS
         value: "1"
       - key: REQUIRE_WORKER_HEARTBEAT
@@ -60,7 +67,7 @@ services:
       - key: PRIVACY_BACKUP_RETENTION
         sync: false
       - key: READ_ONLY
-        value: "true"
+        sync: false
       - key: APPROVAL_TTL_MINUTES
         value: "10"
       - key: GEMINI_API_KEY
@@ -87,6 +94,34 @@ services:
         sync: false
       - key: TELNYX_PHONE_NUMBER
         value: "+12186580186"
+      # Set in the Render dashboard; owned there so a Blueprint sync never flips them.
+      - key: TASK_AGENT_ENABLED
+        sync: false
+      - key: TASK_AGENT_PILOT_ONLY
+        sync: false
+      - key: TASK_AGENT_REQUIRE_EVAL
+        sync: false
+      - key: TASK_AGENT_EVALUATE_ON_START
+        sync: false
+      - key: UNIFIED_CONVERSATION_ENABLED
+        sync: false
+      - key: DYNAMIC_CONVERSATION_ENABLED
+        sync: false
+      - key: SCOPED_AUTOMATION_ENABLED
+        sync: false
+      - key: UNIFIED_PORTAL_AGENT_ENABLED
+        sync: false
+      - key: META_LEAD_IMPORT_ENABLED
+        sync: false
+      - key: META_MANAGEMENT_LOGIN_CONFIG_ID
+        sync: false
+      # Short ad videos through Higgsfield; off until a key is set and approved.
+      - key: VIDEO_ENABLED
+        value: "false"
+      - key: VIDEO_MONTHLY_LIMIT
+        value: "8"
+      - key: HF_CREDENTIALS
+        sync: false
 
 # Stage 6: connect an existing PostgreSQL database by setting DATABASE_URL in Render.
 # Do not create a paid database automatically from this file.

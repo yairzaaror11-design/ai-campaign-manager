@@ -97,6 +97,7 @@ async function transcribeVoiceMessage(message, options = {}) {
     }
   });
 
+  if (response?.usageMetadata) void require('./usageLedger').record({ provider: 'gemini', model: process.env.GEMINI_TRANSCRIBE_MODEL || 'gemini-3.5-transcribe', kind: 'transcription', ...require('./usageLedger').fromGemini(response.usageMetadata) });
   const transcript = extractTranscript(response);
   if (!transcript) throw Error('Empty transcription');
 

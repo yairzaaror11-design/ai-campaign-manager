@@ -259,6 +259,15 @@ async function routeText(from, text, prefix = '') {
     await require('./db').query('UPDATE whatsapp_contacts SET opted_in=$2 WHERE phone=$1',[from,text==='/notifications-on']);
     await safeSend(from,text==='/notifications-on'?'הסכמת לקבלת עדכונים נרשמה. ניתן לבטל עם /notifications-off.':'הסכמת העדכונים בוטלה.');return;
   }
+  if (/^(?:בדיקת מוכנות|\/readiness|האם אני מוכן לפרסם\??)$/.test(text)) {
+    try {const client=await getOrCreateClient(from);const rc=require('./readinessCheck');await safeSend(from,rc.format(await rc.run(client.id)));}
+    catch {await safeSend(from,'לא הצלחתי להשלים את בדיקת המוכנות כרגע. אפשר לנסות שוב בעוד כמה דקות.');}return;
+  }
+  const businessReportMatch=text.match(/^(?:\/business-report|דוח עסקי)(?:\s+(7|14|30))?$/);
+  if (businessReportMatch) {
+    try {const client=await getOrCreateClient(from);await safeSend(from,await require('./businessReport').businessReport(client.id,'last_'+(businessReportMatch[1]||'7')+'d'));}
+    catch {await safeSend(from,'לא ניתן להפיק את הדוח העסקי כרגע. אפשר לנסות שוב בעוד כמה דקות.');}return;
+  }
   if (/^\/report(?: (today|yesterday|last_7d|last_14d|last_30d|this_month|last_month))?$/.test(text)) {
 
     try {const client=await getOrCreateClient(from);await safeSend(from,await require('./reportService').campaignReport(client.id,text.split(' ')[1] || 'last_7d'));}
@@ -309,6 +318,21 @@ async function routeText(from, text, prefix = '') {
       reply=`זה תכנון של ${pending.amount} ₪ ל-${days} ימים, בממוצע ${(pending.amount/days).toFixed(2)} ₪ ביום. איזו גרסה נרצה להכין למודעה?`;
       return{handled:false,changed:true};
     });if(reply){const ui=await require('./conversationUi').prepare(client.id,reply,'media_variant');await safeSend(from,ui.text,ui);return;}
+  }
+  const videoRequest=require('./videoService').enabled()?require('./videoService').videoRequest(text):null;
+  if(videoRequest) {
+    const client=await getOrCreateClient(from);
+    let referenceMediaId;
+    if(videoRequest.usesReference){
+      const latest=(await require('./mediaStore').listMedia(client.id)).find(a=>a.media_type==='image');
+      if(!latest){await safeSend(from,'כדי שהסרטון יציג את המוצר עצמו, אפשר לשלוח קודם תמונה שלו?');return;}
+      referenceMediaId=latest.id;
+    }
+    try{
+      const result=await require('./videoService').request(client.id,from,videoRequest,{eventId:require('./whatsappDelivery').messageContext.getStore()?.eventId,referenceMediaId});
+      const replies={QUEUED:'קיבלתי, מכין לך סרטון קצר למודעה. זה לוקח בדרך כלל כמה דקות, ואשלח אותו כאן כשהוא מוכן.',ALREADY_QUEUED:'הסרטון כבר בהכנה. אשלח אותו כאן כשהוא מוכן.',MONTHLY_LIMIT:`הגעת למכסת ${result.limit} הסרטונים החודשית בחבילה שלך. אפשר להמשיך עם גרפיקות, או לדבר איתנו על הרחבה.`,RATE_LIMIT:'כבר הוזמנו סרטונים בשעה האחרונה. אפשר לבקש שוב בעוד קצת זמן.'};
+      if(replies[result.status]){await safeSend(from,replies[result.status]);return;}
+    }catch{await safeSend(from,'לא הצלחתי להתחיל את הכנת הסרטון. אפשר לנסות שוב עם תיאור קצר של העסק והמסר.');return;}
   }
   const graphicRequest=require('./graphicService').graphicRequest(text);
   if(graphicRequest!==null) {
