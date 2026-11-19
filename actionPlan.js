@@ -40,29 +40,44 @@ function createActionPlan({
   };
 }
 
+const INTENT_HE={CREATE_CAMPAIGN:'יצירת קמפיין',CREATE_LEAD_FORM:'יצירת טופס פניות',CREATE_ADSET:'יצירת קהל ותקציב',CREATE_AD:'יצירת מודעה',CREATE_CREATIVE:'יצירת עיצוב מודעה',UPLOAD_IMAGE:'העלאת התמונה לחשבון הפרסום',CREATE_BUNDLE:'יצירת הקמפיין המלא (מושהה)',ACTIVATE_BUNDLE:'הפעלת הקמפיין',CHANGE_BUDGET:'שינוי תקציב',PAUSE_CAMPAIGN:'השהיית קמפיין',RESUME_CAMPAIGN:'חידוש קמפיין',EDIT_CAMPAIGN:'עריכת קמפיין'};
+const OBJECTIVE_HE={OUTCOME_LEADS:'פניות (לידים)',OUTCOME_SALES:'מכירות',OUTCOME_TRAFFIC:'כניסות לאתר',OUTCOME_ENGAGEMENT:'מעורבות',OUTCOME_AWARENESS:'חשיפה',OUTCOME_APP_PROMOTION:'קידום אפליקציה'};
+const SYMBOL={ILS:'₪',USD:'$',EUR:'€'};
+function money(amount,currency){return amount===undefined||amount===null||amount===''?null:String(amount)+' '+(SYMBOL[currency]||currency||'');}
+function minor(amount,currency){return amount===undefined||amount===null?null:money(Number(amount)/100,currency);}
+function when(v){if(!v)return null;const d=new Date(v);return isNaN(d)?String(v):d.toLocaleString('he-IL',{timeZone:'Asia/Jerusalem',day:'numeric',month:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});}
+function audience(t){
+ if(!t||typeof t!=='object')return null;const g=t.geo_locations||{},parts=[];
+ const places=[...(g.cities||[]).map(c=>c.name||c.key),...(g.regions||[]).map(r=>r.name||r.key),...(g.countries||[]).map(c=>c==='IL'?'ישראל':c)].filter(Boolean);
+ if(places.length)parts.push(places.slice(0,6).join(', '));
+ if(t.age_min||t.age_max)parts.push('גילאי '+(t.age_min||18)+'–'+(t.age_max||65));
+ if(Array.isArray(t.genders)&&t.genders.length===1)parts.push(t.genders[0]===1?'גברים':'נשים');
+ return parts.join(' · ')||null;
+}
 function formatActionPlan(plan) {
-  const p=plan.parameters || {},t=plan.target || {};
-  return ['*פעולה מוצעת — נדרש אישור מפורש*',plan.summary || plan.intent,
-    'פעולה: '+plan.intent,
-    'חשבון: '+(t.accountName || '')+' ('+(t.accountId || 'לא נבחר')+')',
-    'קמפיין/מודעה: '+(t.campaignName || p.name || t.campaignId || 'לא הוגדר'),
-    ...(p.headline?['כותרת: '+p.headline]:[]),
-    ...(p.message?['נוסח המודעה: '+p.message]:[]),
-    ...(p.link?['קישור היעד: '+p.link]:[]),
-    ...(p.pageId?['עמוד Facebook: '+p.pageId]:[]),
-    ...(p.imageHash?['תמונה ב־Meta: '+p.imageHash]:[]),
-    ...(p.mediaId?['התמונה שנשלחה: '+p.mediaId]:[]),
-    ...(plan.intent==='CREATE_LEAD_FORM'?['דף: '+p.pageId,'שפת הטופס: '+p.locale,'מדיניות פרטיות: '+p.privacyPolicyUrl,'שדות ושאלות: '+JSON.stringify(p.questions)]:[]),
-    'מטרה: '+(p.objective || plan.review?.objective || 'לפי הקמפיין הקיים'),
-    'קהל: '+(p.adSets ? JSON.stringify(p.adSets) : p.targeting ? JSON.stringify(p.targeting) : 'ללא שינוי קהל'),
-    ...(plan.review?.adSets ? ['פרטי קהל, תקציב ביחידות משנה ותאריכים ב־'+plan.review.currency+': '+JSON.stringify(plan.review.adSets)] : []),
-    ...(p.adsetIds ? ['קבוצות מודעות: '+p.adsetIds.join(', '),'מודעות: '+p.adIds.join(', ')] : []),
-    'תקציב יומי: '+(p.dailyBudget!==undefined ? p.dailyBudget+' '+p.currency : 'ללא שינוי תקציב'),
-    'התחלה: '+(p.startTime || 'ללא שינוי'),
-    'סיום: '+(p.endTime || 'ללא שינוי'),
-    'גרסת פעולה: '+require('./approvalPolicy').planHash(plan).slice(0,12),
-    plan.intent==='CREATE_LEAD_FORM'?'אישור זה יוצר טופס; לא תופעל מודעה.':plan.intent==='ACTIVATE_BUNDLE'||plan.intent==='RESUME_CAMPAIGN'?'אישור זה מפעיל פרסום ועשוי להתחיל הוצאה.':plan.intent.startsWith('CREATE_')?'היצירה במצב מושהה. הפעלה דורשת אישור נפרד.':'האישור חל רק על הפעולה המדויקת שלמעלה.'
-  ].join('\n');
+  const p=plan.parameters || {},t=plan.target || {},currency=p.currency||plan.review?.currency,lines=[];
+  const add=(icon,label,value)=>{if(value!==null&&value!==undefined&&String(value).trim())lines.push(icon+' '+label+': '+value);};
+  lines.push('*'+(INTENT_HE[plan.intent]||'פעולה בחשבון הפרסום')+' — נדרש אישור מפורש*');
+  if(plan.summary)lines.push(plan.summary);
+  lines.push('');
+  add('🏢','חשבון',t.accountName||t.accountId||'לא נבחר');
+  add('📣','קמפיין',t.campaignName||p.name);
+  add('🎯','מטרה',OBJECTIVE_HE[p.objective||plan.review?.objective]||p.objective||plan.review?.objective);
+  add('✏️','כותרת',p.headline);
+  add('💬','נוסח',p.message);
+  add('🔗','יעד',p.link);
+  if(plan.intent==='UPLOAD_IMAGE')lines.push('🖼 התמונה שאישרת בצ׳אט');
+  const sets=p.adSets||plan.review?.adSets||[];
+  sets.forEach((set,i)=>{const who=audience(set.targeting);const budget=set.dailyBudget!==undefined?money(set.dailyBudget,currency):minor(set.daily_budget,currency);add('👥',sets.length>1?'קהל '+(i+1):'קהל',[who,budget&&budget+' ליום'].filter(Boolean).join(' · '));});
+  if(!sets.length)add('👥','קהל',audience(p.targeting));
+  add('💰','תקציב יומי',p.dailyBudget!==undefined?money(p.dailyBudget,currency):null);
+  add('▶️','התחלה',when(p.startTime||sets[0]?.startTime||sets[0]?.start_time));
+  add('⏹','סיום',when(p.endTime||sets[0]?.endTime||sets[0]?.end_time));
+  if(plan.intent==='CREATE_LEAD_FORM'){add('📝','שאלות בטופס',(p.questions||[]).map(q=>q.label||({FULL_NAME:'שם מלא',PHONE:'טלפון',EMAIL:'אימייל',CITY:'עיר'})[q.type]||q.key||q.type||q).join(', '));add('🔒','מדיניות פרטיות',p.privacyPolicyUrl);}
+  lines.push('');
+  lines.push(plan.intent==='CREATE_LEAD_FORM'?'האישור יוצר טופס בלבד. שום מודעה לא תופעל.':plan.intent==='ACTIVATE_BUNDLE'||plan.intent==='RESUME_CAMPAIGN'?'⚠️ האישור מפעיל פרסום ומתחיל לחייב מהתקציב.':plan.intent.startsWith('CREATE_')||plan.intent==='UPLOAD_IMAGE'?'הכול נוצר במצב מושהה. אין פרסום ואין חיוב עד אישור הפעלה נפרד.':'האישור חל רק על הפעולה הזו.');
+  lines.push('מס׳ אישור: '+require('./approvalPolicy').planHash(plan).slice(0,8));
+  return lines.join('\n');
 }
 
 module.exports = {

@@ -157,12 +157,15 @@ async function rotateStoredKeys() {
 }
 async function selectAccount(clientId,accountId) {
   if (!/^act_\d+$/.test(accountId)) throw Error('INVALID_ACCOUNT');
+  let chosen;
   await db.transaction(async tx => {
     await tx('SELECT id FROM clients WHERE id=$1 FOR UPDATE',[clientId]);
     const list = await accounts(clientId);
-    if (!list.data?.some(a=>a.id===accountId && a.account_status===1)) throw Error('ACCOUNT_NOT_GRANTED');
+    chosen=list.data?.find(a=>a.id===accountId && a.account_status===1);
+    if (!chosen) throw Error('ACCOUNT_NOT_GRANTED');
     await tx('UPDATE clients SET meta_ad_account_id=$2,meta_generation=meta_generation+1 WHERE id=$1',[clientId,accountId]);
   });
+  return chosen;
 }
 async function disconnect(clientId) {
   await db.transaction(async tx => {

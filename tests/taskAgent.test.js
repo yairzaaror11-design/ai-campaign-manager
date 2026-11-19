@@ -60,7 +60,7 @@ test('bot task persists goal, asks only missing details, prepares a package, get
    await assert.rejects(send('מאשר את החבילה','turn-stale',{taskRevision:review.task.revision}),/TASK_STALE/);
   });
   await t.test('package approval produces a separate exact Meta proposal, never an automatic write',async()=>{
-   pending=await send('מאשר את החבילה','turn-4');assert.equal(pending.task.status,'WAITING_APPROVAL');assert.equal(writes,0);assert.match(pending.reply,/שדות ושאלות/);
+   pending=await send('מאשר את החבילה','turn-4');assert.equal(pending.task.status,'WAITING_APPROVAL');assert.equal(writes,0);assert.match(pending.reply,/שאלות בטופס/);
    assert.equal(JSON.stringify(pending.task).includes('codeCiphertext'),false);assert.equal(pending.task.externalActionsExecuted,false);const saved=(await h.db.query('SELECT result FROM agent_task_turns WHERE client_id=$1 AND request_id=$2',[a.id,'turn-4'])).rows[0].result;assert.equal(saved.reply,undefined);assert.equal(typeof saved.replyCiphertext,'string');assert.deepEqual(await send('מאשר את החבילה','turn-4'),pending);
    const no=await send('כן','turn-5');assert.equal(no.task.status,'WAITING_APPROVAL');assert.equal(writes,0);
   });

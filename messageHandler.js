@@ -67,6 +67,14 @@ async function handleApproval(from, code,actionId=null) {
 }
 
 async function deliverTaskReply(from,clientId,result){
+ const review=require('./taskReviewCard').build(result.task);
+ if(review){
+  const send=async(id,caption)=>{const asset=await require('./mediaStore').loadMedia(clientId,id);await require('./whatsappDelivery').enqueue(from,{type:'image',image:{id:asset.whatsapp_media_id,caption}});};
+  for(const id of result.mediaIds||[])if(id!==review.mediaId)await send(id,'תוצר שהוכן למשימה, לבדיקה שלך.');
+  if(review.mediaId)await send(review.mediaId,review.caption);else await safeSend(from,review.caption);
+  const ui=await require('./conversationUi').prepareTaskReview(clientId,review.card.length>1024?'מה עושים?':review.card,review.choices);
+  await safeSend(from,ui.text,review.card.length>1024?{...ui,leadingText:review.card}:ui);return;
+ }
  for(const mediaId of result.mediaIds||[]){const asset=await require('./mediaStore').loadMedia(clientId,mediaId);await require('./whatsappDelivery').enqueue(from,{type:'image',image:{id:asset.whatsapp_media_id,caption:'תוצר שהוכן למשימה, לבדיקה שלך.'}});}
  if(result.task?.status==='WAITING_APPROVAL'){const task=await require('./taskAgent').active(clientId),step=task?.state.steps.find(s=>s.status==='WAITING_APPROVAL');if(step){const a=step.result.approval,approval={actionId:a.actionId,actionPlan:a.plan,code:require('./metaConnection').decrypt(a.codeCiphertext,clientId),expiresAt:a.expiresAt};const ui=await require('./conversationUi').prepareApproval(clientId,approval,formatActionPlan(a.plan));await safeSend(from,ui.text,ui);return;}}
  await safeSend(from,result.reply);
@@ -247,8 +255,8 @@ async function routeText(from, text, prefix = '') {
       }
       else if (text === '/meta-renew') { await meta.renew(client.id); reply='הרשאת Meta חודשה. לא בוצע שינוי בקמפיינים.'; }
       else if (text === '/meta-connect') reply = 'קישור אישי לחיבור Meta (10 דקות, אין להעביר): ' + await meta.createInvite(client.id);
-      else if (text === '/meta-accounts') reply = JSON.stringify((await meta.accounts(client.id)).data) + '\nלבחירה: /meta-select act_ID';
-      else if (/^\/meta-select act_\d+$/.test(text)) { await meta.selectAccount(client.id,text.split(' ')[1]); reply = 'חשבון המודעות חובר. ניתן להתחיל בריף עם /brief TRAFFIC.'; }
+      else if (text === '/meta-accounts') {const list=(await meta.accounts(client.id)).data||[];reply=list.length?'*חשבונות הפרסום שלך:*\n'+list.slice(0,20).map((a,i)=>(i+1)+'. '+(a.name||'ללא שם')+(a.account_status===1?'':' (לא פעיל)')).join('\n')+'\n\nכדי להחליף חשבון, כתוב ״החשבונות שלי״ ובחר מהרשימה.':'לא מצאתי חשבונות פרסום בחיבור הנוכחי. אפשר לחבר מחדש עם /meta-connect.';}
+      else if (/^\/meta-select act_\d+$/.test(text)) { const a=await meta.selectAccount(client.id,text.split(' ')[1]); reply = '✅ עברתי לחשבון ״'+(a?.name||'החשבון שבחרת')+'״.\nמעכשיו כל הקמפיינים והדוחות יהיו בחשבון הזה. אפשר לכתוב ״אני רוצה קמפיין״.'; }
       else if (text === '/meta-disconnect') { await meta.disconnect(client.id); reply = 'החיבור המקומי והטוקן נמחקו. ניתן להסיר את האפליקציה גם בהגדרות Meta.'; }
       else reply = 'פקודות: /meta-connect /meta-accounts /meta-select act_ID /meta-disconnect';
       await safeSend(from,reply);
