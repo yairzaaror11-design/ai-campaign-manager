@@ -53,9 +53,16 @@ async function prepareCampaignAction(clientId, campaignId, kind) {
   const campaign = await require('./metaAds').getCampaign(campaignId);
   const { createActionPlan } = require('./actionPlan');
   const intent = kind === 'PAUSE' ? 'PAUSE_CAMPAIGN' : 'RESUME_CAMPAIGN';
+  // A copy made by "שכפל קמפיין מנצח" is paused at every level: activating it turns on
+  // exactly the copied ad sets and ads, the same way a new campaign is activated.
+  const copy = kind === 'RESUME' ? (await db.query(`SELECT execution_result->'objects' AS o FROM action_plans WHERE client_id=$1 AND intent='DUPLICATE_CAMPAIGN' AND status='VERIFIED'
+    AND execution_result->'objects'->>'campaignId'=$2 ORDER BY updated_at DESC LIMIT 1`, [clientId, String(campaignId)])).rows[0]?.o : null;
   let approval;
   try {
-    approval = await require('./approvalEngine').createApprovalForClient(clientId, createActionPlan({ intent,
+    approval = await require('./approvalEngine').createApprovalForClient(clientId, copy?.adsetIds?.length && copy?.adIds?.length
+      ? createActionPlan({ intent: 'ACTIVATE_BUNDLE', summary: 'הפעלת העותק "' + String(campaign.name || campaignId).slice(0, 80) + '"',
+        target: { accountId: c.meta_ad_account_id, campaignId: String(campaignId) }, parameters: { adsetIds: copy.adsetIds.map(String), adIds: copy.adIds.map(String) } })
+      : createActionPlan({ intent,
       summary: (kind === 'PAUSE' ? 'כיבוי הקמפיין ' : 'הפעלה מחדש של הקמפיין ') + '"' + String(campaign.name || campaignId).slice(0, 80) + '"',
       target: { accountId: c.meta_ad_account_id, campaignId: String(campaignId) } }));
   } catch (error) { if (error.message === 'SPEND_CAP_EXCEEDED') return { ok: false, reply: error.reply }; throw error; }

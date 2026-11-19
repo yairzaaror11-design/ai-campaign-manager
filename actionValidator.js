@@ -72,7 +72,7 @@ function validateActionPlan(plan) {
     if (!plan.parameters?.name) errors.push('Missing ad name');
   }
 
-  if (plan.intent === 'CHANGE_BUDGET') {
+  if (['CHANGE_BUDGET', 'DUPLICATE_CAMPAIGN'].includes(plan.intent)) {
     if (!plan.target?.campaignId) errors.push('Missing campaign ID');
     if (!positiveNumber(plan.parameters?.dailyBudget)) {
       errors.push('Invalid daily budget');

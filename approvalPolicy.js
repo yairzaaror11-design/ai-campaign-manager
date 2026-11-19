@@ -23,6 +23,7 @@ const parameterKeys={
  CREATE_CREATIVE:['name','pageId','link','message','headline','imageHash','formId'],
  CREATE_AD:['name','adsetId','creativeId'],
  CHANGE_BUDGET:['dailyBudget','dailyBudgetMinor','currency'],
+ DUPLICATE_CAMPAIGN:['dailyBudget','dailyBudgetMinor','currency'],
  PAUSE_CAMPAIGN:[],RESUME_CAMPAIGN:[],EDIT_CAMPAIGN:['name'],
  SYNC_BUYER_AUDIENCE:['name','snapshotId','digest','buyerCount','audienceId'],
  CREATE_LOOKALIKE:['name','originAudienceId']
@@ -33,8 +34,10 @@ function strictPlan(plan) {
   if([plan.taskId,plan.taskStepId,plan.taskCreationLease].some(x=>x!==undefined)&&(!/^[a-f0-9-]{36}$/i.test(plan.taskId||'')||!/^[a-z][a-z0-9_]{0,39}$/.test(plan.taskStepId||'')||!/^[a-f0-9-]{36}$/i.test(plan.taskCreationLease||'')))throw Error('INVALID_TASK_BINDING');
   if(!/^act_\d+$/.test(plan.target?.accountId || '')) throw Error('ACCOUNT_REQUIRED');
   if(!parameterKeys[plan.intent] || Object.keys(plan.parameters || {}).some(k=>!parameterKeys[plan.intent].includes(k))) throw Error('UNSUPPORTED_ACTION_PARAMETERS');
-  for(const k of ['accountId','campaignId']) if(plan.target[k]!==undefined&&typeof plan.target[k]!=='string') throw Error('INVALID_TARGET_TYPE');
-  if(Object.keys(plan.target).some(k=>!['accountId','accountName','campaignId','campaignName'].includes(k))) throw Error('UNSUPPORTED_TARGET');
+  for(const k of ['accountId','campaignId','adsetId']) if(plan.target[k]!==undefined&&typeof plan.target[k]!=='string') throw Error('INVALID_TARGET_TYPE');
+  if(Object.keys(plan.target).some(k=>!['accountId','accountName','campaignId','campaignName','adsetId'].includes(k))) throw Error('UNSUPPORTED_TARGET');
+  // Budget lives on the ad set (not the campaign) for campaigns SCORPIO creates.
+  if(plan.target.adsetId!==undefined&&(!['CHANGE_BUDGET','DUPLICATE_CAMPAIGN'].includes(plan.intent)||!/^\d+$/.test(plan.target.adsetId)||!/^\d+$/.test(plan.target.campaignId||''))) throw Error('INVALID_ADSET_TARGET');
   for(const k of ['campaignId','adsetId','creativeId','pageId','formId']) if(plan.parameters[k]!==undefined && !/^\d+$/.test(plan.parameters[k])) throw Error('INVALID_OBJECT_ID');
   if(JSON.stringify(plan).length>16000) throw Error('PLAN_TOO_LARGE');
   if(plan.parameters.name && (typeof plan.parameters.name!=='string'||plan.parameters.name.length>200)) throw Error('INVALID_NAME');
@@ -120,6 +123,18 @@ async function preparePlan(clientId,input) {
     if('act_'+current.account_id!==connection.meta_ad_account_id) throw Error('TENANT_ACCOUNT_MISMATCH');
     plan.target.campaignName=current.name;
     plan.review={...plan.review,objective:current.objective,currentDailyBudgetMinor:current.daily_budget};
+    if(['CHANGE_BUDGET','DUPLICATE_CAMPAIGN'].includes(plan.intent)) {
+      // No campaign budget: the budget is on the ad set. Use it when there is exactly one.
+      if(!plan.target.adsetId&&!current.daily_budget&&!current.lifetime_budget) {
+        const sets=await meta.graph('/'+plan.target.campaignId+'/adsets',connection.token,{fields:'id,daily_budget',limit:5}).catch(()=>null);
+        if(Array.isArray(sets?.data)&&sets.data.length===1&&sets.data[0].daily_budget&&/^\d+$/.test(String(sets.data[0].id))) plan.target.adsetId=String(sets.data[0].id);
+      }
+      if(plan.target.adsetId) {
+        const set=await meta.graph('/'+plan.target.adsetId,connection.token,{fields:'id,account_id,campaign_id,daily_budget'});
+        if('act_'+set.account_id!==connection.meta_ad_account_id||String(set.campaign_id)!==plan.target.campaignId) throw Error('TENANT_ACCOUNT_MISMATCH');
+        plan.review.currentDailyBudgetMinor=set.daily_budget;
+      }
+    }
   }
   if(plan.intent==='ACTIVATE_BUNDLE') {
     plan.review.adSets=[];
@@ -138,7 +153,7 @@ async function preparePlan(clientId,input) {
     if(plan.intent==='CREATE_ADSET') plan.parameters.targeting=await geo.resolveTargeting(plan.parameters.targeting,search);
     else for(const set of plan.parameters.adSets || []) set.targeting=await geo.resolveTargeting(set.targeting,search);
   }
-  if(['CREATE_BUNDLE','CREATE_ADSET','CHANGE_BUDGET'].includes(plan.intent)) {
+  if(['CREATE_BUNDLE','CREATE_ADSET','CHANGE_BUDGET','DUPLICATE_CAMPAIGN'].includes(plan.intent)) {
     const account=await meta.graph('/'+connection.meta_ad_account_id,connection.token,{fields:'id,name,currency,timezone_name'});
     plan.parameters.currency=account.currency;
     plan.parameters.dailyBudgetMinor=minorUnits(plan.parameters.dailyBudget,account.currency);
