@@ -36,6 +36,8 @@ async function refresh(){
  const c=state.crm.counts;$('lead-count').textContent=Object.values(c).reduce((a,b)=>a+b,0)+' פניות במערכת';
  tell('פרטי העסק נטענו.');document.dispatchEvent(new CustomEvent('portal:refresh',{detail:state}));
 }
+// Israeli local numbers (05x...) become international (9725x...), like the WhatsApp lead alert.
+function waNumber(phone){let d=String(phone||'').replace(/\D/g,'');if(/^0\d{8,9}$/.test(d))d='972'+d.slice(1);return /^\d{8,15}$/.test(d)?d:null;}
 async function loadLeads(){
  const data=await api('leads'),list=$('leads-list');list.replaceChildren();
  if(!data.leads.length)list.append(text('p','עדיין אין פניות. אפשר להוסיף פנייה ידנית או לחבר מקור פניות.'));
@@ -45,6 +47,9 @@ async function loadLeads(){
   const select=document.createElement('select');select.setAttribute('aria-label','מצב הטיפול ב-'+lead.name);
   for(const [v,label]of Object.entries(statuses)){const option=document.createElement('option');option.value=v;option.textContent=label;option.selected=v===lead.status;select.append(option);}
   select.addEventListener('change',async()=>{select.disabled=true;try{await api('leads/'+lead.id,{status:select.value,version:lead.version},'PATCH');await loadLeads();await refresh();tell('מצב הפנייה עודכן.');}catch(e){tell(e.message,true);select.disabled=false;}});
+  const number=waNumber(lead.phone);
+  if(number){const first=String(lead.name||'').trim().split(/\s+/)[0]||'',business=state?.business?.businessName,message=(first&&lead.name!=='ליד מ־Meta'?'היי '+first:'היי')+', כאן'+(business?' מ'+business:'')+'. ראינו שהשארת פרטים, תודה! מתי נוח לך לדבר כמה דקות?',wa=document.createElement('a');wa.href='https://wa.me/'+number+'?text='+encodeURIComponent(message);wa.target='_blank';wa.rel='noopener noreferrer';wa.className='button secondary';wa.textContent='💬 שליחת וואטסאפ';details.append(wa);}
+  if(lead.status==='NEW'&&lead.created_at){const minutes=Math.max(0,Math.round((Date.now()-new Date(lead.created_at))/60000));details.append(text('p',minutes<60?'⏱ מחכה '+minutes+' דקות למענה':minutes<1440?'⏱ מחכה '+Math.round(minutes/60)+' שעות למענה':'⚠️ מחכה יותר מיום, כדאי לחזור היום',minutes>=60?'error':'muted'));}
   card.append(details,select);if(window.ScorpioDashboard)card.append(window.ScorpioDashboard.leadRevenueButton(lead));list.append(card);
  }
 }
