@@ -17,6 +17,7 @@ function localAnalysis(text){
  else if(/^(לא|לא תודה)$/.test(n))intent='no';
  else if(/^(עצור|עצירה|נעצור|אחר כך|הפסק|מספיק|לא עכשיו)$/.test(n))intent='pause';
  else if(/^(להמשיך|נמשיך|המשך|ממשיכים|אפשר להמשיך|תמשיך|תמשיכי|תמשיך מאיפה שעצרנו|נתחיל|בוא נתחיל|\/discovery)$/.test(n))intent='continue';
+ else if(/(?:תחליף|תחליפי|החלף|להחליף|תשנה|לשנות|תבחר|לבחור|בחירת)/.test(n)&&/חשבון(?:\s+ה?(?:מודעות|פרסום)|\s+אחר)/.test(n))intent='select_account';
  else if(/נתק|ניתוק/.test(n)&&/חשבון|מטא|Meta/i.test(n))intent='disconnect';
  else if(/חדש|חידוש/.test(n)&&/הרשאה|חיבור/.test(n))intent='renew';
  else if(/(?:מצב|סטטוס|תקלה|בעיה|התחברתי|כבר חיברתי|מחובר)/.test(n)&&/חשבון|מטא|Meta|התחברתי|חיברתי/i.test(n))intent='connection_status';

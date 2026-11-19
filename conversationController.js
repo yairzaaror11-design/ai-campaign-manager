@@ -25,6 +25,9 @@ async function handle(clientId,input,options={}){
  if(/^אשר\s+\d{6}$/.test(message)&&!active)return{handled:true,reply:'אין פעולה ממתינה במשימה הנוכחית. לא אשתמש באישור מתוכנית קודמת. אפשר לבקש להכין את הפעולה מחדש לבדיקה.'};
  // Only explicit infrastructure commands may reach their existing adapters.
  if(passesThrough(message))return null;
+ // Ad account list, search, page and named switch have their own verified menu.
+ const accountRequest=require('./readConversation').request(message);
+ if(accountRequest&&accountRequest.type!=='report')return require('./readConversation').handle(clientId,message);
  // Lead status updates (also the buttons of proactive check-ins) and CRM commands.
  const crm=await require('./crmConversation').handle(clientId,message);if(crm)return crm;
  if(message.startsWith('/')&&message!=='/start')return{handled:true,reply:'אפשר לכתוב כאן במילים מה תרצה להשיג. אמשיך מאותה בקשה ואציג את התוצרים לבדיקה לפני כל פעולה.'};
