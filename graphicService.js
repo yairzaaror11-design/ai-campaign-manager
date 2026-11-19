@@ -59,13 +59,19 @@ async function generate(prompt,options={}) {
  if(graphicsProvider()==='openai')return generateOpenAI(prompt,options);
  const parts=[{text:BRIEF+prompt+' Return an image.'}];
  for(const image of references(options))parts.push({inlineData:{mimeType:image.mimeType,data:image.buffer.toString('base64')}});
- let response;
- try {response=(await axios.post('https://generativelanguage.googleapis.com/v1beta/models/'+process.env.GEMINI_IMAGE_MODEL+':generateContent',{
- contents:[{role:'user',parts}],
- generationConfig:{responseModalities:['IMAGE'],maxOutputTokens:2048,thinkingConfig:{thinkingLevel:'MINIMAL'},imageConfig:{aspectRatio:'1:1',imageSize:'1K'}}
- },{headers:{'x-goog-api-key':process.env.GEMINI_API_KEY},timeout:90000,maxRedirects:0,maxContentLength:8*1024*1024})).data;}catch{throw Error('GRAPHIC_PROVIDER_FAILED');}
- const part=response.candidates?.[0]?.content?.parts?.find(p=>p.inlineData?.data)?.inlineData;
- if(!part||!['image/png','image/jpeg'].includes(part.mimeType)) throw Error('GRAPHIC_IMAGE_REQUIRED');
+ let part;
+ // Gemini sometimes answers without an image (truncation or a transient refusal); one retry recovers most cases.
+ for(let attempt=1;attempt<=2&&!part;attempt++){
+  let response;
+  try {response=(await axios.post('https://generativelanguage.googleapis.com/v1beta/models/'+process.env.GEMINI_IMAGE_MODEL+':generateContent',{
+  contents:[{role:'user',parts}],
+  generationConfig:{responseModalities:['IMAGE'],maxOutputTokens:8192,thinkingConfig:{thinkingLevel:'MINIMAL'},imageConfig:{aspectRatio:'1:1',imageSize:'1K'}}
+  },{headers:{'x-goog-api-key':process.env.GEMINI_API_KEY},timeout:90000,maxRedirects:0,maxContentLength:8*1024*1024})).data;}catch{throw Error('GRAPHIC_PROVIDER_FAILED');}
+  const found=response?.candidates?.[0]?.content?.parts?.find(p=>p.inlineData?.data)?.inlineData;
+  if(found&&['image/png','image/jpeg'].includes(found.mimeType))part=found;
+  else require('./logger').logger.warn('Gemini returned no image',{attempt,finishReason:String(response?.candidates?.[0]?.finishReason||''),blockReason:String(response?.promptFeedback?.blockReason||'')});
+ }
+ if(!part) throw Error('GRAPHIC_IMAGE_REQUIRED');
  void require('./usageLedger').record({provider:'gemini',model:process.env.GEMINI_IMAGE_MODEL,kind:'image',units:1});
  return checkedImage(Buffer.from(part.data,'base64'),part.mimeType);
 }
