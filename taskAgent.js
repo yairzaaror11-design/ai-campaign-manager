@@ -76,7 +76,7 @@ function replyFor(task){
  if(waiting){const a=waiting.result.approval;return require('./actionPlan').formatActionPlan(a.plan)+'\n\nכדי לאשר את הפעולה המדויקת, שלח: אשר '+meta.decrypt(a.codeCiphertext,task.client_id)+'\nהאישור תקף עד '+new Date(a.expiresAt).toLocaleString('he-IL',{timeZone:'Asia/Jerusalem',day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'})+'. האישור מתייחס רק לפעולה הזו.';}
  if(task.status==='COMPLETE')return 'השלמתי את כל השלבים בתוכנית שנבדקה. '+((s.steps||[]).some(x=>x.kind==='meta')?'הפעולות החיצוניות המסומנות כהושלמו אומתו מול Meta.':'התוצרים הוכנו ואושרו; לא בוצעה פעולה חיצונית.')+(s.steps.some(x=>x.result?.privateDraft)?' טיוטת דף הנחיתה נשמרה בדשבורד שלך ולא פורסמה.':'')+'\n'+(s.steps||[]).filter(x=>x.artifact).map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n');
  if(task.status==='CANCELLED')return 'המשך העבודה על המשימה בוטל והאישורים הממתינים בוטלו. פעולות שכבר בוצעו אינן מתבטלות אוטומטית.';
- if(task.status==='MANUAL_REVIEW')return 'המשימה נעצרה לבדיקה: לא ניתן לקבוע בביטחון אם פעולה הושלמה. לא אבצע אותה שוב עד לבירור התוצאה.';
+ if(task.status==='MANUAL_REVIEW')return 'המשימה הזו נעצרה, כי לא בטוח אם השלב האחרון הושלם. לא אחזור עליו כדי לא לבצע פעולה פעמיים.\nכדי להתחיל משהו חדש, כתוב: בטל את המשימה';
  if(task.status==='PAUSED')return 'עצרתי את המשימה. ההתקדמות נשמרה; אפשר לכתוב ״המשך במשימה״.';
  if(task.status==='BLOCKED')return 'כדי להשלים את המשימה צריך לפתור את החלק הבא: '+(s.reason||'יכולת שלא זמינה כרגע')+'. שאר ההתקדמות נשמרה.';
  if(task.status==='HUMAN_PAUSED')return 'המענה האוטומטי והמשימה הושהו למענה אנושי.';
