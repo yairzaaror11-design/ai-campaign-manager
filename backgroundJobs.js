@@ -29,6 +29,7 @@ function startBackgroundJobs({intervalMs=1000}={}) {
   if(cycles%300===1) await require('./scheduledReports').runDue();
   if(cycles%120===2) await require('./leadCheckins').runDue();
   if(cycles%600===5) await require('./campaignGuard').runDue();
+  if(cycles%600===7) await require('./seasonalPrompts').runDue();
   await require('./db').query("INSERT INTO worker_heartbeats(worker_id,role,last_success_at) VALUES($1,'MESSAGES',NOW()) ON CONFLICT(worker_id) DO UPDATE SET last_success_at=NOW()",[workerId]);
  },'maintenance');
  return async()=>{

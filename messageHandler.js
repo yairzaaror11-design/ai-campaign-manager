@@ -267,6 +267,8 @@ async function routeText(from, text, prefix = '') {
     await require('./db').query('UPDATE whatsapp_contacts SET opted_in=$2 WHERE phone=$1',[from,text==='/notifications-on']);
     await safeSend(from,text==='/notifications-on'?'הסכמת לקבלת עדכונים נרשמה. ניתן לבטל עם /notifications-off.':'הסכמת העדכונים בוטלה.');return;
   }
+  const competitorMatch=text.match(require('./competitorAds').PATTERN);
+  if (competitorMatch) {await safeSend(from,require('./competitorAds').reply(competitorMatch[1]));return;}
   if (/^(?:בדיקת מוכנות|\/readiness|האם אני מוכן לפרסם\??)$/.test(text)) {
     try {const client=await getOrCreateClient(from);const rc=require('./readinessCheck');await safeSend(from,rc.format(await rc.run(client.id)));}
     catch {await safeSend(from,'לא הצלחתי להשלים את בדיקת המוכנות כרגע. אפשר לנסות שוב בעוד כמה דקות.');}return;
