@@ -38,6 +38,7 @@ async function generate(prompt,options={}) {
  },{headers:{'x-goog-api-key':process.env.GEMINI_API_KEY},timeout:90000,maxRedirects:0,maxContentLength:8*1024*1024})).data;}catch{throw Error('GRAPHIC_PROVIDER_FAILED');}
  const part=response.candidates?.[0]?.content?.parts?.find(p=>p.inlineData?.data)?.inlineData;
  if(!part||!['image/png','image/jpeg'].includes(part.mimeType)) throw Error('GRAPHIC_IMAGE_REQUIRED');
+ void require('./usageLedger').record({provider:'gemini',model:process.env.GEMINI_IMAGE_MODEL,kind:'image',units:1});
  const buffer=Buffer.from(part.data,'base64');
  const png=buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
  const jpeg=buffer[0]===255&&buffer[1]===216&&buffer[2]===255;
