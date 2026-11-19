@@ -139,6 +139,7 @@ function format(report) {
   report.nextSteps.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
   lines.push('');
   lines.push('ההכנסות כאן הן לפני עלויות המוצר או השירות. לעדכון פניות כתבו: הלידים שלי');
+  lines.push(require('./dashboardLink').hint('performance'));
   return lines.join('\n');
 }
 
