@@ -44,7 +44,7 @@ test('bot manager completes a campaign sequence through media lookup, package re
   const upload=await send('מאשר את החבילה');assert.equal(upload.task.status,'WAITING_APPROVAL');assert.equal(writes.length,0);
   const bundle=await approve(upload);assert.deepEqual(writes,['adimages']);assert.equal(bundle.task.status,'WAITING_APPROVAL');
   const activation=await approve(bundle);assert.equal(activation.task.status,'WAITING_APPROVAL',JSON.stringify({writes,reads,objects:[...objects.values()],error:(await agent.current(c.id)).state.lastError}));assert.equal([...objects.values()].filter(o=>o.status==='ACTIVE').length,0);assert.equal([...objects.values()].filter(o=>o.status==='PAUSED').length,3);
-  assert.match(activation.reply,/10000/); // Verified account budget is disclosed in minor units before activation.
+  assert.match(activation.reply,/100 ₪ ליום/); // Verified account budget is disclosed in minor units before activation.
   const done=await approve(activation);assert.equal(done.task.status,'COMPLETE',JSON.stringify(done));assert.equal([...objects.values()].filter(o=>o.status==='ACTIVE').length,3);assert.equal(done.task.steps.filter(s=>s.kind==='meta'&&s.verified).length,3);
   assert.equal((await h.db.query('SELECT id FROM crm_leads WHERE client_id=$1',[c.id])).rows.length,0);
  }finally{axios.get=get;axios.post=post;mediaHandler.receiveWhatsAppMedia=receive;await h.close();for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);}

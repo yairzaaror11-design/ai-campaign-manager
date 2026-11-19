@@ -37,14 +37,14 @@ test('usage is stored per tenant from the request context and summarized per cli
     await ledger.record({ provider: 'gemini', model: 'gemini-3.5-flash', kind: 'analysis', inputTokens: 100 });
     assert.equal(await ledger.record({ provider: 'gemini', model: 'x', kind: 'not-a-kind' }), null);
 
-    const all = await ledger.summary({ since: '2000-01-01' });
+    const all = await ledger.summary({ since: '2000-01-01', until: '2100-01-01' });
     const byId = Object.fromEntries(all.clients.map(c => [c.clientId, c]));
     assert.equal(byId[String(a)].costUsd.toFixed(2), '1.58');
     assert.equal(byId[String(a)].byKind.image.units, 2);
     assert.equal(byId[String(b)].costUsd.toFixed(2), '0.96');
     assert.ok(byId.system, 'calls without a tenant are kept as system usage');
 
-    const one = await ledger.summary({ clientId: b, since: '2000-01-01' });
+    const one = await ledger.summary({ clientId: b, since: '2000-01-01', until: '2100-01-01' });
     assert.equal(one.clients.length, 1);
   } finally { await close(); }
 });
