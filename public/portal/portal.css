@@ -888,3 +888,6 @@ body .floating-actions>button.primary{background:var(--primary);border-color:var
 body .floating-actions>button .ui-icon{margin:0}
 body .floating-actions>button{justify-content:center;align-items:center}
 .lg-rev.lg-zero .lg-v{color:var(--muted)}
+/* Billing: plans, status, cancel and refund */
+.billing-plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:16px 0 24px}.billing-plan{border:1px solid var(--border);border-radius:var(--radius-card,16px);padding:20px;display:flex;flex-direction:column;gap:8px;background:var(--surface)}.billing-plan.current{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary)}.billing-plan h3{margin:0}.billing-price{font-size:22px;font-weight:700;margin:0}.billing-plan ul{margin:0 0 12px;padding-inline-start:18px;font-size:14px;flex:1}.billing-plan li{margin:4px 0}.billing-status{margin-bottom:8px}.billing-actions{margin:16px 0 8px}.billing-danger{color:var(--danger)!important}button.primary.billing-danger{background:var(--danger)!important;color:#fff!important}.billing-refund{border-top:1px solid var(--border);margin-top:16px;padding-top:8px}.billing-banner{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}.billing-dialog textarea{min-height:80px}
+@media (max-width:760px){.billing-plans{grid-template-columns:1fr}}
