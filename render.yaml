@@ -123,6 +123,10 @@ services:
         value: "8"
       - key: HF_CREDENTIALS
         sync: false
+      - key: GRAPHICS_PROVIDER
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
 
 # Stage 6: connect an existing PostgreSQL database by setting DATABASE_URL in Render.
 # Do not create a paid database automatically from this file.

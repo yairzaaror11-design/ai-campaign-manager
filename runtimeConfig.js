@@ -10,7 +10,8 @@ function validateRuntime() {
  require('./metaConnection').config();
  if(process.env.META_LEGACY_SINGLE_TENANT==='true'||process.env.MOCK_META_ENABLED==='true') throw Error('UNSAFE_PRODUCTION_MODE');
  if(process.env.DB_SSL==='false'&&process.env.ALLOW_PRIVATE_DB_PLAINTEXT!=='true') throw Error('DATABASE_TLS_REQUIRED');
- if(process.env.GRAPHICS_ENABLED==='true'&&(!process.env.GEMINI_API_KEY||!/^gemini-[a-z0-9.-]+$/.test(process.env.GEMINI_IMAGE_MODEL || ''))) throw Error('GRAPHICS_CONFIGURATION_REQUIRED');
+ if(process.env.GRAPHICS_PROVIDER&&!['gemini','openai'].includes(process.env.GRAPHICS_PROVIDER)) throw Error('GRAPHICS_PROVIDER_UNSUPPORTED');
+ if(process.env.GRAPHICS_ENABLED==='true'&&!require('./graphicService').graphicsConfigured()) throw Error('GRAPHICS_CONFIGURATION_REQUIRED');
  const provider=process.env.AI_PROVIDER || 'gemini';
  if(provider==='gemini'&&(!process.env.GEMINI_API_KEY||!process.env.GEMINI_MODEL||!process.env.GEMINI_TRANSCRIBE_MODEL)) throw Error('GEMINI_CONFIGURATION_REQUIRED');
  if(provider==='claude'&&(!process.env.ANTHROPIC_API_KEY||!process.env.CLAUDE_MODEL)) throw Error('CLAUDE_CONFIGURATION_REQUIRED');

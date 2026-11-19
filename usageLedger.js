@@ -13,6 +13,10 @@ const DEFAULT_PRICES = {
   'claude-sonnet-5-5': { input: 2, output: 10, cached: 0.1 },
   'claude-haiku-5-5': { input: 0.1, output: 0.5, cached: 0.01 },
   'gemini-nano-banana-2.1': { perImage: 0.04 },
+  // GPT Image is billed by tokens: text input $5, image output $30 per 1M.
+  'gpt-image-2.6-sunburst': { input: 5, output: 30 },
+  'gpt-image-2.6-flare': { input: 5, output: 30 },
+  'gpt-image-2.5-sunburst': { input: 5, output: 30 },
   'veo-3.1-fast-generate-001': { perSecond: 0.12 },
   'veo-3.1-lite-generate-001': { perSecond: 0.08 },
   'veo-3.1-generate-001': { perSecond: 0.4 },

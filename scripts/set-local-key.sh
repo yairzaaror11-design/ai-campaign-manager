@@ -6,7 +6,7 @@ set -euo pipefail
 umask 077
 NAME="${1:-}"
 case "$NAME" in
-  ANTHROPIC_API_KEY|GEMINI_API_KEY|HF_CREDENTIALS|GITHUB_TOKEN) ;;
+  ANTHROPIC_API_KEY|GEMINI_API_KEY|HF_CREDENTIALS|GITHUB_TOKEN|OPENAI_API_KEY) ;;
   *) echo "שם לא מוכר. אפשר: ANTHROPIC_API_KEY, GEMINI_API_KEY, HF_CREDENTIALS, GITHUB_TOKEN" >&2; exit 1 ;;
 esac
 ENV_FILE="$(cd "$(dirname "$0")/.." && pwd)/.env"
