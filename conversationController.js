@@ -11,6 +11,7 @@ async function owns(clientId){
 function passesThrough(message){
  if(/^\/(?:meta-|report(?:\s|$)|notifications-|business-report(?:\s|$)|readiness$|video\s)/.test(message))return true;
  if(/^(?:דוח עסקי(?:\s+(?:7|14|30))?|בדיקת מוכנות|האם אני מוכן לפרסם\??)$/.test(message))return true;
+ if(require('./competitorAds').PATTERN.test(message))return true;
  const video=require('./videoService');
  return video.enabled()&&!!video.videoRequest(message);
 }
