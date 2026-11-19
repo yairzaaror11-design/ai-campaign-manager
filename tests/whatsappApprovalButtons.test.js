@@ -32,10 +32,10 @@ test('WhatsApp approval buttons bind the exact tenant plan, require separate act
   await handler(event('forged',{type:'text',text:{body:'/approve-current '+issued.actionId}}));assert.equal(objects.size,0);assert.equal((await h.db.query('SELECT status FROM approvals WHERE action_id=$1',[issued.actionId])).rows[0].status,'PENDING');
   await handler(event('create',click(review.interactivePayload)));assert.equal(activations,0);assert.ok(objects.size>=4);assert.ok([...objects.values()].filter(o=>o.status).every(o=>o.status==='PAUSED'));
   assert.match(outputs.at(-1).text,/נוצר.*מושהה/);const activationMenu=outputs.at(-1).options.interactivePayload;assert.match(activationMenu.interactive.body.text,/הוצאה/);
-  assert.equal((await h.db.query("SELECT count(*)::int AS n FROM approvals a JOIN action_plans p ON p.id=a.action_id WHERE a.status='PENDING' AND p.intent='ACTIVATE_BUNDLE'")).rows[0].n,1);
+  assert.equal((await h.db.query("SELECT count(*)::int AS n FROM approvals a JOIN action_plans p ON p.id=a.action_id WHERE a.status='PENDING' AND p.intent='ACTIVATE_BUNDLE' AND a.client_id=$1",[client.id])).rows[0].n,1);
   await handler(event('activate',click(activationMenu)));assert.equal(activations,3);
   await handler(event('replay',click(activationMenu)));assert.equal(activations,3);
-  assert.equal((await h.db.query("SELECT count(*)::int AS n FROM meta_execution_attempts WHERE status='VERIFIED'")).rows[0].n,2);
+  assert.equal((await h.db.query("SELECT count(*)::int AS n FROM meta_execution_attempts WHERE status='VERIFIED' AND client_id=$1",[client.id])).rows[0].n,2);
  }finally{axios.get=get;axios.post=post;wa.safeSend=send;delete require.cache[require.resolve('../messageHandler')];await h.close();for(const key of Object.keys(process.env))if(!(key in env))delete process.env[key];Object.assign(process.env,env);}
 });
 test('full approval summaries include creative and split into complete ordered messages without truncation',async()=>{
