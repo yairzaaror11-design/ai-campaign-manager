@@ -11,8 +11,11 @@ const enabled = () => process.env.LEAD_CHECKINS_ENABLED !== 'false';
 const RULES = {
   NEW: { afterHours: 2, ask: (name, hours) => `${name} השאיר/ה פרטים לפני ${hours} שעות. הספקת לחזור?` },
   CONTACTED: { afterHours: 48, ask: (name) => `איך מתקדם עם ${name}? נקבעה פגישה או שיחה?` },
-  APPOINTMENT: { afterHours: 48, ask: (name) => `איך הייתה הפגישה עם ${name}? נסגרה עסקה?` }
+  APPOINTMENT: { afterHours: 48, ask: (name) => `איך הייתה הפגישה עם ${name}? נסגרה עסקה?` },
+  // Existing customers: a month after the deal, suggest asking for a review, a referral or a repeat sale.
+  WON: { afterHours: 30 * 24, ask: (name) => `${name} לקוח/ה שלך כבר כחודש. זה זמן טוב לבקש המלצה או חבר שצריך את השירות, או להציע שירות המשך.` }
 };
+const customerMessage = (name, business) => `היי ${String(name || '').split(/\s+/)[0]}, כאן${business ? ' מ' + business : ''}. רצינו לשאול איך היה? אם היית מרוצה, נשמח להמלצה קצרה, ואם יש מישהו שמכיר שצריך את השירות, נשמח לעזור גם לו 🙏`;
 const QUIET_HOURS = 3; // at most one check-in per owner in this window
 
 function israelHour(now = new Date()) {
@@ -27,18 +30,18 @@ function businessHours(now = new Date()) {
 
 // The oldest lead per owner that is due for a question it has not been asked yet.
 async function dueLeads(limit = 200) {
-  return (await db.query(`SELECT DISTINCT ON (l.client_id) l.id, l.client_id, l.name, l.status, l.version,
+  return (await db.query(`SELECT DISTINCT ON (l.client_id) l.id, l.client_id, l.name, l.status, l.version, l.phone AS lead_phone,
       EXTRACT(EPOCH FROM NOW()-l.updated_at)/3600 AS hours_in_stage, c.phone
     FROM crm_leads l
     JOIN clients c ON c.id=l.client_id
     JOIN whatsapp_contacts w ON w.phone=c.phone AND w.last_inbound_at>NOW()-INTERVAL '24 hours'
-    WHERE l.status IN ('NEW','CONTACTED','APPOINTMENT')
-      AND l.updated_at < NOW() - make_interval(hours => CASE l.status WHEN 'NEW' THEN $1::int ELSE $2::int END)
-      AND l.updated_at > NOW() - INTERVAL '30 days'
+    WHERE l.status IN ('NEW','CONTACTED','APPOINTMENT','WON')
+      AND l.updated_at < NOW() - make_interval(hours => CASE l.status WHEN 'NEW' THEN $1::int WHEN 'WON' THEN $5::int ELSE $2::int END)
+      AND l.updated_at > NOW() - CASE WHEN l.status='WON' THEN INTERVAL '60 days' ELSE INTERVAL '30 days' END
       AND NOT EXISTS (SELECT 1 FROM lead_checkins k WHERE k.lead_id=l.id AND k.stage=l.status)
       AND NOT EXISTS (SELECT 1 FROM lead_checkins k WHERE k.client_id=l.client_id AND k.sent_at>NOW()-make_interval(hours => $3::int))
     ORDER BY l.client_id, l.updated_at
-    LIMIT $4`, [RULES.NEW.afterHours, RULES.CONTACTED.afterHours, QUIET_HOURS, limit])).rows;
+    LIMIT $4`, [RULES.NEW.afterHours, RULES.CONTACTED.afterHours, QUIET_HOURS, limit, RULES.WON.afterHours])).rows;
 }
 
 // Don't interrupt: skip owners with an open decision, CRM flow or human support.
@@ -56,6 +59,14 @@ async function askOne(lead) {
   const question = RULES[lead.status].ask(name, Math.max(1, Math.round(Number(lead.hours_in_stage))));
   return require('./metaConnection').context.run(String(lead.client_id), () =>
     require('./whatsappDelivery').messageContext.run({ eventId: `checkin:${lead.id}:${lead.status}`, sequence: 0 }, async () => {
+      if (lead.status === 'WON') {
+        const alert = require('./leadAlert');
+        const number = alert.waNumber(lead.lead_phone);
+        const business = await alert.businessNameFor(lead.client_id);
+        const text = question + (number ? `\n\nהודעה מוכנה ללקוח, בלחיצה אחת:\nhttps://wa.me/${number}?text=${encodeURIComponent(customerMessage(lead.name, business))}` : '');
+        await require('./whatsapp').safeSend(lead.phone, text);
+        return 'ASKED';
+      }
       // Focus the lead so the status buttons update exactly this lead (optimistic version check).
       await require('./marketingStore').update(lead.client_id, null, (p) => { p.crmFocus = { id: lead.id, version: lead.version }; return { handled: false, changed: true }; });
       const ui = await require('./conversationUi').prepare(lead.client_id, question, 'crm_status');

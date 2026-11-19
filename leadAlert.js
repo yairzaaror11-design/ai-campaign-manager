@@ -70,4 +70,4 @@ async function notifyOwner(clientId, lead) {
   }
 }
 
-module.exports = { enabled, notifyOwner, suggestedReply, alertText, waNumber };
+module.exports = { enabled, notifyOwner, suggestedReply, alertText, waNumber, businessNameFor };

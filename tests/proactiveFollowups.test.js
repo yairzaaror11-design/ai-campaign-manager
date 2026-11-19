@@ -92,3 +92,21 @@ test('the weekly report goes out once on Sunday morning to active clients', asyn
     await close();
   }
 });
+
+test('a month after a deal SCORPIO suggests asking the customer for a review or referral', async () => {
+  const { db, close } = await openDatabase();
+  try {
+    const checkins = require('../leadCheckins');
+    const client = await owner(db, '972500000116');
+    await db.query(`INSERT INTO crm_leads(id,client_id,name,phone,source,status,created_at,updated_at)
+      VALUES(gen_random_uuid(),$1,'אורי לוי','0547654321','meta_lead_ads','WON',NOW()-INTERVAL '40 days',NOW()-INTERVAL '31 days')`, [client]);
+    await db.query(`INSERT INTO crm_leads(id,client_id,name,source,status,created_at,updated_at)
+      VALUES(gen_random_uuid(),$1,'ישן','meta_lead_ads','WON',NOW()-INTERVAL '90 days',NOW()-INTERVAL '80 days')`, [client]);
+    await checkins.runDue({ now: TUESDAY });
+    const sent = await outbox(db, client);
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].type, 'text');
+    assert.match(sent[0].text.body, /אורי לוי לקוח\/ה שלך כבר כחודש/);
+    assert.match(sent[0].text.body, /wa\.me\/972547654321\?text=/);
+  } finally { await close(); }
+});
