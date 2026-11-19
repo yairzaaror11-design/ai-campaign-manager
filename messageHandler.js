@@ -61,7 +61,7 @@ async function handleApproval(from, code,actionId=null) {
     const next=await createApproval(from,require('./actionPlan').createActionPlan({intent:'ACTIVATE_BUNDLE',summary:'הפעלת הקמפיין שנוצר ואומת במצב מושהה',target:{accountId:consumed.approval.actionPlan.target.accountId,campaignId:o.campaignId},parameters:{adsetIds:o.adsetIds,adIds:o.adIds}}));
     const summary='הקמפיין נוצר ב־Meta ואומת במצב מושהה.\n\n'+formatActionPlan(next.actionPlan);
     const ui=await require('./conversationUi').prepareApproval(client.id,next,summary);await safeSend(from,ui.text,ui);return;
-    }catch{await safeSend(from,'הקמפיין נוצר ואומת במצב מושהה. לא הופעל פרסום. הכנת אישור ההפעלה לא הושלמה; אפשר לבקש אותו מחדש לאחר בדיקת החיבור.');return;}
+    }catch(error){if(error?.message==='SPEND_CAP_EXCEEDED'){await safeSend(from,'הקמפיין נוצר ואומת במצב מושהה. לא הופעל פרסום.\n\n'+error.reply);return;}await safeSend(from,'הקמפיין נוצר ואומת במצב מושהה. לא הופעל פרסום. הכנת אישור ההפעלה לא הושלמה; אפשר לבקש אותו מחדש לאחר בדיקת החיבור.');return;}
   }
   await safeSend(from,result.ok?'הפעולה בוצעה ואומתה מול Meta.':result.message||'הפעולה לא בוצעה.');
 }
@@ -136,7 +136,7 @@ async function processNaturalLanguage(from, text, prefix = '') {
     if (plan.missing?.length) continue;
     let approval;
     try {approval = await createApproval(from, plan);}
-    catch {reply+='\nההצעה לא קיבלה קוד אישור: נדרש חשבון מחובר וכל פרטי הפעולה, הקהל, המטבע והתאריכים. לא בוצע שינוי.';continue;}
+    catch(error){if(error?.message==='SPEND_CAP_EXCEEDED'){reply+='\n\n'+error.reply;continue;}reply+='\nההצעה לא קיבלה קוד אישור: נדרש חשבון מחובר וכל פרטי הפעולה, הקהל, המטבע והתאריכים. לא בוצע שינוי.';continue;}
     reply += `\n\n${formatActionPlan(approval.actionPlan)}${approvalInstruction(approval)}`;
     buttonApproval=approval;
   }
@@ -208,8 +208,9 @@ async function handleTenantMessage(message, contact) {
 
 async function routeText(from, text, prefix = '') {
   if(text.startsWith('/approve-current ')&&configured()&&(require('./taskAgent').enabled()||process.env.UNIFIED_CONVERSATION_ENABLED==='true')){const c=await getOrCreateClient(from),task=await require('./taskAgent').active(c.id),id=text.slice(17),pending=task?.state.steps.find(x=>x.status==='WAITING_APPROVAL'&&x.result?.approval?.actionId===id),ctx=require('./whatsappDelivery').messageContext.getStore();if(pending&&ctx?.approvedActionId===id){delete ctx.approvedActionId;const r=await require('./taskAgent').send(c.id,{message:'אשר '+require('./metaConnection').decrypt(pending.result.approval.codeCiphertext,c.id),requestId:'task-button:'+ctx.eventId,channel:'WHATSAPP'},{deferPlanning:!require('./taskAgent').enabled()});await deliverTaskReply(from,c.id,r);return;}}
-  if(text.startsWith('/approve-current ')){const owner=configured()?await getOrCreateClient(from):null;if(owner&&await require('./conversationController').owns(owner.id)&&!await require('./campaignGuard').ownsApproval(owner.id,text.slice(17))){await safeSend(from,'האישור הזה אינו שייך למשימה הנוכחית. לא בוצעה פעולה. אפשר לבקש להכין את הפעולה מחדש לבדיקה.');return;}await handleApproval(from,null,text.slice(17));return;}
+  if(text.startsWith('/approve-current ')){const owner=configured()?await getOrCreateClient(from):null;if(owner&&await require('./conversationController').owns(owner.id)&&!await require('./campaignGuard').ownsApproval(owner.id,text.slice(17))&&!await require('./dailyAdvice').ownsApproval(owner.id,text.slice(17))){await safeSend(from,'האישור הזה אינו שייך למשימה הנוכחית. לא בוצעה פעולה. אפשר לבקש להכין את הפעולה מחדש לבדיקה.');return;}await handleApproval(from,null,text.slice(17));return;}
   if(text==='בטל את הפעולה הממתינה'){await cancelPendingApprovals(from);await safeSend(from,'הפעולה הממתינה בוטלה. מה נרצה לשנות?');return;}
+  {const advice=await require('./dailyAdvice').handleReply(from,text);if(advice?.route)text=advice.route;else if(advice)return;}
 
   if(require('./conversationControl').isReset(text)){
     await resetSession(from);
@@ -224,6 +225,9 @@ async function routeText(from, text, prefix = '') {
   }
   if(configured()){
     const client=await getOrCreateClient(from);
+    // Billing (cancel, refund, plan status) answers the same way in every conversation mode.
+    const billing=require('./billingConversation').matches(text)?await require('./billingConversation').handle(client.id,text):null;
+    if(billing){await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:billing.reply}]);const ui=billing.decisionKey?await require('./conversationUi').prepare(client.id,billing.reply,billing.decisionKey):{text:billing.reply};await safeSend(from,ui.text,ui);return;}
     const controller=require('./conversationController');
     const result=await controller.handle(client.id,{message:text,requestId:'whatsapp:'+require('./whatsappDelivery').messageContext.getStore()?.eventId,channel:'WHATSAPP'},{onProgress:notice=>notifyProcessing(from,notice)});
     if(result?.delegateApproval){await handleApproval(from,result.delegateApproval);return;}

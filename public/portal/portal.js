@@ -29,10 +29,8 @@ async function refresh(){
  const checks=$('website-checks');checks.replaceChildren();
  if(state.websiteChecks)for(const [key,label]of Object.entries({hasContactLink:'קישור יצירת קשר בעמוד',hasForm:'טופס בעמוד',hasMobileViewport:'תג התאמה למסך נייד',trackingTagsDetected:'זוהו תגי מדידה בעמוד'}))field(checks,label,state.websiteChecks[key]?'זוהה':'לא זוהה בעמוד שנקרא');
  else checks.append(text('p','עדיין לא בוצעה בדיקת עמוד ציבורי. אפשר לשלוח קישור בשיחה.'));
- $('billing-manage').hidden=!state.subscription.checkoutAvailable||state.subscription.plan_code!=='PAID';
  $('register-form').hidden=!!state.account;$('registration-status').textContent=state.account?'החשבון נשמר. פרטי השיחה והתוכנית כבר משויכים אליו.':'';
  $('lead-form').hidden=!state.account;
- $('subscription').replaceChildren(text('p','מסלול: '+state.subscription.plan_code),text('p',state.subscription.notice),text('p','ניסיונות יצירת תמונות ב-24 השעות האחרונות: '+state.usage.graphicsAttemptsLast24Hours));
  const c=state.crm.counts;$('lead-count').textContent=Object.values(c).reduce((a,b)=>a+b,0)+' לידים';
  $('status').textContent='';document.dispatchEvent(new CustomEvent('portal:refresh',{detail:state}));
 }
@@ -73,11 +71,3 @@ $('report').addEventListener('click',()=>run($('report'),async()=>{tell('מכי�
 
 $('landing-create').addEventListener('click',()=>run($('landing-create'),async()=>{if(!await window.ScorpioUI.confirm('פרסום דף הנחיתה','הדף יעלה לאוויר עם הנוסח של הקמפיין וטופס לידים. לפרסם?','אישור פרסום'))return;const r=await api('landing',{confirmPublish:true});const a=document.createElement('a');a.textContent='דף הנחיתה שלך מוכן';a.href=r.url;a.target='_blank';a.rel='noopener noreferrer';$('landing-link').replaceChildren(a);tell('דף הנחיתה באוויר 🎉 כל ליד ממנו ייכנס לכאן.');}));
 
-$('show-price').addEventListener('click',()=>run($('show-price'),async()=>{
- const price=await api('billing/price'),container=$('price-review');container.replaceChildren();
- if(!price.available){container.append(text('p',price.reason));return;}
- container.append(text('p',`מחיר השירות: ${(price.amountMinor/100).toFixed(2)} ${price.currency} ל-${price.interval==='month'?'חודש':'שנה'}`),text('p',price.notice));
- const buy=text('button','המשך לרכישה במחיר המוצג');buy.addEventListener('click',()=>run(buy,async()=>{const result=await api('billing/checkout',{confirmPurchase:true,expectedPriceId:price.id,expectedAmountMinor:price.amountMinor});location.assign(result.url);}));container.append(buy);
-}));
-
-$('billing-manage').addEventListener('click',()=>run($('billing-manage'),async()=>{const r=await api('billing/manage',{});location.assign(r.url);}));

@@ -18,11 +18,21 @@ async function post(plan,path,data) {
   let token=permit.token;
   if(plan.intent==='CREATE_LEAD_FORM')token=(await require('./metaLeadForms').pageAccess(permit.clientId,plan.parameters.pageId)).token;
   if(plan.parameters.formId)await require('./metaLeadForms').inspect(permit.clientId,plan.parameters.pageId,plan.parameters.formId);
+  const send=body=>axios.post('https://graph.facebook.com/'+meta.config().version+path,
+      new URLSearchParams(Object.entries(body).filter(([,v])=>v!==undefined).map(([k,v])=>[k,typeof v==='object'?JSON.stringify(v):String(v)])),
+      {headers:{Authorization:'Bearer '+token},params:{appsecret_proof:require('crypto').createHmac('sha256',process.env.META_APP_SECRET).update(token).digest('hex')},maxRedirects:0,timeout:15000});
   try {
-    return (await axios.post('https://graph.facebook.com/'+meta.config().version+path,
-      new URLSearchParams(Object.entries(data).filter(([,v])=>v!==undefined).map(([k,v])=>[k,typeof v==='object'?JSON.stringify(v):String(v)])),
-      {headers:{Authorization:'Bearer '+token},params:{appsecret_proof:require('crypto').createHmac('sha256',process.env.META_APP_SECRET).update(token).digest('hex')},maxRedirects:0,timeout:15000})).data;
-  } catch {throw Error('META_WRITE_UNCERTAIN');}
+    return (await send(data)).data;
+  } catch(error) {
+    // A 400 is a definite rejection (nothing was created). If Meta rejects the
+    // enhancement opt-out itself, create the creative without it rather than
+    // leaving the campaign stuck, and log it so the opt-out keys can be fixed.
+    if(error?.response?.status===400&&data.degrees_of_freedom_spec&&error.response.data?.error){
+      require('./logger').logger.warn('Meta rejected enhancement opt-out; creating creative without it',{code:Number(error.response.data.error.code)||null});
+      try{const {degrees_of_freedom_spec,...rest}=data;return (await send(rest)).data;}catch{throw Error('META_WRITE_UNCERTAIN');}
+    }
+    throw Error('META_WRITE_UNCERTAIN');
+  }
 }
 async function uploadImage(plan) {
  if(process.env.META_WRITES_ENABLED!=='true'||process.env.READ_ONLY!=='false') throw Error('TENANT_WRITES_DISABLED');
@@ -50,9 +60,15 @@ async function createAdSet(plan) {
  const p=plan.parameters;
  return post(plan,'/'+plan.target.accountId+'/adsets',{name:p.name,campaign_id:p.campaignId,daily_budget:p.dailyBudgetMinor,billing_event:p.billingEvent,optimization_goal:p.optimizationGoal,bid_strategy:p.bidStrategy,targeting:require('./geoTargeting').forMeta(p.targeting),promoted_object:p.promotedObject,start_time:p.startTime,end_time:p.endTime,status:'PAUSED'});
 }
+// Spend safety: Meta's Advantage+ creative "enhancements" (auto crops, touch-ups,
+// rewritten text, music, overlays, catalog products, comments...) are opted out on
+// every creative SCORPIO creates, so the owner's ad runs exactly as approved.
+// Keys per Marketing API AdCreativeFeaturesSpec (each {enroll_status:'OPT_OUT'}).
+const ENHANCEMENT_FEATURES=['standard_enhancements','image_touchups','adapt_to_placement','image_templates','image_animation','add_text_overlay','text_optimizations','description_automation','inline_comment','music_generation','site_extensions','product_extensions'];
+const NO_ENHANCEMENTS={creative_features_spec:Object.fromEntries(ENHANCEMENT_FEATURES.map(k=>[k,{enroll_status:'OPT_OUT'}]))};
 async function createCreative(plan) {
  const p=plan.parameters;
- return post(plan,'/'+plan.target.accountId+'/adcreatives',{name:p.name,object_story_spec:{page_id:p.pageId,link_data:{link:p.link,message:p.message,name:p.headline,image_hash:p.imageHash,...(p.formId?{call_to_action:{type:'SIGN_UP',value:{lead_gen_form_id:p.formId}}}:{})}}});
+ return post(plan,'/'+plan.target.accountId+'/adcreatives',{name:p.name,degrees_of_freedom_spec:NO_ENHANCEMENTS,object_story_spec:{page_id:p.pageId,link_data:{link:p.link,message:p.message,name:p.headline,image_hash:p.imageHash,...(p.formId?{call_to_action:{type:'SIGN_UP',value:{lead_gen_form_id:p.formId}}}:{})}}});
 }
 async function createAd(plan) {
  const p=plan.parameters;
@@ -70,7 +86,7 @@ async function createBundle(plan) {
  if(!/^\d+$/.test(creative.id || '')) throw Error('CREATIVE_RESULT_UNCERTAIN');
  const creatives=[{id:creative.id,headline:p.headline}];
  for(const [i,v] of (p.variants||[]).entries()){
-  const extra=await post(plan,'/'+plan.target.accountId+'/adcreatives',{name:p.name+' — גרסה '+(i+2),object_story_spec:{page_id:p.pageId,link_data:{link:p.link,message:v.message,name:v.headline,image_hash:p.imageHash,...(p.formId?{call_to_action:{type:'SIGN_UP',value:{lead_gen_form_id:p.formId}}}:{})}}});
+  const extra=await post(plan,'/'+plan.target.accountId+'/adcreatives',{name:p.name+' — גרסה '+(i+2),degrees_of_freedom_spec:NO_ENHANCEMENTS,object_story_spec:{page_id:p.pageId,link_data:{link:p.link,message:v.message,name:v.headline,image_hash:p.imageHash,...(p.formId?{call_to_action:{type:'SIGN_UP',value:{lead_gen_form_id:p.formId}}}:{})}}});
   if(!/^\d+$/.test(extra.id || '')) throw Error('CREATIVE_RESULT_UNCERTAIN');
   creatives.push({id:extra.id,headline:v.headline});
  }
@@ -105,4 +121,4 @@ async function activateBundle(plan) {
  for(const id of [...adIds,...adsetIds,campaignId]) await post(plan,'/'+id,{status:'ACTIVE'});
  return {id:campaignId,objects:{campaignId,adsetIds,adIds}};
 }
-module.exports={createLeadForm,createBundle,activateBundle,uploadImage,createCampaign,createAdSet,createCreative,createAd,changeBudget,pauseCampaign,resumeCampaign,editCampaign};
+module.exports={NO_ENHANCEMENTS,ENHANCEMENT_FEATURES,createLeadForm,createBundle,activateBundle,uploadImage,createCampaign,createAdSet,createCreative,createAd,changeBudget,pauseCampaign,resumeCampaign,editCampaign};

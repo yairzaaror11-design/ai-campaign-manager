@@ -5,6 +5,7 @@ router.get('/app',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/ind
 router.get('/app/:screen',(req,res,next)=>{if(![...require('./portalAgent').SCREENS,'pages','performance','approvals'].includes(req.params.screen))return next();res.sendFile(path.join(__dirname,'public/portal/index.html'));});
 router.get('/app/portal.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/portal.js')));
 router.get('/app/dashboard.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/dashboard.js')));
+router.get('/app/billing.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/billing.js')));
 router.get('/app/components.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/components.js')));
 router.get('/app/portal.css',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/portal.css')));
 router.post('/app/api/login',require('./rateLimit').middleware('portal-login',20),async(req,res)=>{
@@ -25,7 +26,7 @@ router.get('/app/api/dashboard',endpoint(async(req,res)=>{
  const account=(await db.query('SELECT display_name,email,consent_version FROM customer_accounts WHERE client_id=$1',[id])).rows[0]||null;
  const subscription=(await db.query('SELECT plan_code,status,period_end FROM customer_subscriptions WHERE client_id=$1',[id])).rows[0]||{plan_code:'PILOT',status:'PILOT'};
  const graphics=(await db.query('SELECT COUNT(*)::int AS count FROM graphic_jobs WHERE client_id=$1 AND created_at>NOW()-INTERVAL \'1 day\'',[id])).rows[0]?.count||0;
- res.json({productName:'SCORPIO AI',profileVersion:p?.version||0,account,subscription:{...subscription,checkoutAvailable:require('./billingService').configured(),notice:'מנוי הפיילוט אינו חיוב כספי. מדיה משולמת לפלטפורמת הפרסום בנפרד. רכישה תיפתח רק לאחר הגדרת ספק, מחיר ותנאים.'},business:p?require('./conversationFacts').all(p):{},brand:p?.brand||null,websiteChecks:p?.websiteChecks||null,draft:p?.journey?.draft||null,stage:p?.journey?.stage||'DISCOVERY',connection:p?.connection?{status:p.connection.status,account:p.connection.account,lastCheckAt:p.connection.lastCheckAt}:null,crm:await require('./crmService').summary(id),usage:{graphicsAttemptsLast24Hours:graphics},capabilities:{metaWrites:process.env.READ_ONLY==='false'&&process.env.META_WRITES_ENABLED==='true',googleAds:false,videoGeneration:false,billing:require('./billingService').configured()}});
+ res.json({productName:'SCORPIO AI',profileVersion:p?.version||0,account,subscription:{...subscription,checkoutAvailable:require('./billingService').configured(),notice:require('./billingPlans').AD_BUDGET_NOTE},billing:await require('./subscriptionService').summary(id),business:p?require('./conversationFacts').all(p):{},brand:p?.brand||null,websiteChecks:p?.websiteChecks||null,draft:p?.journey?.draft||null,stage:p?.journey?.stage||'DISCOVERY',connection:p?.connection?{status:p.connection.status,account:p.connection.account,lastCheckAt:p.connection.lastCheckAt}:null,crm:await require('./crmService').summary(id),usage:{graphicsAttemptsLast24Hours:graphics},capabilities:{metaWrites:process.env.READ_ONLY==='false'&&process.env.META_WRITES_ENABLED==='true',googleAds:false,videoGeneration:false,billing:require('./billingService').configured()}});
 }));
 router.post('/app/api/register',endpoint(async(req,res)=>res.json(await auth.register(req.portal.clientId,req.body))));
 router.post('/app/api/logout',endpoint(async(req,res)=>{
@@ -111,11 +112,17 @@ router.patch('/app/api/landing/drafts/:id',endpoint(async(req,res)=>res.json(awa
 router.post('/app/api/landing/:id/publish',endpoint(async(req,res)=>res.json(await require('./landingDrafts').publish(req.portal.clientId,req.params.id,req.body))));
 router.post('/app/api/landing',endpoint(async(req,res)=>res.json(await require('./landingService').create(req.portal.clientId,req.body))));
 router.get('/app/api/landing',endpoint(async(req,res)=>{const r=await db.query('SELECT id,slug,payload,status,revision,created_at FROM landing_pages WHERE client_id=$1 ORDER BY created_at DESC LIMIT 20',[req.portal.clientId]);res.json({pages:r.rows.map(p=>({...p,url:p.status==='PUBLISHED'?auth.origin()+'/p/'+p.slug:null}))});}));
-router.get('/app/api/billing/price',endpoint(async(req,res)=>res.json(await require('./billingService').price())));
+router.get('/app/api/billing',endpoint(async(req,res)=>res.json(await require('./subscriptionService').summary(req.portal.clientId))));
+router.get('/app/api/billing/price',endpoint(async(req,res)=>res.json(await require('./billingService').price(String(req.query.plan||'')))));
+router.post('/app/api/billing/plan',endpoint(async(req,res)=>res.json(await require('./subscriptionService').selectPlan(req.portal.clientId,req.body?.planKey))));
+router.post('/app/api/billing/cancel',endpoint(async(req,res)=>{if(req.body?.confirm!==true)throw Error('BILLING_CONFIRMATION_REQUIRED');res.json(await require('./subscriptionService').cancel(req.portal.clientId,{channel:'PORTAL'}));}));
+router.post('/app/api/billing/refund',endpoint(async(req,res)=>res.json(await require('./subscriptionService').requestRefund(req.portal.clientId,{channel:'PORTAL',reason:typeof req.body?.reason==='string'&&req.body.reason.trim()?req.body.reason:null}))));
+router.get('/app/api/billing/refunds',endpoint(async(req,res)=>res.json(await require('./subscriptionService').refundQueue(req.portal.clientId))));
+router.post('/app/api/billing/refunds/:id/done',endpoint(async(req,res)=>res.json(await require('./subscriptionService').markRefunded(req.portal.clientId,req.params.id))));
 router.post('/app/api/billing/checkout',endpoint(async(req,res)=>res.json(await require('./billingService').checkout(req.portal.clientId,req.body))));
 router.post('/app/api/billing/manage',endpoint(async(req,res)=>res.json(await require('./billingService').management(req.portal.clientId))));
 router.get('/app/api/billing/invoices',endpoint(async(req,res)=>{const r=await db.query('SELECT amount_paid_minor,currency,status,hosted_url,created_at FROM billing_invoices WHERE client_id=$1 ORDER BY created_at DESC LIMIT 50',[req.portal.clientId]);res.json({invoices:r.rows});}));
-router.post('/billing/webhook',require('./rateLimit').middleware('billing-webhook',120),async(req,res)=>{try{const event=require('./billingService').verify(req.rawBody,req.headers['stripe-signature']);res.json(await require('./billingService').apply(event));}catch{res.status(400).json({error:'Invalid billing event'});}});
+router.post('/billing/webhook',require('./rateLimit').middleware('billing-webhook',120),async(req,res)=>{try{const verified=require('./billingService').verify(req.rawBody,req.headers);res.json(await require('./billingService').apply(verified));}catch{res.status(400).json({error:'Invalid billing event'});}});
 // Structured business report: spend, funnel, per-campaign results and next steps.
 // Today, setup checklist, trend, campaigns and approvals: the dashboard's operating view.
 router.get('/app/api/today',endpoint(async(req,res)=>{const f=require('./dashboardFeed');const [items,setup]=await Promise.all([f.today(req.portal.clientId),f.checklist(req.portal.clientId)]);res.json({items,setup});}));

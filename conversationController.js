@@ -37,6 +37,7 @@ async function handle(clientId,input,options={}){
  const activity=await require('./activityLog').handle(clientId,message);if(activity)return activity;
  // Ongoing organic content (three-month calendar) and photo-shoot requests.
  const organic=await require('./organicContent').handle(clientId,message);if(organic)return organic;
+ const spendCap=await require('./spendCap').handle(clientId,message);if(spendCap)return spendCap;
  if(message.startsWith('/')&&message!=='/start')return{handled:true,reply:'אפשר לכתוב כאן במילים מה תרצה להשיג. אמשיך מאותה בקשה ואציג את התוצרים לבדיקה לפני כל פעולה.'};
  const profile=await require('./marketingStore').load(clientId);
  const connection=['connect','disconnect','renew','connection_status','select_account'].includes(analysis.intent)||profile?.connection?.status==='ACCOUNT_SELECTION_REQUIRED'&&/^\d{1,3}$/.test(message)||profile?.connection?.status==='CONNECTION_OFFERED'&&analysis.intent==='yes';
@@ -57,5 +58,5 @@ async function media(clientId,input,options={}){
  if(!await tasks.active(clientId))return{handled:true,reply:'הקובץ נשמר לשיחה. מה תרצה להכין איתו?'};
  return handle(clientId,input,options);
 }
-function acceptsInteractive(profile){return ['action_approval','account_selection','connection_offer','connected','task_review','guard_alert'].includes(profile?.ui?.decisionKey);}
+function acceptsInteractive(profile){return ['action_approval','account_selection','connection_offer','connected','task_review','guard_alert','billing_cancel'].includes(profile?.ui?.decisionKey);}
 module.exports={passesThrough,owns,handle,media,acceptsInteractive};
