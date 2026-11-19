@@ -69,7 +69,7 @@ function budgetSuggestion(rows) {
   const best = [...enough].sort((a, b) => (b.won / b.leads) - (a.won / a.leads))[0];
   const worst = [...enough].sort((a, b) => (a.won / a.leads) - (b.won / b.leads))[0];
   if (best === worst || best.won === 0 || worst.won / worst.leads >= best.won / best.leads / 2) return null;
-  return `״${best.name}״ סוגר ${Math.round(best.won / best.leads * 100)}% מהפניות לעומת ${Math.round(worst.won / worst.leads * 100)}% ב״${worst.name}״. כדאי לשקול להעביר אליו חלק מהתקציב. שום שינוי לא יבוצע בלי אישור שלך.`;
+  return `״${best.name}״ סוגר ${Math.round(best.won / best.leads * 100)}% מהלידים לעומת ${Math.round(worst.won / worst.leads * 100)}% ב״${worst.name}״. כדאי לשקול להעביר אליו חלק מהתקציב. שום שינוי לא יבוצע בלי אישור שלך.`;
 }
 
 function metrics(f, spend) {
@@ -90,13 +90,13 @@ const pct = (v) => (v === null ? '—' : Math.round(v * 100) + '%');
 // Deterministic next steps, most urgent first.
 function nextSteps(f, m, spend) {
   const steps = [];
-  if (f.staleUntouched > 0) steps.push(`יש ${f.staleUntouched} פניות שלא טופלו יותר מיום. כדאי לחזור אליהן היום, פנייה שמחכה מתקררת מהר.`);
-  if (spend > 0 && f.leads === 0) steps.push('הייתה הוצאה על פרסום אבל לא נכנסו פניות. כדאי לבדוק את הקמפיין, הקהל והטופס.');
-  if (f.leads >= 5 && m.contactRate !== null && m.contactRate < 0.7) steps.push('פחות מ־70% מהפניות קיבלו מענה. מענה מהיר לכל פנייה הוא הדרך הזולה ביותר להגדיל מכירות.');
+  if (f.staleUntouched > 0) steps.push(`יש ${f.staleUntouched} לידים שמחכים יותר מיום. כדאי לחזור אליהם היום, ליד שמחכה מתקרר מהר.`);
+  if (spend > 0 && f.leads === 0) steps.push('הוצא כסף על פרסום אבל לא נכנסו לידים. כדאי לבדוק את הקמפיין, הקהל והטופס.');
+  if (f.leads >= 5 && m.contactRate !== null && m.contactRate < 0.7) steps.push('פחות מ־70% מהלידים קיבלו מענה. מענה מהיר לכל ליד הוא הדרך הזולה ביותר להגדיל מכירות.');
   if (f.meetings > 0 && f.won === 0) steps.push('יש פגישות אבל עוד אין סגירות. כדאי לעדכן מי נסגר, ולבדוק את ההצעה והמחיר.');
   if (f.won > 0 && f.revenue === 0) steps.push('סומנו עסקאות שנסגרו בלי סכום. עדכון הסכום יאפשר לחשב אם הפרסום רווחי.');
-  if (!steps.length && f.leads > 0) steps.push('המספרים יציבים. כדאי להמשיך לעדכן כל פנייה ב־CRM כדי שהדוח הבא יהיה מדויק יותר.');
-  if (!steps.length) steps.push('עוד אין פניות בתקופה הזו. כשיתחיל קמפיין, הדוח יראה כאן את כל הדרך מהפרסום ועד המכירה.');
+  if (!steps.length && f.leads > 0) steps.push('הכול נראה טוב 👍 תמשיך לעדכן מה קורה עם כל ליד, ככה אדע להגיד לך מה באמת מביא כסף.');
+  if (!steps.length) steps.push('עוד אין לידים בתקופה הזו. כשקמפיין יתחיל לרוץ, תראה כאן את כל הדרך מהפרסום ועד המכירה.');
   return steps.slice(0, 3);
 }
 
