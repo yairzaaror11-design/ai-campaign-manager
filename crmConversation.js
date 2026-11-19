@@ -51,7 +51,8 @@ async function handle(clientId,text){
   try{updated=await crm.update(clientId,p.crmFocus.id,{status:mapping[text],version:p.crmFocus.version});}
   catch{return{handled:true,reply:'הפנייה עודכנה במקום אחר או אינה זמינה. אפשר לבקש ״הפניות שלי״ כדי לרענן.'};}
   await store.update(clientId,null,profile=>{delete profile.crmFocus;delete profile.crmMenu;delete profile.crmFollowup;if(['WON','LOST'].includes(updated.status))profile.crmFollowup={id:updated.id,version:updated.version,status:updated.status,kind:updated.status==='WON'?'REVENUE':'LOST_REASON'};return{handled:false,changed:true};});
-  return{handled:true,reply:updated.status==='WON'?'העסקה סומנה כנסגרה. מה סכום העסקה ובאיזה מטבע? למשל 500 ₪. אפשר גם לדלג.':updated.status==='LOST'?'הפנייה סומנה כלא הבשילה. מה הייתה הסיבה? אפשר גם לדלג.':'מצב הפנייה עודכן. אפשר לבקש ״הפניות שלי״ כדי להמשיך לפנייה הבאה.'};
+  const told=updated.source==='meta_lead_ads'&&require('./metaCrmFeedback').enabled()?' אעדכן את Meta שהפנייה הזו הפכה ללקוח, כדי שתביא עוד אנשים כמוה.':'';
+  return{handled:true,reply:updated.status==='WON'?'העסקה סומנה כנסגרה.'+told+' מה סכום העסקה ובאיזה מטבע? למשל 500 ₪. אפשר גם לדלג.':updated.status==='LOST'?'הפנייה סומנה כלא הבשילה. מה הייתה הסיבה? אפשר גם לדלג.':'מצב הפנייה עודכן. אפשר לבקש ״הפניות שלי״ כדי להמשיך לפנייה הבאה.'};
  }
  return null;
 }
