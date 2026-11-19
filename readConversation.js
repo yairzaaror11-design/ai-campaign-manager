@@ -5,6 +5,8 @@ function request(text){
  const named=n.match(/^(?:תעבור|תעברי|עבור|עברי|תחליף|תחליפי|החלף|החליפי|בחר|בחרי)(?: לי)? (?:לחשבון|לחשבון הפרסום|חשבון|את החשבון)\s+(.+)$/);
  const search=n.match(/^(?:חפש|חפשי)(?: לי)? (?:חשבון|חשבונות)\s+(.+)$/);
  const page=n.match(/^\/meta-page (\d{1,3})$/);
+ // "Switch ad account" names no account: show the list instead of searching for "מודעות".
+ if(named&&/^(?:ה?מודעות|ה?פרסום|אחר|ה?חשבון|שלי)$/.test(named[1].trim()))return{type:'list'};
  if(named)return{type:'select',query:named[1]};
  if(search)return{type:'list',query:search[1]};
  if(page)return{type:'list',page:Number(page[1]),preserveQuery:true};
