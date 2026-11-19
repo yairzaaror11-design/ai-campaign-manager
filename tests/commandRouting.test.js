@@ -23,3 +23,12 @@ test('alerts and reports name a command the bot actually understands', () => {
   const r = require('../businessReport');
   assert.match(r.format({ days: 7, funnel: f, spend: null, metrics: r.metrics(f, null), campaigns: [], nextSteps: ['x'] }), /הלידים שלי/);
 });
+
+test('asking to switch the ad account opens the verified account menu', () => {
+  const analysis = require('../conversationAnalysis');
+  for (const m of ['תחליף חשבון מודעות', 'אני רוצה לבחור חשבון אחר', 'להחליף את חשבון הפרסום']) assert.equal(analysis.localAnalysis(m).intent, 'select_account', m);
+  assert.notEqual(analysis.localAnalysis('תחליף את הכותרת').intent, 'select_account');
+  const read = require('../readConversation');
+  assert.deepEqual(read.request('החשבונות שלי'), { type: 'list' });
+  assert.deepEqual(read.request('תעבור לחשבון יאיר דיגיטל'), { type: 'select', query: 'יאיר דיגיטל' });
+});

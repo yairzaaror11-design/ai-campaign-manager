@@ -143,6 +143,9 @@ async function handle(clientId,text,analysis,eventId){
   if(p?.connection?.status==='AWAITING_OAUTH'&&/חדש/.test(n))await recordStatus(clientId,'CONNECTION_OFFERED');
   return invite(clientId,eventId);
  }
+ // "Switch ad account" shows the verified accounts by name, with buttons (paginated).
+ // Selecting one bumps the connection generation, so approvals for the old account expire.
+ if(analysis.intent==='select_account')return require('./readConversation').handle(clientId,'החשבונות שלי');
  if(analysis.intent==='connect')return offer(clientId,eventId);
  if(analysis.intent==='connection_status'||text==='/meta-accounts')return statusResult(await verify(clientId));
  if(analysis.intent==='disconnect'||text==='/meta-disconnect'){
