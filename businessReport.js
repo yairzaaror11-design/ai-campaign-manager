@@ -10,7 +10,7 @@ async function funnel(clientId, days) {
   const r = await db.query(`SELECT status, COUNT(*)::int AS n,
       COALESCE(SUM(CASE WHEN status='WON' AND currency='ILS' THEN revenue_minor END),0)::bigint AS revenue_minor,
       COUNT(*) FILTER (WHERE status='NEW' AND created_at<NOW()-INTERVAL '1 day')::int AS stale
-    FROM crm_leads WHERE client_id=$1 AND created_at>=NOW()-make_interval(days=>$2) GROUP BY status`, [clientId, days]);
+    FROM crm_leads WHERE client_id=$1 AND created_at>=NOW()-make_interval(days=>$2::int) GROUP BY status`, [clientId, days]);
   const by = Object.fromEntries(r.rows.map((x) => [x.status, x]));
   const n = (s) => by[s]?.n || 0;
   const leads = r.rows.reduce((t, x) => t + x.n, 0);
