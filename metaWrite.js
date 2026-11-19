@@ -68,16 +68,24 @@ async function createBundle(plan) {
  if(!/^\d+$/.test(campaign.id || '')) throw Error('CAMPAIGN_RESULT_UNCERTAIN');
  const creative=await createCreative(plan);
  if(!/^\d+$/.test(creative.id || '')) throw Error('CREATIVE_RESULT_UNCERTAIN');
+ const creatives=[{id:creative.id,headline:p.headline}];
+ for(const [i,v] of (p.variants||[]).entries()){
+  const extra=await post(plan,'/'+plan.target.accountId+'/adcreatives',{name:p.name+' — גרסה '+(i+2),object_story_spec:{page_id:p.pageId,link_data:{link:p.link,message:v.message,name:v.headline,image_hash:p.imageHash,...(p.formId?{call_to_action:{type:'SIGN_UP',value:{lead_gen_form_id:p.formId}}}:{})}}});
+  if(!/^\d+$/.test(extra.id || '')) throw Error('CREATIVE_RESULT_UNCERTAIN');
+  creatives.push({id:extra.id,headline:v.headline});
+ }
  const adsetIds=[],adIds=[];
  for(const set of p.adSets) {
    const adset=await post(plan,'/'+plan.target.accountId+'/adsets',{name:set.name,campaign_id:campaign.id,daily_budget:set.dailyBudgetMinor,billing_event:set.billingEvent,optimization_goal:set.optimizationGoal,bid_strategy:set.bidStrategy,targeting:require('./geoTargeting').forMeta(set.targeting),promoted_object:set.promotedObject,start_time:set.startTime,end_time:set.endTime,status:'PAUSED'});
    if(!/^\d+$/.test(adset.id || '')) throw Error('ADSET_RESULT_UNCERTAIN');
    adsetIds.push(adset.id);
-   const ad=await post(plan,'/'+plan.target.accountId+'/ads',{name:set.name+' — '+p.headline,adset_id:adset.id,creative:{creative_id:creative.id},status:'PAUSED'});
-   if(!/^\d+$/.test(ad.id || '')) throw Error('AD_RESULT_UNCERTAIN');
-   adIds.push(ad.id);
+   for(const c of creatives){
+    const ad=await post(plan,'/'+plan.target.accountId+'/ads',{name:set.name+' — '+c.headline,adset_id:adset.id,creative:{creative_id:c.id},status:'PAUSED'});
+    if(!/^\d+$/.test(ad.id || '')) throw Error('AD_RESULT_UNCERTAIN');
+    adIds.push(ad.id);
+   }
  }
- return {id:campaign.id,objects:{campaignId:campaign.id,creativeId:creative.id,adsetIds,adIds}};
+ return {id:campaign.id,objects:{campaignId:campaign.id,creativeId:creative.id,creativeIds:creatives.map(c=>c.id),adsetIds,adIds}};
 }
 async function activateBundle(plan) {
  if(process.env.META_WRITES_ENABLED!=='true'||process.env.READ_ONLY!=='false') throw Error('TENANT_WRITES_DISABLED');
