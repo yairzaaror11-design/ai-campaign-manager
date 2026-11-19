@@ -37,7 +37,10 @@ async function uploadImage(plan) {
 }
 async function createLeadForm(plan){
  const p=require('./metaLeadForms').validate(plan.parameters);
- return post(plan,'/'+p.pageId+'/leadgen_forms',{name:p.name,locale:p.locale,privacy_policy:{url:p.privacyPolicyUrl},questions:p.questions});
+ return post(plan,'/'+p.pageId+'/leadgen_forms',{name:p.name,locale:p.locale,privacy_policy:{url:p.privacyPolicyUrl},questions:p.questions,
+  // Higher intent: the person reviews and confirms answers before submitting (fewer accidental/junk leads).
+  is_optimized_for_quality:true,
+  thank_you_page:{title:p.locale==='HE_IL'?'תודה! קיבלנו את הפרטים':'Thanks, we got your details',body:p.locale==='HE_IL'?'נחזור אליך בהקדם, בדרך כלל בתוך כמה דקות בשעות הפעילות.':'We will get back to you shortly.',button_type:'NONE'}});
 }
 async function createCampaign(plan) {
  const p=plan.parameters;

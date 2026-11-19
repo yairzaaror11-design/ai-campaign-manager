@@ -9,7 +9,8 @@ const enabled = () => process.env.LEAD_CHECKINS_ENABLED !== 'false';
 
 // Stage -> how long to wait after the lead entered it, and what to ask.
 const RULES = {
-  NEW: { afterHours: 2, ask: (name, hours) => `${name} השאיר/ה פרטים לפני ${hours} שעות. הספקת לחזור?` },
+  // Speed-to-lead: a lead still untouched after 20 minutes gets a nudge (the instant alert already went out).
+  NEW: { afterMinutes: 20, ask: (name, hours) => `⏱ ${name} השאיר/ה פרטים לפני ${hours < 1 ? Math.max(20, Math.round(hours * 60)) + ' דקות' : Math.round(hours) + ' שעות'} ועדיין מחכה. הספקת לחזור?\nמי שחוזר בדקות הראשונות סוגר הרבה יותר עסקאות.` },
   CONTACTED: { afterHours: 48, ask: (name) => `איך מתקדם עם ${name}? נקבעה פגישה או שיחה?` },
   APPOINTMENT: { afterHours: 48, ask: (name) => `איך הייתה הפגישה עם ${name}? נסגרה עסקה?` },
   // Existing customers: a month after the deal, suggest asking for a review, a referral or a repeat sale.
@@ -36,12 +37,12 @@ async function dueLeads(limit = 200) {
     JOIN clients c ON c.id=l.client_id
     JOIN whatsapp_contacts w ON w.phone=c.phone AND w.last_inbound_at>NOW()-INTERVAL '24 hours'
     WHERE l.status IN ('NEW','CONTACTED','APPOINTMENT','WON')
-      AND l.updated_at < NOW() - make_interval(hours => CASE l.status WHEN 'NEW' THEN $1::int WHEN 'WON' THEN $5::int ELSE $2::int END)
+      AND l.updated_at < NOW() - CASE l.status WHEN 'NEW' THEN make_interval(mins => $1::int) WHEN 'WON' THEN make_interval(hours => $5::int) ELSE make_interval(hours => $2::int) END
       AND l.updated_at > NOW() - CASE WHEN l.status='WON' THEN INTERVAL '60 days' ELSE INTERVAL '30 days' END
       AND NOT EXISTS (SELECT 1 FROM lead_checkins k WHERE k.lead_id=l.id AND k.stage=l.status)
-      AND NOT EXISTS (SELECT 1 FROM lead_checkins k WHERE k.client_id=l.client_id AND k.sent_at>NOW()-make_interval(hours => $3::int))
+      AND (l.status='NEW' OR NOT EXISTS (SELECT 1 FROM lead_checkins k WHERE k.client_id=l.client_id AND k.sent_at>NOW()-make_interval(hours => $3::int)))
     ORDER BY l.client_id, l.updated_at
-    LIMIT $4`, [RULES.NEW.afterHours, RULES.CONTACTED.afterHours, QUIET_HOURS, limit, RULES.WON.afterHours])).rows;
+    LIMIT $4`, [RULES.NEW.afterMinutes, RULES.CONTACTED.afterHours, QUIET_HOURS, limit, RULES.WON.afterHours])).rows;
 }
 
 // Don't interrupt: skip owners with an open decision, CRM flow or human support.
@@ -56,7 +57,7 @@ async function askOne(lead) {
   const claim = await db.query('INSERT INTO lead_checkins(lead_id,stage,client_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING lead_id', [lead.id, lead.status, lead.client_id]);
   if (!claim.rows.length) return 'ALREADY_ASKED';
   const name = String(lead.name || 'הפונה').slice(0, 40);
-  const question = RULES[lead.status].ask(name, Math.max(1, Math.round(Number(lead.hours_in_stage))));
+  const question = RULES[lead.status].ask(name, lead.status === 'NEW' ? Number(lead.hours_in_stage) : Math.max(1, Math.round(Number(lead.hours_in_stage))));
   return require('./metaConnection').context.run(String(lead.client_id), () =>
     require('./whatsappDelivery').messageContext.run({ eventId: `checkin:${lead.id}:${lead.status}`, sequence: 0 }, async () => {
       if (lead.status === 'WON') {

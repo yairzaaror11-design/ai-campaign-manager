@@ -34,7 +34,7 @@ test('SCORPIO asks about an untouched lead once, with status buttons, and does n
     const client = await owner(db, '972500000111');
     const dana = await lead(db, client, 'דנה כהן', 'NEW', 3);
     await lead(db, client, 'יוסי', 'NEW', 5);
-    await lead(db, client, 'טרי', 'NEW', 1); // not due yet
+    await lead(db, client, 'טרי', 'NEW', 1); // due too, but one question at a time (oldest first)
     await checkins.runDue({ now: TUESDAY });
     const sent = await outbox(db, client);
     assert.equal(sent.length, 1);
