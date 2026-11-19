@@ -108,6 +108,13 @@ services:
         sync: false
       - key: META_MANAGEMENT_LOGIN_CONFIG_ID
         sync: false
+      # Short ad videos through Higgsfield; off until a key is set and approved.
+      - key: VIDEO_ENABLED
+        value: "false"
+      - key: VIDEO_MONTHLY_LIMIT
+        value: "8"
+      - key: HF_CREDENTIALS
+        sync: false
 
 # Stage 6: connect an existing PostgreSQL database by setting DATABASE_URL in Render.
 # Do not create a paid database automatically from this file.

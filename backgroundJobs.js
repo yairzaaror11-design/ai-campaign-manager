@@ -22,6 +22,8 @@ function startBackgroundJobs({intervalMs=1000}={}) {
  const leadImport=require('./metaLeadImport');
  if(leadImport.enabled()) startLoop(()=>leadImport.runOne(),'meta-leads');
  startLoop(()=>require('./whatsappDelivery').runOne(),'outbound');
+ // Video jobs poll the provider without blocking message handling.
+ if(require('./videoService').enabled()) startLoop(()=>require('./videoService').runOne(),'videos');
  startLoop(async()=>{
   if(cycles++%60===0) await require('./maintenance').maintain();
   await require('./db').query("INSERT INTO worker_heartbeats(worker_id,role,last_success_at) VALUES($1,'MESSAGES',NOW()) ON CONFLICT(worker_id) DO UPDATE SET last_success_at=NOW()",[workerId]);

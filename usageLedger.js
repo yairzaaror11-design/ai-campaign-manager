@@ -15,7 +15,9 @@ const DEFAULT_PRICES = {
   'gemini-nano-banana-2.1': { perImage: 0.04 },
   'veo-3.1-fast-generate-001': { perSecond: 0.12 },
   'veo-3.1-lite-generate-001': { perSecond: 0.08 },
-  'veo-3.1-generate-001': { perSecond: 0.4 }
+  'veo-3.1-generate-001': { perSecond: 0.4 },
+  'kling-video/v3.0/std/text-to-video': { perSecond: 0.126 },
+  'kling-video/v3.0/std/image-to-video': { perSecond: 0.126 }
 };
 const KINDS = new Set(['text', 'analysis', 'image', 'video', 'transcription']);
 
@@ -60,7 +62,7 @@ function currentClientId() {
   return /^\d+$/.test(String(id || '')) ? String(id) : null;
 }
 
-async function record({ provider, model, kind, inputTokens = 0, outputTokens = 0, cachedTokens = 0, units = 0, clientId } = {}) {
+async function record({ provider, model, kind, inputTokens = 0, outputTokens = 0, cachedTokens = 0, units = 0, clientId, costUsd } = {}) {
   try {
     const db = require('./db');
     if (!db.configured() || !provider || !model || !KINDS.has(kind)) return null;
@@ -69,7 +71,8 @@ async function record({ provider, model, kind, inputTokens = 0, outputTokens = 0
       inputTokens: count(inputTokens), outputTokens: count(outputTokens), cachedTokens: count(cachedTokens),
       units: Number.isFinite(Number(units)) && Number(units) > 0 ? Number(units) : 0
     };
-    const usd = cost({ model, ...row });
+    // A provider-quoted cost (e.g. a video estimate) wins over the list price.
+    const usd = Number.isFinite(Number(costUsd)) && costUsd !== null && Number(costUsd) >= 0 ? Number(costUsd) : cost({ model, ...row });
     await db.query(
       'INSERT INTO ai_usage(client_id,provider,model,kind,input_tokens,output_tokens,cached_tokens,units,cost_usd) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)',
       [row.clientId, String(provider).slice(0, 40), String(model).slice(0, 120), kind, row.inputTokens, row.outputTokens, row.cachedTokens, row.units, usd.toFixed(6)]

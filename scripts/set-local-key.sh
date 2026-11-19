@@ -6,8 +6,8 @@ set -euo pipefail
 umask 077
 NAME="${1:-}"
 case "$NAME" in
-  ANTHROPIC_API_KEY|GEMINI_API_KEY|HF_CREDENTIALS) ;;
-  *) echo "שם לא מוכר. אפשר: ANTHROPIC_API_KEY, GEMINI_API_KEY, HF_CREDENTIALS" >&2; exit 1 ;;
+  ANTHROPIC_API_KEY|GEMINI_API_KEY|HF_CREDENTIALS|GITHUB_TOKEN) ;;
+  *) echo "שם לא מוכר. אפשר: ANTHROPIC_API_KEY, GEMINI_API_KEY, HF_CREDENTIALS, GITHUB_TOKEN" >&2; exit 1 ;;
 esac
 ENV_FILE="$(cd "$(dirname "$0")/.." && pwd)/.env"
 printf 'הדבק את המפתח ולחץ Enter (הוא לא יוצג): '
