@@ -102,3 +102,19 @@ test('background: approved posts are delivered on their day inside the WhatsApp 
     assert.match(out.text.body, /מוכן לפרסום/); assert.match(out.text.body, /לא הספקתי להכין תמונה/);
   } finally { await close(); }
 });
+
+test('create post on demand: the AI writes about the owner\'s topic, with a safe fallback', async () => {
+  const { db, close } = await openDatabase();
+  try {
+    const o = require('../organicContent');
+    const id = (await db.query("INSERT INTO clients(phone) VALUES('972500000874') RETURNING id")).rows[0].id;
+    let seen;
+    const r = await o.draftOne(id, { topic: 'מבצע לחנוכה', channel: 'Facebook', writer: async (input) => { seen = input; return { posts: [{ topic: 'חנוכה שמח', caption: 'לכבוד חנוכה יש לנו מבצע מיוחד לכל הלקוחות, שלחו הודעה ונשמח לספר #חנוכה', visual: 'נרות' }] }; } });
+    assert.equal(seen.slots[0].ownerRequest, 'מבצע לחנוכה');
+    assert.deepEqual(r, { title: 'חנוכה שמח', body: 'לכבוד חנוכה יש לנו מבצע מיוחד לכל הלקוחות, שלחו הודעה ונשמח לספר #חנוכה', channel: 'Facebook' });
+    const fallback = await o.draftOne(id, { topic: 'מבצע לחנוכה', writer: async () => { throw Error('AI_DOWN'); } });
+    assert.match(fallback.body, /מבצע לחנוכה/); assert.equal(fallback.channel, 'Instagram');
+    assert.ok((await o.draftOne(id, { writer: async () => { throw Error('AI_DOWN'); } })).body.length > 20, 'no topic still gives a post');
+    await assert.rejects(o.draftOne(id, { channel: 'MySpace' }), /INVALID_CHANNEL/);
+  } finally { await close(); }
+});

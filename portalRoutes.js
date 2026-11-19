@@ -125,6 +125,7 @@ router.post('/app/api/campaigns/:id/action',require('./rateLimit').middleware('p
 // Ongoing organic content: three-month calendar, approvals, pause, photo shoots.
 router.get('/app/api/organic',endpoint(async(req,res)=>res.json(await require('./organicContent').overview(req.portal.clientId))));
 router.post('/app/api/organic/plan',endpoint(async(req,res)=>{const o=require('./organicContent');res.json(await o.create(req.portal.clientId,{perWeek:req.body?.perWeek,media:req.body?.media,extend:req.body?.extend===true}));}));
+router.post('/app/api/organic/draft',require('./rateLimit').middleware('organic-draft',20),endpoint(async(req,res)=>res.json(await require('./organicContent').draftOne(req.portal.clientId,{topic:String(req.body?.topic||''),channel:req.body?.channel}))));
 router.post('/app/api/organic/approve-all',endpoint(async(req,res)=>res.json({approved:await require('./organicContent').approveAll(req.portal.clientId)})));
 router.post('/app/api/organic/status',endpoint(async(req,res)=>res.json(await require('./organicContent').setStatus(req.portal.clientId,req.body?.status))));
 router.post('/app/api/organic/posts/:id',endpoint(async(req,res)=>res.json(await require('./organicContent').updatePost(req.portal.clientId,req.params.id,{action:req.body?.action,caption:req.body?.caption}))));
