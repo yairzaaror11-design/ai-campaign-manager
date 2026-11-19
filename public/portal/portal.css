@@ -523,3 +523,111 @@ a.button{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--b
 .reminder-form{display:grid;gap:10px;border-top:1px solid var(--border);padding-top:12px}
 .pipeline-column.drop-target{outline:2px dashed var(--primary);outline-offset:-4px}.pipeline .card[draggable=true]{cursor:grab}.pipeline .card.dragging{opacity:.5}
 .pipeline{grid-template-columns:repeat(5,minmax(170px,1fr))}
+
+/* ==========================================================================
+   Design refresh (2026-11): "the owner's desk".
+   Style only — no markup, copy or behavior depends on anything below.
+   Quiet surfaces, crisp ink, and the business numbers as the one bold element.
+   ========================================================================== */
+:root{
+ --text:#121A2B;--muted:#556074;--secondary:#556074;
+ --canvas:#F1F4F9;--surface:#FFFFFF;--surface-inner:#F7F9FC;--subtle:#E9EDF4;
+ --border:#DCE2EC;--primary-soft:#EAF0FF;
+ --success:#1B7347;--warning:#8A5A0B;--danger:#B4322A;
+ --radius:14px;--desktop-radius:22px;
+ --desktop-shadow:0 1px 0 rgb(18 26 43 / 4%);
+ --ui-font:system-ui,-apple-system,"SF Hebrew","Segoe UI","Noto Sans Hebrew","Arial Hebrew",Arial,sans-serif;
+ font-family:var(--ui-font);font-size:15px;line-height:1.6;
+ -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+}
+:root[data-theme=dark]{
+ --text:#E8EDF5;--muted:#9AA6BA;--secondary:#9AA6BA;
+ --canvas:#0B1220;--surface:#111A2B;--surface-inner:#0E1626;--subtle:#1A2538;
+ --border:#26334A;--primary-soft:#16264A;
+ --success:#45C285;--warning:#E2A947;--danger:#F2766B;--focus:#8FB5FF;
+ --desktop-shadow:none;
+}
+body{background:var(--canvas);color:var(--text)}
+button,input,textarea,select{font-family:var(--ui-font)}
+
+/* Type scale: one family, contrast through size and weight. */
+h1{font-size:clamp(28px,2.4vw,36px);font-weight:800;letter-spacing:-.02em;line-height:1.15}
+h2{font-size:18px;font-weight:700;letter-spacing:-.01em}
+h3{font-size:16px;font-weight:700}
+.muted{font-size:14px}
+.page-heading h1{margin-block:2px 6px}
+.page-heading p:not(.eyebrow){color:var(--muted);margin-top:0}
+.eyebrow{font-size:13px;font-weight:600;color:var(--department-icon,var(--primary))}
+:root[data-theme=dark] a{color:#8DB0FF}
+
+/* Controls: pills stay for navigation chips; working buttons get a calmer shape. */
+button.secondary,.card button.secondary,.page-heading .actions button{border-radius:10px;font-weight:600}
+button.secondary:hover{border-color:color-mix(in srgb,var(--primary) 35%,var(--border))}
+:root[data-theme=dark] button.secondary,:root[data-theme=dark] .secondary{background:var(--surface-inner);color:var(--text);border-color:var(--border)}
+:root[data-theme=dark] button.secondary:hover{background:var(--primary-soft)}
+input,textarea,select{border-radius:10px}
+a.button,a.button.secondary{border-radius:10px;font-weight:600}
+
+/* Cards: hairline edge, no floating shadow. */
+.card{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface)}
+body.shell-ready:not(.onboarding-view) .card{border-radius:16px;box-shadow:var(--desktop-shadow);border-color:var(--border);background:var(--surface)}
+.card-heading{border-color:var(--border)}
+.card-heading h2{margin-bottom:2px}
+
+/* The numbers: one connected strip, big tabular figures. */
+.stat strong{font-variant-numeric:tabular-nums lining-nums;letter-spacing:-.02em}
+.stat>span{font-size:13px;font-weight:600;color:var(--muted)}
+.stat small{font-size:12px;color:var(--muted)}
+.stats-row.home-metrics{gap:1px;background:var(--border);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+body.shell-ready .stats-row.home-metrics .stat,.stats-row.home-metrics .stat{background:var(--surface);border:0;border-radius:0;box-shadow:none;margin:0;padding:20px 22px;display:flex;flex-direction:column;gap:2px;min-height:0}
+.stats-row.home-metrics .stat strong{font-size:clamp(32px,3vw,44px);font-weight:750;line-height:1.1;margin:10px 0 6px;color:var(--text)}
+
+/* Today: the setup list is a real sequence, so it is numbered. */
+.today-card .setup-steps{background:var(--surface-inner);border:1px solid var(--border);border-radius:12px;padding:18px 20px;counter-reset:setup}
+:root[data-theme=dark] .today-card .setup-steps{background:var(--surface-inner)}
+.setup-steps>strong{display:block;font-size:15px;margin-bottom:10px}
+.setup-steps progress{height:6px;margin-bottom:6px;background:var(--subtle)}
+.setup-steps progress::-webkit-progress-bar{background:var(--subtle)}
+.setup-row{padding:10px 0;border-top:1px solid var(--border);gap:12px}
+.setup-steps progress+.setup-row{border-top:0}
+.setup-row .setup-mark{counter-increment:setup;display:grid;place-items:center;flex:0 0 26px;width:26px;height:26px;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--primary) 45%,var(--border));font-size:0;color:var(--primary)}
+.setup-row:not(.done) .setup-mark::before{content:counter(setup);font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.setup-row.done .setup-mark{font-size:14px;background:var(--success);border-color:var(--success);color:#fff}
+.today-clear{display:flex;width:fit-content;align-items:center;gap:6px;margin-top:16px;padding:6px 12px;border-radius:999px;background:color-mix(in srgb,var(--success) 10%,transparent);font-size:14px}
+
+/* Empty states: an invitation, not decoration. */
+.empty-state .empty-icon{color:var(--department-icon,var(--primary));background:var(--primary-soft);border-radius:12px}
+
+/* Desktop frame: deep solid ink per department instead of glowing washes. */
+body.shell-ready[data-department=home]{--section-dark:#0A1A3D;--section-accent:#0556FE}
+body.shell-ready[data-department=marketing]{--section-dark:#1E1446;--section-accent:#7954E8}
+body.shell-ready[data-department=sales]{--section-dark:#3A1A0D;--section-accent:#D9692F}
+body.shell-ready[data-department=finance]{--section-dark:#062E25;--section-accent:#16865F}
+body.shell-ready[data-department=calendar]{--section-dark:#0B2C45;--section-accent:#299BC4}
+@media (min-width:961px){
+ body.shell-ready:not(.onboarding-view){
+  background:linear-gradient(180deg,var(--section-dark) 0%,color-mix(in srgb,var(--section-dark) 86%,var(--section-accent)) 100%) fixed;
+ }
+ :root[data-theme=dark] body.shell-ready:not(.onboarding-view){
+  background:linear-gradient(180deg,color-mix(in srgb,var(--section-dark) 70%,#050A14) 0%,color-mix(in srgb,var(--section-dark) 80%,#050A14) 100%) fixed;
+ }
+ body.shell-ready:not(.onboarding-view) main.dashboard-background{
+  background:var(--canvas);border:0;border-radius:var(--desktop-radius);box-shadow:0 24px 60px rgb(0 0 0 / 22%);
+ }
+ body.shell-ready:not(.onboarding-view) .sidebar button.ghost{border-radius:10px}
+ body.shell-ready:not(.onboarding-view) .sidebar button[aria-current=page],
+ body.shell-ready:not(.onboarding-view) .sidebar button[aria-current=true]{
+  background:color-mix(in srgb,#fff 12%,transparent);border-color:color-mix(in srgb,#fff 18%,transparent);box-shadow:inset -3px 0 0 var(--section-accent);
+ }
+}
+
+/* Mobile: a calmer top bar and bottom bar. */
+:root[data-theme=dark] .setup-row .setup-mark{color:#8DB0FF;border-color:color-mix(in srgb,#8DB0FF 45%,var(--border))}
+@media (max-width:960px){
+ main.dashboard-background{background:var(--canvas)}
+ .today-card .setup-steps{border:0;background:transparent;padding:4px 0 0}
+ :root[data-theme=dark] .today-card .setup-steps{background:transparent}
+ .stats-row.home-metrics .stat{padding:16px}
+ .stats-row.home-metrics .stat strong{font-size:32px}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
