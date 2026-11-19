@@ -141,8 +141,10 @@ test('the midday run sends a pause approval through the approval engine and neve
     const id = await ownerWithMeta(db, '972500000903', 70903);
     await spendCap.set(id, 50);
     const data = { account, accountId: 'act_70903', campaigns: [{ id: '777', name: 'דירות', effective_status: 'ACTIVE', dailyBudget: 100, today: today(85, 0) }] };
-    const first = await guard.runIntraday({ now: MIDDAY, loader: async () => data });
-    assert.deepEqual(first.results, ['ALERTED+PROPOSED_PAUSE'], JSON.stringify(first));
+    // CI shares one database: other tests' businesses also run; keep only this one's outcome.
+    const mine = (r) => r.results.filter((x) => !['BUSY', 'FAILED', 'NO_ACCOUNT', 'ALREADY_RAN'].includes(x));
+    const first = await guard.runIntraday({ now: MIDDAY, loader: async (c) => (String(c) === String(id) ? data : null) });
+    assert.deepEqual(mine(first), ['ALERTED+PROPOSED_PAUSE'], JSON.stringify(first));
     const plan = (await db.query("SELECT p.payload FROM approvals a JOIN action_plans p ON p.id=a.action_id WHERE a.client_id=$1 AND a.status='PENDING'", [id])).rows[0].payload;
     assert.equal(plan.intent, 'PAUSE_CAMPAIGN'); assert.equal(plan.target.campaignId, '777');
     assert.equal(fake.posts.length, 0, 'no write to Meta without the owner');
@@ -150,9 +152,9 @@ test('the midday run sends a pause approval through the approval engine and neve
     const sent = (await db.query('SELECT payload FROM whatsapp_outbox WHERE client_id=$1 ORDER BY delivery_order', [id])).rows.map((r) => JSON.stringify(r.payload));
     assert.equal(sent.length, 3, 'cap alert, then the pause proposal and its approval buttons');
     assert.match(sent[0], /תקרת ההוצאה היומית/); assert.match(sent[1], /אין אף פנייה/); assert.match(sent[2], /interactive/);
-    assert.equal((await guard.runIntraday({ now: MIDDAY, loader: async () => data })).results.length, 0, 'once per slot');
+    assert.equal((await guard.runIntraday({ now: MIDDAY, loader: async (c) => (String(c) === String(id) ? data : null) })).results.filter((x) => x !== 'NO_ACCOUNT' && x !== 'BUSY' && x !== 'FAILED' && x !== 'ALREADY_RAN').length, 0, 'once per slot');
     await require('../marketingStore').update(id, null, (p) => { delete p.ui; return { handled: false, changed: true }; });
-    const later = await guard.runIntraday({ now: new Date('2026-11-17T15:00:00Z'), loader: async () => data });
-    assert.deepEqual(later.results, ['QUIET'], 'same alerts are not repeated the same day');
+    const later = await guard.runIntraday({ now: new Date('2026-11-17T15:00:00Z'), loader: async (c) => (String(c) === String(id) ? data : null) });
+    assert.deepEqual(mine(later), ['QUIET'], 'same alerts are not repeated the same day');
   } finally { fake.restore(); await close(); restoreEnv(); }
 });
