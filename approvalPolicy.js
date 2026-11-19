@@ -16,7 +16,7 @@ const planHash=plan=>crypto.createHash('sha256').update(canonical(plan)).digest(
 const parameterKeys={
  CREATE_LEAD_FORM:['name','pageId','locale','privacyPolicyUrl','questions'],
  UPLOAD_IMAGE:['mediaId'],
- CREATE_BUNDLE:['name','objective','specialAdCategories','dailyBudget','dailyBudgetMinor','currency','pageId','link','message','headline','imageHash','formId','adSets'],
+ CREATE_BUNDLE:['name','objective','specialAdCategories','dailyBudget','dailyBudgetMinor','currency','pageId','link','message','headline','imageHash','formId','adSets','variants'],
  ACTIVATE_BUNDLE:['adsetIds','adIds'],
  CREATE_CAMPAIGN:['name','objective','specialAdCategories'],
  CREATE_ADSET:['name','campaignId','dailyBudget','dailyBudgetMinor','currency','billingEvent','optimizationGoal','bidStrategy','targeting','promotedObject','startTime','endTime'],
@@ -39,13 +39,22 @@ function strictPlan(plan) {
   if(plan.intent==='CREATE_LEAD_FORM')require('./metaLeadForms').validate(plan.parameters);
   if(plan.intent==='ACTIVATE_BUNDLE') {
     if(!/^\d+$/.test(plan.target.campaignId || '')) throw Error('CAMPAIGN_REQUIRED');
-    for(const field of ['adsetIds','adIds']) if(!Array.isArray(plan.parameters[field])||!plan.parameters[field].length||plan.parameters[field].length>10||plan.parameters[field].some(id=>typeof id!=='string'||!/^\d+$/.test(id))) throw Error('BUNDLE_IDS_REQUIRED');
+    for(const field of ['adsetIds','adIds']) if(!Array.isArray(plan.parameters[field])||!plan.parameters[field].length||plan.parameters[field].length>20||plan.parameters[field].some(id=>typeof id!=='string'||!/^\d+$/.test(id))) throw Error('BUNDLE_IDS_REQUIRED');
   }
   if(plan.intent==='CREATE_BUNDLE') {
     const p=plan.parameters;
     if(p.formId&&(p.objective!=='OUTCOME_LEADS'||p.adSets?.some(set=>set.optimizationGoal!=='LEAD_GENERATION'||set.promotedObject?.page_id!==p.pageId)))throw Error('FORM_DELIVERY_MISMATCH');
     strictPlan({...plan,intent:'CREATE_CAMPAIGN',parameters:{name:p.name,objective:p.objective,specialAdCategories:p.specialAdCategories}});
     strictPlan({...plan,intent:'CREATE_CREATIVE',parameters:{name:p.name,pageId:p.pageId,link:p.link,message:p.message,headline:p.headline,imageHash:p.imageHash,...(p.formId?{formId:p.formId}:{})}});
+    if(p.variants!==undefined){
+      // Up to two extra copy angles, each a separate ad with the same approved image.
+      if(!Array.isArray(p.variants)||p.variants.length>2) throw Error('INVALID_AD_VARIANTS');
+      const seen=new Set([String(p.headline)+'|'+String(p.message)]);
+      for(const v of p.variants){
+        if(!v||Object.keys(v).some(k=>!['headline','message'].includes(k))||typeof v.headline!=='string'||!v.headline.trim()||v.headline.length>100||typeof v.message!=='string'||!v.message.trim()||v.message.length>2000) throw Error('INVALID_AD_VARIANTS');
+        const key=v.headline+'|'+v.message;if(seen.has(key)) throw Error('DUPLICATE_AD_VARIANT');seen.add(key);
+      }
+    }
     if(!Array.isArray(p.adSets)||p.adSets.length<1||p.adSets.length>5) throw Error('ADSETS_REQUIRED');
     let total=0;
     for(const set of p.adSets) {

@@ -20,14 +20,20 @@ async function verifyAction(plan,written) {
    if(plan.intent==='CREATE_BUNDLE') {
      const campaign=await meta.graph('/'+objects.campaignId,c.token,{fields:'id,name,objective'});
      if(campaign.name!==plan.parameters.name||campaign.objective!==plan.parameters.objective) return {verified:false};
-     const creative=await meta.graph('/'+objects.creativeId,c.token,{fields:'id,account_id,object_story_spec'});
-     if(plan.parameters.formId&&creative.object_story_spec?.link_data?.call_to_action?.value?.lead_gen_form_id!==plan.parameters.formId)return{verified:false};
-     if('act_'+creative.account_id!==plan.target.accountId) return {verified:false};
+     const creativeIds=objects.creativeIds||[objects.creativeId];
+     if(creativeIds[0]!==objects.creativeId||creativeIds.length!==1+(plan.parameters.variants||[]).length||objects.adIds.length!==objects.adsetIds.length*creativeIds.length) return {verified:false};
+     for(const creativeId of creativeIds){
+       const creative=await meta.graph('/'+creativeId,c.token,{fields:'id,account_id,object_story_spec'});
+       if(plan.parameters.formId&&creative.object_story_spec?.link_data?.call_to_action?.value?.lead_gen_form_id!==plan.parameters.formId)return{verified:false};
+       if('act_'+creative.account_id!==plan.target.accountId) return {verified:false};
+     }
      for(let i=0;i<objects.adsetIds.length;i++) {
        const set=await meta.graph('/'+objects.adsetIds[i],c.token,{fields:'campaign_id,daily_budget'});
        if(set.campaign_id!==objects.campaignId||String(set.daily_budget)!==String(plan.parameters.adSets[i].dailyBudgetMinor)) return {verified:false};
-       const ad=await meta.graph('/'+objects.adIds[i],c.token,{fields:'adset_id,creative'});
-       if(ad.adset_id!==objects.adsetIds[i]||ad.creative?.id!==objects.creativeId) return {verified:false};
+       for(let j=0;j<creativeIds.length;j++){
+         const ad=await meta.graph('/'+objects.adIds[i*creativeIds.length+j],c.token,{fields:'adset_id,creative'});
+         if(ad.adset_id!==objects.adsetIds[i]||ad.creative?.id!==creativeIds[j]) return {verified:false};
+       }
      }
    }
    return {verified:true};

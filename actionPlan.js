@@ -66,6 +66,8 @@ function formatActionPlan(plan) {
   add('✏️','כותרת',p.headline);
   add('💬','נוסח',p.message);
   add('🔗','יעד',p.link);
+  (p.variants||[]).forEach((v,i)=>add('🅰️','גרסה '+(i+2),v.headline+' — '+String(v.message).slice(0,140)));
+  if(p.variants?.length)lines.push('Meta תריץ את '+(p.variants.length+1)+' הגרסאות ותעביר יותר תקציב למה שמביא פניות.');
   if(plan.intent==='UPLOAD_IMAGE')lines.push('🖼 התמונה שאישרת בצ׳אט');
   const sets=p.adSets||plan.review?.adSets||[];
   sets.forEach((set,i)=>{const who=audience(set.targeting);const budget=set.dailyBudget!==undefined?money(set.dailyBudget,currency):minor(set.daily_budget,currency);add('👥',sets.length>1?'קהל '+(i+1):'קהל',[who,budget&&budget+' ליום'].filter(Boolean).join(' · '));});
