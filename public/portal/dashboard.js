@@ -144,51 +144,62 @@
   const expand=button('מסך מלא',()=>openAgent(true),'ghost');const send=button('שליחה',null,'primary');send.append(UI.icon('send'));send.type='submit';actions.append(attachment,voice,expand,send);form.append(input,actions,el('small','שום דבר לא עולה לאוויר בלי האישור שלך.'));c.append(form);let pending=null;
   form.addEventListener('submit',e=>{e.preventDefault();run(send,async()=>{const message=input.value.trim();if(!message)return;pending=pending?.message===message?pending:{message,screen:'home',requestId:crypto.randomUUID()};messages.replaceChildren(el('p','רגע, חושב…','muted'));try{const r=await api('agent',pending);pending=null;messages.replaceChildren(el('p',message,'inline-user-message'),el('p',r.reply,'inline-agent-message'));input.value='';}catch(e){messages.replaceChildren(el('p',e.message,'error'));throw e;}});});return c;
  }
- async function home(){
-  const [tasks,leads,newMeta]=await Promise.all([api('workspace/tasks'),api('leads'),api('leads/new-meta')]),counts=state.crm.counts,total=Object.values(counts).reduce((a,b)=>a+b,0),open=tasks.items.filter(x=>x.payload.status==='OPEN');
-  const overview=stats([['סכום שהוצא (7 ימים)','…',''],['לידים שהתקבלו',total,'מכל המקורות'],['מכירות',counts.WON||0,''],['עלות לליד','…','']]);overview.classList.add('home-metrics');api('business-report?period=last_7d').then(r=>{const v=overview.querySelectorAll('.stat strong'),n=overview.querySelectorAll('.stat small');v[0].textContent=r.spend===null?'—':shekel(r.spend);n[0].textContent=r.spend===null?'חשבון Meta לא מחובר':'';v[3].textContent=r.metrics.costPerLead===null?'—':shekel(r.metrics.costPerLead);n[2].textContent=r.funnel.revenue?shekel(r.funnel.revenue)+' הכנסות':'';}).catch(()=>{overview.querySelectorAll('.stat strong').forEach(x=>{if(x.textContent==='…')x.textContent='—';});});
-  const center=el('div','','home-main-grid');center.append(inlineAgentCard(),performanceCard());
-  const lower=el('div','','home-lower-grid'),campaigns=card('קמפיינים אחרונים'),recentLeads=card('לידים חדשים'),todo=card('משימות פתוחות');
-  if(state.draft){campaigns.append(badge('טיוטה'),el('h3',state.draft.product||state.business.product||'תוכנית הקמפיין שלך'),el('p',state.draft.stale?'פרטי העסק השתנו. צריך לבדוק שוב את הטיוטה.':'הטיוטה נשמרה וממתינה לבדיקה.','muted'),go('פתיחת הקמפיין','campaign'));}else campaigns.append(empty('אין עדיין קמפיינים','אפשר להתחיל מתכנון טיוטה פרטית.',button('צור לי קמפיין',()=>openAgent(true),'primary')));api('campaigns').then(r=>{const live=(r.campaigns||[]).filter(x=>!['ARCHIVED','DELETED'].includes(x.status)).slice(0,4);if(!live.length)return;campaigns.querySelector('.empty-state')?.remove();const ST={ACTIVE:'פעיל',PAUSED:'כבוי',CAMPAIGN_PAUSED:'כבוי',IN_PROCESS:'בבדיקה',PENDING_REVIEW:'בבדיקה',WITH_ISSUES:'יש בעיה',DISAPPROVED:'נדחה'};live.forEach(x=>{const row=el('div','','home-list-row');row.append(el('strong',x.name),badge(ST[x.status]||x.status,x.status==='ACTIVE'?'':'warning'));campaigns.append(row);});campaigns.append(go('כל הקמפיינים','campaign'));}).catch(()=>{});
-  if(leads.leads.length){leads.leads.slice(0,4).forEach(l=>{const row=el('div','','home-list-row');row.append(el('strong',l.name),badge(statuses[l.status]));recentLeads.append(row);});recentLeads.append(go('כל הלידים','leads'));}else recentLeads.append(empty('עוד אין לידים','לידים חדשים יופיעו כאן.',go('פתיחת הלידים','leads')));
-  if(open.length){open.slice(0,4).forEach(x=>{const row=el('div','','home-list-row');row.append(el('span',x.payload.title),el('small',x.payload.date||'ללא תאריך'));todo.append(row);});todo.append(go('כל המשימות','tasks'));}else todo.append(empty('אין משימות פתוחות','אפשר לשמור את הצעד הבא של העסק.',go('הוספת משימה','tasks')));lower.append(campaigns,recentLeads,todo);
-  const alerts=[];
-  if(newMeta.count){
-   const alert=card('לידים חדשים מ־Meta · '+newMeta.count);
-   const openLeads=button('הצגת הלידים',()=>run(openLeads,async()=>{
-    const d=dialog('לידים חדשים מ־Meta');
-    const list=el('div');
-    const show=async before=>{
-     const page=await api('leads/new-meta'+(before?'?before='+encodeURIComponent(before):''));
-     for(const lead of page.leads)list.append(leadCard(lead));
-     if(page.next){
-      const more=button('עוד לידים',()=>run(more,async()=>{
-       await show(page.next);
-       more.remove();
-      }));
-      list.append(more);
-     }
-    };
-    await show();
-    d.append(list);
-    d.showModal();
-   }));
-   alert.append(openLeads);
-   alerts.push(alert);
-  }
-  const directory=el('details','','home-page-directory');directory.append(el('summary','כל דפי השיווק והכלים של העסק'),marketingDirectory());
-  return [heading('שלום, '+(state.account?.display_name||'ברוכים הבאים'),'מה שקורה בעסק שלך, במקום אחד',[go('כל הדפים','pages')]),todayCard(),...alerts,overview,trendCard(),center,lower,directory];
- }
- // "What to do today": the few actions that move revenue, plus the first-run checklist.
- function todayCard(){
-  const c=card('מה מחכה לך היום','מה שהכי ישפיע על ההכנסות שלך');c.classList.add('today-card');const body=el('div','','today-body');body.append(el('p','טוען…','muted'));c.append(body);
-  api('today').then(({items,setup})=>{body.replaceChildren();
-   if(setup.done<setup.total){const s=el('div','','setup-steps');s.append(el('strong',setup.total-setup.done===1?'עוד צעד אחד והכול מוכן':`עוד ${setup.total-setup.done} צעדים והכול מוכן`));const bar=el('progress');bar.max=setup.total;bar.value=setup.done;s.append(bar);setup.steps.forEach(step=>{const row=el('div','','setup-row'+(step.done?' done':''));row.append(el('span',step.done?'✓':'○','setup-mark'),el('span',step.title));if(!step.done)row.append(button('להתחיל',()=>step.screen==='agent'?openAgent(true):navigate(step.screen),'secondary'));s.append(row);});body.append(s);}
-   if(!items.length){body.append(el('p','הכול מטופל ✓ אין משהו דחוף כרגע','today-clear'));return;}
-   items.forEach(item=>{const row=el('div','','today-row urgency-'+item.urgency),copy=el('div');copy.append(el('strong',item.text));if(item.detail)copy.append(el('small',item.detail));row.append(copy,button('לטפל',()=>navigate(item.screen),item.urgency>=3?'primary':'secondary'));body.append(row);});
-   updateBell(items.length);
-  }).catch(()=>{body.replaceChildren(el('p','לא הצלחנו לטעון את המשימות להיום.','muted'));});
+ // Home: a short note from the assistant, what the ads earned, what waits for approval, and the newest leads.
+ function greeting(){const h=Number(new Date().toLocaleString('en-US',{timeZone:'Asia/Jerusalem',hour:'numeric',hour12:false}))%24;return h>=5&&h<12?'בוקר טוב':h>=12&&h<17?'צהריים טובים':h>=17&&h<22?'ערב טוב':'לילה טוב';}
+ function ago(ts){const m=Math.max(0,Math.round((Date.now()-new Date(ts).getTime())/60000));if(m<1)return 'עכשיו';if(m<60)return 'לפני '+m+' דק׳';const h=Math.round(m/60);if(h<24)return h===1?'לפני שעה':'לפני '+h+' שעות';const d=Math.round(h/24);return d===1?'אתמול':'לפני '+d+' ימים';}
+ function moneyPanel(){
+  const c=el('section','','hx-money');c.setAttribute('aria-labelledby','hx-money-title');const head=el('div','','hx-money-head'),title=el('h2','מה הפרסום עשה השבוע');title.id='hx-money-title';head.append(title,el('span','7 הימים האחרונים','hx-period'));
+  const flow=el('div','','hx-flow'),spent=el('div','','hx-spent'),earned=el('div','','hx-earned'),track=el('div','','hx-track'),fill=el('span');track.append(fill);track.setAttribute('role','img');
+  const spentValue=el('strong','…','hx-big'),earnedValue=el('strong','…','hx-big');spent.append(el('span','הוצאת על פרסום','hx-label'),spentValue);earned.append(el('span','הכנסה מלקוחות שנסגרו','hx-label'),earnedValue);
+  const trackWrap=el('div','','hx-track-wrap');trackWrap.append(track);flow.append(spent,trackWrap,earned);
+  const verdict=el('p','','hx-verdict'),note=el('p','','hx-note');c.append(head,flow,verdict,note);
+  const fact=(n,label)=>{const x=el('span');x.append(el('strong',String(n)),document.createTextNode(' '+label));return x;};
+  api('business-report?period=last_7d').then(r=>{const f=r.funnel,m=r.metrics;spentValue.textContent=r.spend===null?'לא מחובר':shekel(r.spend);spentValue.classList.toggle('hx-none',r.spend===null);earnedValue.textContent=shekel(f.revenue||0);
+   const total=(r.spend||0)+(f.revenue||0),compare=r.spend!==null&&total>0;fill.style.width=compare?Math.max(2,Math.round(r.spend/total*100))+'%':'0';track.classList.toggle('hx-track-empty',!compare);track.setAttribute('aria-label',m.revenuePerShekel===null?'אין עדיין מספיק נתונים להשוואה':'ההכנסה גדולה פי '+m.revenuePerShekel.toFixed(1)+' מההוצאה');
+   verdict.replaceChildren();if(m.revenuePerShekel!==null)verdict.append(el('span','כל שקל החזיר ₪'+m.revenuePerShekel.toFixed(1),'hx-ratio'));verdict.append(fact(f.leads,'לידים'),fact(f.won,'נסגרו'));if(m.costPerCustomer!==null)verdict.append(fact(shekel(m.costPerCustomer),'עלות ללקוח שסגר'));
+   note.textContent=r.spend===null?'חשבון Meta עוד לא מחובר, לכן ההוצאה לא מוצגת.':f.won>0&&!f.revenue?'סמנו סכום לעסקאות שנסגרו, כדי לראות אם הפרסום רווחי.':!f.won?'כשליד קונה, סמנו אותו "נסגר" עם סכום. כך תראה כמה הפרסום החזיר.':'';note.hidden=!note.textContent;
+  }).catch(()=>{spentValue.textContent='—';earnedValue.textContent='—';note.textContent='לא הצלחנו לטעון את נתוני השבוע.';});
   return c;
+ }
+ function decisionCard(a){
+  const lines=String(a.summary||'').split('\n').map(x=>x.trim()).filter(Boolean),c=el('article','','hx-decision'+(a.startsSpending?' hx-spend':''));
+  c.append(el('h3',lines[0]||'פעולה לאישור'));if(lines.length>1)c.append(el('p',lines.slice(1).join('\n'),'hx-why'));
+  c.append(el('small','בתוקף עד '+new Date(a.expiresAt).toLocaleString('he-IL',{timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit',day:'numeric',month:'numeric'}),'hx-expiry'));
+  const result=el('p','','approval-result');result.setAttribute('role','status');
+  const ok=button(a.startsSpending?'מאשר, להפעיל':'לאשר',()=>run(ok,async()=>{if(a.startsSpending&&!await UI.confirm('הפעלת פרסום','האישור מפעיל פרסום ומתחיל לחייב מהתקציב. להמשיך?','מאשר להפעיל'))return;const r=await api('approvals/'+encodeURIComponent(a.actionId)+'/approve',{confirm:true});result.textContent=r.reply;ok.remove();no.remove();tell(r.reply,!r.ok);}),'primary');
+  const no=button(a.task?'ביטול המשימה':'לא לבצע',()=>run(no,async()=>{const r=await api('approvals/'+encodeURIComponent(a.actionId)+'/reject',{});result.textContent=r.reply;ok.remove();no.remove();}),'secondary');
+  const acts=el('div','','hx-acts');acts.append(ok,no);c.append(acts,result);return c;
+ }
+ function setupPanel(setup){
+  const s=el('section','','hx-setup setup-steps');const left=setup.total-setup.done;s.append(el('h2',left===1?'עוד צעד אחד והכול מוכן':`עוד ${left} צעדים והכול מוכן`));const bar=el('progress');bar.max=setup.total;bar.value=setup.done;bar.setAttribute('aria-label',`${setup.done} מתוך ${setup.total} צעדים הושלמו`);s.append(bar);
+  setup.steps.forEach(step=>{const row=el('div','','setup-row'+(step.done?' done':''));row.append(el('span',step.done?'✓':'○','setup-mark'),el('span',step.title));if(!step.done)row.append(button('להתחיל',()=>step.screen==='agent'?openAgent(true):navigate(step.screen),'secondary'));s.append(row);});return s;
+ }
+ function leadRow(l){
+  const row=button('',()=>navigate('leads'),'hx-lead'),won=l.status==='WON'&&l.currency==='ILS'&&Number(l.revenue_minor)>0;
+  const who=el('span','','hx-who');who.append(el('strong',l.name),el('small',[l.source,ago(l.created_at)].filter(Boolean).join(', ')));
+  row.append(el('span',(l.name||'?').trim().charAt(0),'hx-avatar'),who,el('span',won?'נסגר '+shekel(Number(l.revenue_minor)/100):statuses[l.status]||l.status,'hx-chip hx-'+String(l.status).toLowerCase()));
+  row.setAttribute('aria-label',l.name+', '+(statuses[l.status]||l.status));return row;
+ }
+ async function home(){
+  const [tasks,leads,newMeta,approvals,today]=await Promise.all([api('workspace/tasks'),api('leads'),api('leads/new-meta'),api('approvals').catch(()=>({approvals:[]})),api('today').catch(()=>({items:[],setup:{done:0,total:0,steps:[]}}))]),open=tasks.items.filter(x=>x.payload.status==='OPEN'),pending=approvals.approvals||[];
+  updateBell(today.items.length);
+  const intro=el('div','','hx-intro');intro.append(el('h1',greeting()+(state.account?.display_name?', '+state.account.display_name:'')),el('p',pending.length?(pending.length===1?'הכנתי החלטה אחת שמחכה לאישור שלך.':`הכנתי ${pending.length} החלטות שמחכות לאישור שלך.`):today.items.length?(today.items.length===1?'יש דבר אחד שכדאי לטפל בו היום.':`יש ${today.items.length} דברים שכדאי לטפל בהם היום.`):'הכול רגוע. אין משהו שמחכה לך כרגע.','hx-lead-in'));
+  const out=[intro];if(today.setup.total&&today.setup.done<today.setup.total)out.push(setupPanel(today.setup));out.push(moneyPanel());
+  const decisions=el('section','','hx-col'),dHead=el('div','','hx-sec-title');dHead.append(el('h2','מחכה לאישור שלך'));if(pending.length)dHead.append(go('כל האישורים','approvals'));decisions.append(dHead);
+  pending.slice(0,3).forEach(a=>decisions.append(decisionCard(a)));
+  today.items.forEach(item=>{const row=el('div','','hx-todo urgency-'+item.urgency),copy=el('div');copy.append(el('strong',item.text));if(item.detail)copy.append(el('small',item.detail));row.append(copy,button('לטפל',()=>navigate(item.screen),item.urgency>=3?'primary':'secondary'));decisions.append(row);});
+  if(!pending.length&&!today.items.length)decisions.append(el('p','אין משהו שמחכה לאישור. כשאכין פעולה, היא תופיע כאן ובוואטסאפ.','hx-calm'));
+  const recent=el('section','','hx-col'),lHead=el('div','','hx-sec-title');lHead.append(el('h2','לידים אחרונים'));if(leads.leads.length)lHead.append(go('כל הלידים','leads'));recent.append(lHead);const list=el('div','','hx-leads');
+  if(newMeta.count){const meta=button(`${newMeta.count} לידים חדשים מ־Meta`,()=>run(meta,async()=>{const d=dialog('לידים חדשים מ־Meta'),box=el('div');const show=async before=>{const page=await api('leads/new-meta'+(before?'?before='+encodeURIComponent(before):''));for(const lead of page.leads)box.append(leadCard(lead));if(page.next){const more=button('עוד לידים',()=>run(more,async()=>{await show(page.next);more.remove();}));box.append(more);}};await show();d.append(box);d.showModal();}),'hx-banner');list.append(meta);}
+  const waiting=leads.leads.filter(l=>l.status==='NEW').length;if(waiting)list.append(el('p',waiting===1?'ליד אחד מחכה לתשובה':`${waiting} לידים מחכים לתשובה`,'hx-waiting'));
+  if(leads.leads.length)leads.leads.slice(0,5).forEach(l=>list.append(leadRow(l)));else list.append(empty('עוד אין לידים','לידים חדשים יופיעו כאן.',go('פתיחת הלידים','leads')));recent.append(list);
+  const cols=el('div','','hx-cols');cols.append(decisions,recent);out.push(cols);
+  const more=el('div','','hx-more');more.append(inlineAgentCard(),trendCard());out.push(more);
+  const lower=el('div','','hx-more'),campaigns=card('קמפיינים'),todo=card('משימות פתוחות');
+  if(state.draft){campaigns.append(badge('טיוטה'),el('h3',state.draft.product||state.business.product||'תוכנית הקמפיין שלך'),el('p',state.draft.stale?'פרטי העסק השתנו. צריך לבדוק שוב את הטיוטה.':'הטיוטה נשמרה וממתינה לבדיקה.','muted'),go('פתיחת הקמפיין','campaign'));}else campaigns.append(empty('אין עדיין קמפיינים','אפשר להתחיל מתכנון טיוטה פרטית.',button('צור לי קמפיין',()=>openAgent(true),'primary')));api('campaigns').then(r=>{const live=(r.campaigns||[]).filter(x=>!['ARCHIVED','DELETED'].includes(x.status)).slice(0,4);if(!live.length)return;campaigns.querySelector('.empty-state')?.remove();const ST={ACTIVE:'פעיל',PAUSED:'כבוי',CAMPAIGN_PAUSED:'כבוי',IN_PROCESS:'בבדיקה',PENDING_REVIEW:'בבדיקה',WITH_ISSUES:'יש בעיה',DISAPPROVED:'נדחה'};live.forEach(x=>{const row=el('div','','home-list-row');row.append(el('strong',x.name),badge(ST[x.status]||x.status,x.status==='ACTIVE'?'':'warning'));campaigns.append(row);});campaigns.append(go('כל הקמפיינים','campaign'));}).catch(()=>{});
+  if(open.length){open.slice(0,4).forEach(x=>{const row=el('div','','home-list-row');row.append(el('span',x.payload.title),el('small',x.payload.date||'ללא תאריך'));todo.append(row);});todo.append(go('כל המשימות','tasks'));}else todo.append(empty('אין משימות פתוחות','אפשר לשמור את הצעד הבא של העסק.',go('הוספת משימה','tasks')));lower.append(campaigns,todo);out.push(lower);
+  const directory=el('details','','home-page-directory');directory.append(el('summary','כל דפי השיווק והכלים של העסק'),marketingDirectory());out.push(directory);
+  return out;
  }
  function updateBell(count){const bell=document.querySelector('[aria-label^="התראות"]');if(!bell)return;bell.querySelector('.bell-count')?.remove();if(count){const dot=el('span',String(count),'bell-count');bell.append(dot);bell.setAttribute('aria-label','התראות ועדכונים · '+count);}}
  // Daily leads (bars) and ad spend (line) with the change against the previous period.
