@@ -211,6 +211,7 @@ async function routeText(from, text, prefix = '') {
   if(text.startsWith('/approve-current ')){const owner=configured()?await getOrCreateClient(from):null;if(owner&&await require('./conversationController').owns(owner.id)&&!await require('./campaignGuard').ownsApproval(owner.id,text.slice(17))&&!await require('./dailyAdvice').ownsApproval(owner.id,text.slice(17))){await safeSend(from,'האישור הזה אינו שייך למשימה הנוכחית. לא בוצעה פעולה. אפשר לבקש להכין את הפעולה מחדש לבדיקה.');return;}await handleApproval(from,null,text.slice(17));return;}
   if(text==='בטל את הפעולה הממתינה'){await cancelPendingApprovals(from);await safeSend(from,'הפעולה הממתינה בוטלה. מה נרצה לשנות?');return;}
   {const advice=await require('./dailyAdvice').handleReply(from,text);if(advice?.route)text=advice.route;else if(advice)return;}
+  {const speed=await require('./leadSpeed').handleReply(from,text);if(speed){await safeSend(from,speed.reply);return;}}
 
   if(require('./conversationControl').isReset(text)){
     await resetSession(from);

@@ -43,7 +43,7 @@ async function update(clientId,id,{status,version,note,revenueMinor,currency}={}
  if(!/^[a-f0-9-]{36}$/i.test(id||'')||!STATUSES.includes(status)||!Number.isInteger(version)||note!=null&&(typeof note!=='string'||note.length>2000)||revenueMinor!=null&&(!Number.isSafeInteger(revenueMinor)||revenueMinor<0||!['ILS','USD','EUR'].includes(currency)))throw Error('INVALID_LEAD_UPDATE');
  return db.transaction(async tx=>{
   const before=(await tx('SELECT status,note FROM crm_leads WHERE client_id=$1 AND id=$2',[clientId,id])).rows[0];
-  const r=await tx(`UPDATE crm_leads SET status=$3,note=COALESCE($4,note),revenue_minor=COALESCE($5,revenue_minor),currency=COALESCE($6,currency),version=version+1,updated_at=NOW() WHERE client_id=$1 AND id=$2 AND version=$7 RETURNING *`,[clientId,id,status,note??null,revenueMinor??null,revenueMinor!=null?currency:null,version]);
+  const r=await tx(`UPDATE crm_leads SET status=$3,first_contact_at=COALESCE(first_contact_at,CASE WHEN $3::text IN ('CONTACTED','APPOINTMENT','WON') THEN NOW() END),note=COALESCE($4,note),revenue_minor=COALESCE($5,revenue_minor),currency=COALESCE($6,currency),version=version+1,updated_at=NOW() WHERE client_id=$1 AND id=$2 AND version=$7 RETURNING *`,[clientId,id,status,note??null,revenueMinor??null,revenueMinor!=null?currency:null,version]);
   if(!r.rows.length)throw Error('LEAD_NOT_FOUND_OR_STALE');
   await require('./metaCrmFeedback').enqueue(tx,r.rows[0]);
   const row=r.rows[0];

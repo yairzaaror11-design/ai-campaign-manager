@@ -24,8 +24,9 @@ test('the owner is alerted once per lead inside the WhatsApp window', async () =
     const lead = { id: '11111111-1111-1111-1111-111111111111', name: 'דנה כהן', phone: '0521234567' };
     assert.equal((await alert.notifyOwner(client, lead)).status, 'QUEUED');
     await alert.notifyOwner(client, lead);
-    const rows = (await db.query('SELECT payload FROM whatsapp_outbox WHERE client_id=$1', [client])).rows;
-    assert.equal(rows.length, 1, 'a repeated alert for the same lead is deduplicated');
+    const rows = (await db.query('SELECT payload FROM whatsapp_outbox WHERE client_id=$1 ORDER BY created_at, id', [client])).rows;
+    assert.equal(rows.length, 2, 'one alert plus its buttons; a repeated alert for the same lead is deduplicated');
+    assert.equal(rows[1].payload.type, 'interactive');
     assert.match(rows[0].payload.text.body, /wa\.me\/972521234567/);
   } finally { await close(); }
 });
