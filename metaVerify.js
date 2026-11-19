@@ -2,6 +2,12 @@
 const meta=require('./metaConnection');
 async function verifyAction(plan,written) {
  const id=written.id || plan.target.campaignId;
+ if(['SYNC_BUYER_AUDIENCE','CREATE_LOOKALIKE'].includes(plan.intent)){
+  if(!/^\d+$/.test(String(id)))return{verified:false};
+  const c=await meta.credentials(meta.context.getStore());
+  const a=await meta.graph('/'+id,c.token,{fields:'id,account_id,name,subtype'});
+  return{verified:String(a.id)===String(id)&&'act_'+a.account_id===plan.target.accountId&&a.subtype===(plan.intent==='CREATE_LOOKALIKE'?'LOOKALIKE':'CUSTOM')&&(!!plan.parameters.audienceId||a.name===plan.parameters.name)};
+ }
  if(plan.intent==='CREATE_LEAD_FORM'){
   if(!/^\d+$/.test(String(id)))return{verified:false};
   const {form}=await require('./metaLeadForms').inspect(meta.context.getStore(),plan.parameters.pageId,String(id));

@@ -23,7 +23,9 @@ const parameterKeys={
  CREATE_CREATIVE:['name','pageId','link','message','headline','imageHash','formId'],
  CREATE_AD:['name','adsetId','creativeId'],
  CHANGE_BUDGET:['dailyBudget','dailyBudgetMinor','currency'],
- PAUSE_CAMPAIGN:[],RESUME_CAMPAIGN:[],EDIT_CAMPAIGN:['name']
+ PAUSE_CAMPAIGN:[],RESUME_CAMPAIGN:[],EDIT_CAMPAIGN:['name'],
+ SYNC_BUYER_AUDIENCE:['name','snapshotId','digest','buyerCount','audienceId'],
+ CREATE_LOOKALIKE:['name','originAudienceId']
 };
 function strictPlan(plan) {
   const validation=validateActionPlan(plan);
@@ -63,6 +65,11 @@ function strictPlan(plan) {
     }
     if(total!==p.dailyBudgetMinor) throw Error('TOTAL_BUDGET_MISMATCH');
   }
+  if(plan.intent==='SYNC_BUYER_AUDIENCE'){
+    const p=plan.parameters;
+    if(!/^[a-f0-9-]{36}$/i.test(p.snapshotId||'')||!/^[a-f0-9]{64}$/.test(p.digest||'')||!Number.isSafeInteger(p.buyerCount)||p.buyerCount<1||p.buyerCount>500000||!p.name||(p.audienceId!==undefined&&!/^\d+$/.test(p.audienceId))) throw Error('INVALID_BUYER_AUDIENCE');
+  }
+  if(plan.intent==='CREATE_LOOKALIKE'&&(!plan.parameters.name||!/^\d+$/.test(plan.parameters.originAudienceId||''))) throw Error('INVALID_LOOKALIKE');
   if(plan.intent==='UPLOAD_IMAGE'&&!/^[a-f0-9-]{36}$/i.test(plan.parameters.mediaId || '')) throw Error('MEDIA_REFERENCE_REQUIRED');
   if(plan.intent==='CREATE_ADSET') {
     const p=plan.parameters;
@@ -138,6 +145,8 @@ async function preparePlan(clientId,input) {
     plan.target.accountName=account.name;
     if(plan.intent==='CREATE_BUNDLE') for(const set of plan.parameters.adSets || []) {set.currency=account.currency;set.dailyBudgetMinor=minorUnits(set.dailyBudget,account.currency);}
   }
+  // Buyer audiences: exclude existing customers from new ad sets (no-op unless enabled and created).
+  await require('./buyerAudiences').applyExclusion(clientId,plan,connection.meta_ad_account_id);
   strictPlan(plan);
   return plan;
 }
