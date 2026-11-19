@@ -28,7 +28,7 @@ test('Meta leads report each stage once; manual leads and LOST are never sent', 
   axios.get = async (url) => { if (!/act_88\/adspixels$/.test(url)) throw Error("unexpected " + url); return { data: { data: [{ id: '5550001' }] } }; };
   axios.post = async (url, body) => { sent.push({ url, data: body.get('data') }); return { data: { events_received: 1 } }; };
   try {
-    const id = (await db.query("INSERT INTO clients(phone,meta_ad_account_id) VALUES('972500000401','act_88') RETURNING id")).rows[0].id;
+    const id = (await db.query("INSERT INTO clients(phone,meta_ad_account_id) VALUES('972500000417','act_88') RETURNING id")).rows[0].id;
     await db.query("INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,app_id,expires_at) VALUES($1,'10401',$2,$3,NOW()+INTERVAL '1 hour')", [id, meta.encrypt('t', id), process.env.META_APP_ID]);
     const lead = await crm.create(id, { name: 'דנה', phone: '0501234567', source: 'meta_lead_ads', sourceEventId: '98765432109876543' });
     const manual = await crm.create(id, { name: 'יוסי', phone: '0501234568' });
