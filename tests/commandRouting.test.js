@@ -31,4 +31,5 @@ test('asking to switch the ad account opens the verified account menu', () => {
   const read = require('../readConversation');
   assert.deepEqual(read.request('החשבונות שלי'), { type: 'list' });
   assert.deepEqual(read.request('תעבור לחשבון יאיר דיגיטל'), { type: 'select', query: 'יאיר דיגיטל' });
+  for (const m of ['תחליף חשבון מודעות', 'תחליף חשבון פרסום', 'החלף חשבון אחר']) assert.deepEqual(read.request(m), { type: 'list' }, m);
 });
