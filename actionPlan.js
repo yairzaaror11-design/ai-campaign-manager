@@ -48,7 +48,7 @@ function minor(amount,currency){return amount===undefined||amount===null?null:mo
 function when(v){if(!v)return null;const d=new Date(v);return isNaN(d)?String(v):d.toLocaleString('he-IL',{timeZone:'Asia/Jerusalem',day:'numeric',month:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit'});}
 function audience(t){
  if(!t||typeof t!=='object')return null;const g=t.geo_locations||{},parts=[];
- const places=[...(g.cities||[]).map(c=>c.name||c.key),...(g.regions||[]).map(r=>r.name||r.key),...(g.countries||[]).map(c=>c==='IL'?'ישראל':c)].filter(Boolean);
+ const places=[...(g.cities||[]).map(c=>(c.name||c.key)+(c.radius?' + '+c.radius+' ק"מ':'')),...(g.regions||[]).map(r=>r.name||r.key),...(g.countries||[]).map(c=>c==='IL'?'ישראל':c)].filter(Boolean);
  if(places.length)parts.push(places.slice(0,6).join(', '));
  if(t.age_min||t.age_max)parts.push('גילאי '+(t.age_min||18)+'–'+(t.age_max||65));
  if(Array.isArray(t.genders)&&t.genders.length===1)parts.push(t.genders[0]===1?'גברים':'נשים');

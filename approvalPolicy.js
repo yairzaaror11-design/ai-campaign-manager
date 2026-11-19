@@ -57,7 +57,7 @@ function strictPlan(plan) {
   if(plan.intent==='UPLOAD_IMAGE'&&!/^[a-f0-9-]{36}$/i.test(plan.parameters.mediaId || '')) throw Error('MEDIA_REFERENCE_REQUIRED');
   if(plan.intent==='CREATE_ADSET') {
     const p=plan.parameters;
-    if(!p.targeting || !Array.isArray(p.targeting.geo_locations?.countries) || !p.targeting.geo_locations.countries.length || p.targeting.geo_locations.countries.some(c=>!/^[A-Z]{2}$/.test(c))) throw Error('TARGETING_REQUIRED');
+    if(!p.targeting || p.targeting.places!==undefined || !require('./geoTargeting').validGeo(p.targeting.geo_locations)) throw Error('TARGETING_REQUIRED');
     if(!['IMPRESSIONS','LINK_CLICKS'].includes(p.billingEvent) || !['LINK_CLICKS','LANDING_PAGE_VIEWS','LEAD_GENERATION','OFFSITE_CONVERSIONS','REACH','IMPRESSIONS'].includes(p.optimizationGoal)) throw Error('DELIVERY_SETTINGS_REQUIRED');
     if(!p.startTime || !Number.isFinite(Date.parse(p.startTime))) throw Error('START_TIME_REQUIRED');
     if(p.endTime && (!Number.isFinite(Date.parse(p.endTime)) || Date.parse(p.endTime)<=Date.parse(p.startTime))) throw Error('INVALID_END_TIME');
@@ -116,6 +116,11 @@ async function preparePlan(clientId,input) {
       const ad=await meta.graph('/'+id,connection.token,{fields:'id,account_id,adset_id'});
       if('act_'+ad.account_id!==connection.meta_ad_account_id||!plan.parameters.adsetIds.includes(ad.adset_id)) throw Error('BUNDLE_RELATIONSHIP_MISMATCH');
     }
+  }
+  if(['CREATE_BUNDLE','CREATE_ADSET'].includes(plan.intent)) {
+    const geo=require('./geoTargeting'),search=params=>meta.graph('/search',connection.token,params);
+    if(plan.intent==='CREATE_ADSET') plan.parameters.targeting=await geo.resolveTargeting(plan.parameters.targeting,search);
+    else for(const set of plan.parameters.adSets || []) set.targeting=await geo.resolveTargeting(set.targeting,search);
   }
   if(['CREATE_BUNDLE','CREATE_ADSET','CHANGE_BUDGET'].includes(plan.intent)) {
     const account=await meta.graph('/'+connection.meta_ad_account_id,connection.token,{fields:'id,name,currency,timezone_name'});
