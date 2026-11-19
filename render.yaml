@@ -29,6 +29,13 @@ services:
         value: gemini-nano-banana-2.1
       - key: AI_PROVIDER
         value: gemini
+      # Second provider that answers when the primary fails (claude|gemini). Set in the dashboard.
+      - key: AI_FALLBACK_PROVIDER
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CLAUDE_MODEL
+        sync: false
       - key: TRUST_PROXY_HOPS
         value: "1"
       - key: REQUIRE_WORKER_HEARTBEAT

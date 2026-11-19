@@ -15,6 +15,8 @@ function validateRuntime() {
  if(provider==='gemini'&&(!process.env.GEMINI_API_KEY||!process.env.GEMINI_MODEL||!process.env.GEMINI_TRANSCRIBE_MODEL)) throw Error('GEMINI_CONFIGURATION_REQUIRED');
  if(provider==='claude'&&(!process.env.ANTHROPIC_API_KEY||!process.env.CLAUDE_MODEL)) throw Error('CLAUDE_CONFIGURATION_REQUIRED');
  if(!['gemini','claude'].includes(provider)) throw Error('AI_PROVIDER_UNSUPPORTED');
+ const fallback=process.env.AI_FALLBACK_PROVIDER;
+ if(fallback&&!['gemini','claude'].includes(fallback)) throw Error('AI_FALLBACK_PROVIDER_UNSUPPORTED');
  if(process.env.VIDEO_ENABLED==='true'&&!require('./higgsfield').configured()) throw Error('VIDEO_CONFIGURATION_REQUIRED');
  for(const key of ['APPROVAL_HMAC_KEY','DELETION_HMAC_KEY']) if(process.env[key].length<32) throw Error('STRONG_KEY_REQUIRED_'+key);
 }
