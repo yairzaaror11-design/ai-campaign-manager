@@ -50,7 +50,7 @@ async function loadLeads(){
   const number=waNumber(lead.phone);
   if(number){const first=String(lead.name||'').trim().split(/\s+/)[0]||'',business=state?.business?.businessName,message=(first&&lead.name!=='ליד מ־Meta'?'היי '+first:'היי')+', כאן'+(business?' מ'+business:'')+'. ראינו שהשארת פרטים, תודה! מתי נוח לך לדבר כמה דקות?',wa=document.createElement('a');wa.href='https://wa.me/'+number+'?text='+encodeURIComponent(message);wa.target='_blank';wa.rel='noopener noreferrer';wa.className='button secondary';wa.textContent='💬 שליחת וואטסאפ';details.append(wa);}
   if(lead.status==='NEW'&&lead.created_at){const minutes=Math.max(0,Math.round((Date.now()-new Date(lead.created_at))/60000));details.append(text('p',minutes<60?'⏱ מחכה '+minutes+' דקות למענה':minutes<1440?'⏱ מחכה '+Math.round(minutes/60)+' שעות למענה':'⚠️ מחכה יותר מיום, כדאי לחזור היום',minutes>=60?'error':'muted'));}
-  card.append(details,select);if(window.ScorpioDashboard)card.append(window.ScorpioDashboard.leadRevenueButton(lead));list.append(card);
+  card.append(details,select);if(window.ScorpioDashboard){const tools=text('div','','lead-tools');tools.append(window.ScorpioDashboard.leadDetailsButton(lead),window.ScorpioDashboard.leadRevenueButton(lead));card.append(tools);}list.append(card);
  }
 }
 async function run(button,work){if(button.disabled)return;button.disabled=true;button.setAttribute('aria-busy','true');try{await work();}catch(e){tell(e.message,true);}finally{button.disabled=false;button.removeAttribute('aria-busy');}}

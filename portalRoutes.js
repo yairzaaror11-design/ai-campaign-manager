@@ -33,6 +33,9 @@ router.post('/app/api/logout',endpoint(async(req,res)=>{
  res.setHeader('Set-Cookie',['cb_session=; Path=/app; HttpOnly; Secure; SameSite=Strict; Max-Age=0','cb_csrf=; Path=/app; Secure; SameSite=Strict; Max-Age=0']);res.json({ok:true});
 }));
 router.get('/app/api/leads',endpoint(async(req,res)=>res.json({leads:await require('./crmService').list(req.portal.clientId)})));
+router.get('/app/api/leads/export.csv',endpoint(async(req,res)=>{const crm=require('./crmService');res.set({'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="leads.csv"'});res.send(crm.csv(await crm.list(req.portal.clientId,{limit:5000})));}));
+router.get('/app/api/leads/:id/timeline',endpoint(async(req,res)=>res.json({events:await require('./crmService').timeline(req.portal.clientId,req.params.id)})));
+router.post('/app/api/leads/:id/reminder',endpoint(async(req,res)=>{if(!/^[a-f0-9-]{36}$/i.test(req.params.id))return res.sendStatus(400);res.json(await require('./crmService').addReminder(req.portal.clientId,req.params.id,{date:req.body?.date,requestId:req.body?.requestId}));}));
 router.get('/app/api/leads/new-meta',endpoint(async(req,res)=>{
  const before=req.query.before;
  if(before!==undefined&&(typeof before!=='string'||!/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(before)))return res.sendStatus(400);
@@ -145,6 +148,7 @@ router.patch('/app/api/workspace/:kind/:id',endpoint(async(req,res)=>res.json(aw
 router.post('/app/api/brand',endpoint(async(req,res)=>res.json(await require('./workspaceService').saveBrand(req.portal.clientId,req.body))));
 router.get('/app/api/agent',endpoint(async(req,res)=>res.json(await require('./portalAgent').history(req.portal.clientId))));
 router.post('/app/api/agent',require('./rateLimit').middleware('portal-agent',30),endpoint(async(req,res)=>res.json(await require('./portalAgent').send(req.portal.clientId,req.body))));
+router.post('/app/api/agent/attachment',require('./rateLimit').middleware('portal-agent',30),endpoint(async(req,res)=>res.json(await require('./portalAttachment').send(req.portal.clientId,req.body))));
 router.get('/app/api/agent/media/:id',endpoint(async(req,res)=>{
  const asset=await require('./mediaStore').loadMedia(req.portal.clientId,req.params.id);if(asset.media_type!=='image')return res.sendStatus(415);
  const image=await require('./mediaStore').readMedia(req.portal.clientId,asset.id);if(!['image/png','image/jpeg','image/webp'].includes(image.mimeType))return res.sendStatus(415);
