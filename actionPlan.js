@@ -10,13 +10,18 @@ const WRITE_INTENTS = new Set([
   'CREATE_BUNDLE',
   'ACTIVATE_BUNDLE',
   'CHANGE_BUDGET',
+  'DUPLICATE_CAMPAIGN',
   'PAUSE_CAMPAIGN',
   'RESUME_CAMPAIGN',
   'EDIT_CAMPAIGN'
 ]);
 
+// Buyer audiences (buyerAudiences.js): server-prepared only, kept out of the AI planners' intent list.
+const AUDIENCE_INTENTS = new Set(['SYNC_BUYER_AUDIENCE', 'CREATE_LOOKALIKE']);
+
 function isWriteIntent(intent) {
-  return WRITE_INTENTS.has(String(intent || '').toUpperCase());
+  const key = String(intent || '').toUpperCase();
+  return WRITE_INTENTS.has(key) || AUDIENCE_INTENTS.has(key);
 }
 
 function createActionPlan({
@@ -40,7 +45,7 @@ function createActionPlan({
   };
 }
 
-const INTENT_HE={CREATE_CAMPAIGN:'יצירת קמפיין',CREATE_LEAD_FORM:'יצירת טופס פניות',CREATE_ADSET:'יצירת קהל ותקציב',CREATE_AD:'יצירת מודעה',CREATE_CREATIVE:'יצירת עיצוב מודעה',UPLOAD_IMAGE:'העלאת התמונה לחשבון הפרסום',CREATE_BUNDLE:'יצירת הקמפיין המלא (מושהה)',ACTIVATE_BUNDLE:'הפעלת הקמפיין',CHANGE_BUDGET:'שינוי תקציב',PAUSE_CAMPAIGN:'השהיית קמפיין',RESUME_CAMPAIGN:'חידוש קמפיין',EDIT_CAMPAIGN:'עריכת קמפיין'};
+const INTENT_HE={CREATE_CAMPAIGN:'יצירת קמפיין',CREATE_LEAD_FORM:'יצירת טופס פניות',CREATE_ADSET:'יצירת קהל ותקציב',CREATE_AD:'יצירת מודעה',CREATE_CREATIVE:'יצירת עיצוב מודעה',UPLOAD_IMAGE:'העלאת התמונה לחשבון הפרסום',CREATE_BUNDLE:'יצירת הקמפיין המלא (מושהה)',ACTIVATE_BUNDLE:'הפעלת הקמפיין',CHANGE_BUDGET:'שינוי תקציב',DUPLICATE_CAMPAIGN:'שכפול קמפיין (מושהה)',PAUSE_CAMPAIGN:'השהיית קמפיין',RESUME_CAMPAIGN:'חידוש קמפיין',EDIT_CAMPAIGN:'עריכת קמפיין',SYNC_BUYER_AUDIENCE:'קהל הלקוחות הקיימים ב־Meta',CREATE_LOOKALIKE:'קהל דומה 1% ללקוחות שלך'};
 const OBJECTIVE_HE={OUTCOME_LEADS:'פניות (לידים)',OUTCOME_SALES:'מכירות',OUTCOME_TRAFFIC:'כניסות לאתר',OUTCOME_ENGAGEMENT:'מעורבות',OUTCOME_AWARENESS:'חשיפה',OUTCOME_APP_PROMOTION:'קידום אפליקציה'};
 const SYMBOL={ILS:'₪',USD:'$',EUR:'€'};
 function money(amount,currency){return amount===undefined||amount===null||amount===''?null:String(amount)+' '+(SYMBOL[currency]||currency||'');}
@@ -55,18 +60,21 @@ function audience(t){
  return parts.join(' · ')||null;
 }
 // What the owner will actually pay, in plain numbers, before approving anything that spends.
-function dailyTotal(p,sets){
+function dailyTotal(p,sets,review){
   if(p.dailyBudget!==undefined&&p.dailyBudget!==null&&p.dailyBudget!=='')return Number(p.dailyBudget);
   const v=sets.map(s=>s.dailyBudget!==undefined?Number(s.dailyBudget):s.daily_budget!==undefined&&s.daily_budget!==null?Number(s.daily_budget)/100:NaN);
-  return v.length&&v.every(Number.isFinite)?v.reduce((a,b)=>a+b,0):null;
+  if(v.length&&v.every(Number.isFinite))return v.reduce((a,b)=>a+b,0);
+  // Resuming or activating a campaign whose budget sits on the campaign itself.
+  const current=Number(review?.currentDailyBudgetMinor);
+  return Number.isFinite(current)&&current>0?current/100:null;
 }
 function costLine(plan,p,sets,currency){
-  if(!['ACTIVATE_BUNDLE','RESUME_CAMPAIGN','CHANGE_BUDGET','CREATE_BUNDLE','CREATE_ADSET'].includes(plan.intent))return null;
-  const day=dailyTotal(p,sets);if(!Number.isFinite(day)||day<=0)return null;
+  if(!['ACTIVATE_BUNDLE','RESUME_CAMPAIGN','CHANGE_BUDGET','CREATE_BUNDLE','CREATE_ADSET','DUPLICATE_CAMPAIGN'].includes(plan.intent))return null;
+  const day=dailyTotal(p,sets,plan.review);if(!Number.isFinite(day)||day<=0)return null;
   const start=new Date(p.startTime||sets[0]?.startTime||sets[0]?.start_time||Date.now()),end=new Date(p.endTime||sets[0]?.endTime||sets[0]?.end_time||NaN);
   const days=Number.isFinite(end-start)&&end>start?Math.ceil((end-start)/864e5):null;
   const round=n=>Math.round(n).toLocaleString('he-IL');
-  const prefix=plan.intent.startsWith('CREATE_')?'אחרי ההפעלה, ':'';
+  const prefix=plan.intent.startsWith('CREATE_')||plan.intent==='DUPLICATE_CAMPAIGN'?'אחרי ההפעלה, ':'';
   return '💸 כמה זה יעלה: '+prefix+'עד '+money(round(day),currency)+' ליום'+(days?' · עד '+money(round(day*days),currency)+' לכל התקופה ('+days+' ימים)':' · בערך '+money(round(day*30),currency)+' לחודש')+'. התשלום עובר ישירות ל־Meta.';
 }
 function formatActionPlan(plan) {
@@ -87,13 +95,19 @@ function formatActionPlan(plan) {
   const sets=p.adSets||plan.review?.adSets||[];
   sets.forEach((set,i)=>{const who=audience(set.targeting);const budget=set.dailyBudget!==undefined?money(set.dailyBudget,currency):minor(set.daily_budget,currency);add('👥',sets.length>1?'קהל '+(i+1):'קהל',[who,budget&&budget+' ליום'].filter(Boolean).join(' · '));});
   if(!sets.length)add('👥','קהל',audience(p.targeting));
-  add('💰','תקציב יומי',p.dailyBudget!==undefined?money(p.dailyBudget,currency):null);
+  const was=Number(plan.review?.currentDailyBudgetMinor);
+  if(plan.intent==='CHANGE_BUDGET'&&p.dailyBudget!==undefined&&Number.isFinite(was)&&was>0)add('💰','תקציב יומי','מ־'+money(was/100,currency)+' ל־'+money(p.dailyBudget,currency)+' ליום');
+  else if(plan.intent==='DUPLICATE_CAMPAIGN'&&p.dailyBudget!==undefined)add('💰','תקציב יומי לעותק',money(p.dailyBudget,currency)+(Number.isFinite(was)&&was>0?' (במקור: '+money(was/100,currency)+')':''));
+  else add('💰','תקציב יומי',p.dailyBudget!==undefined?money(p.dailyBudget,currency):null);
   add('▶️','התחלה',when(p.startTime||sets[0]?.startTime||sets[0]?.start_time));
   add('⏹','סיום',when(p.endTime||sets[0]?.endTime||sets[0]?.end_time));
   if(plan.intent==='CREATE_LEAD_FORM'){lines.push('✅ טופס "כוונה גבוהה": הפונה מאשר את הפרטים לפני שליחה, פחות לידים מקריים');add('📝','שאלות בטופס',(p.questions||[]).map(q=>q.label||({FULL_NAME:'שם מלא',PHONE:'טלפון',EMAIL:'אימייל',CITY:'עיר'})[q.type]||q.key||q.type||q).join(', '));add('🔒','מדיניות פרטיות',p.privacyPolicyUrl);}
+  if(plan.intent==='SYNC_BUYER_AUDIENCE'){add('👥','לקוחות ברשימה',p.buyerCount+' לקוחות שסגרו עסקה (מה־CRM)');add('🏷','שם הקהל',p.audienceId?null:p.name);lines.push(p.audienceId?'🔄 הרשימה ב־Meta תוחלף ברשימה המעודכנת.':'🆕 ייווצר קהל חדש בחשבון הפרסום.');lines.push('🚫 מעכשיו לא נפרסם למי שכבר קנה, וזה גם הבסיס לקהל דומה.');lines.push(require('./buyerAudiences').PRIVACY_LINE);}
+  if(plan.intent==='CREATE_LOOKALIKE'){add('🏷','שם הקהל',p.name);lines.push(require('./buyerAudiences').LOOKALIKE_LINE);}
+  if(sets.some(s=>s?.targeting?.excluded_custom_audiences?.length))lines.push('🚫 לא נפרסם למי שכבר קנה: קהל הלקוחות הקיימים מוחרג.');
   const cost=costLine(plan,p,sets,currency);if(cost)lines.push(cost);
   lines.push('');
-  lines.push(plan.intent==='CREATE_LEAD_FORM'?'האישור יוצר טופס בלבד. שום מודעה לא תופעל.':plan.intent==='ACTIVATE_BUNDLE'||plan.intent==='RESUME_CAMPAIGN'?'⚠️ האישור מפעיל פרסום ומתחיל לחייב מהתקציב.':plan.intent.startsWith('CREATE_')||plan.intent==='UPLOAD_IMAGE'?'הכול נוצר במצב מושהה. אין פרסום ואין חיוב עד אישור הפעלה נפרד.':'האישור חל רק על הפעולה הזו.');
+  lines.push(AUDIENCE_INTENTS.has(plan.intent)?'האישור יוצר או מעדכן קהל בלבד. אין פרסום ואין חיוב.':plan.intent==='CREATE_LEAD_FORM'?'האישור יוצר טופס בלבד. שום מודעה לא תופעל.':plan.intent==='ACTIVATE_BUNDLE'||plan.intent==='RESUME_CAMPAIGN'?'⚠️ האישור מפעיל פרסום ומתחיל לחייב מהתקציב.':plan.intent==='DUPLICATE_CAMPAIGN'?'העותק נוצר במצב מושהה, עם אותן מודעות וקהלים. אין פרסום ואין חיוב עד אישור הפעלה נפרד.':plan.intent.startsWith('CREATE_')||plan.intent==='UPLOAD_IMAGE'?'הכול נוצר במצב מושהה. אין פרסום ואין חיוב עד אישור הפעלה נפרד.':'האישור חל רק על הפעולה הזו.');
   lines.push('מס׳ אישור: '+require('./approvalPolicy').planHash(plan).slice(0,8));
   return lines.join('\n');
 }
@@ -101,6 +115,7 @@ function formatActionPlan(plan) {
 module.exports = {
   INTENT_HE,
   WRITE_INTENTS,
+  AUDIENCE_INTENTS,
   isWriteIntent,
   createActionPlan,
   formatActionPlan

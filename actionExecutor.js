@@ -3,7 +3,7 @@ const db=require('./db');
 const policy=require('./approvalPolicy');
 const meta=require('./metaConnection');
 const write=require('./metaWrite');
-const handlers={CREATE_LEAD_FORM:write.createLeadForm,CREATE_BUNDLE:write.createBundle,ACTIVATE_BUNDLE:write.activateBundle,UPLOAD_IMAGE:write.uploadImage,CREATE_CAMPAIGN:write.createCampaign,CREATE_ADSET:write.createAdSet,CREATE_CREATIVE:write.createCreative,CREATE_AD:write.createAd,CHANGE_BUDGET:write.changeBudget,PAUSE_CAMPAIGN:write.pauseCampaign,RESUME_CAMPAIGN:write.resumeCampaign,EDIT_CAMPAIGN:write.editCampaign};
+const handlers={CREATE_LEAD_FORM:write.createLeadForm,CREATE_BUNDLE:write.createBundle,ACTIVATE_BUNDLE:write.activateBundle,UPLOAD_IMAGE:write.uploadImage,CREATE_CAMPAIGN:write.createCampaign,CREATE_ADSET:write.createAdSet,CREATE_CREATIVE:write.createCreative,CREATE_AD:write.createAd,CHANGE_BUDGET:write.changeBudget,DUPLICATE_CAMPAIGN:write.duplicateCampaign,PAUSE_CAMPAIGN:write.pauseCampaign,RESUME_CAMPAIGN:write.resumeCampaign,EDIT_CAMPAIGN:write.editCampaign,SYNC_BUYER_AUDIENCE:write.syncBuyerAudience,CREATE_LOOKALIKE:write.createLookalike};
 async function executeApprovedAction(phone,plan){if(process.env.READ_ONLY!=='false'||process.env.META_WRITES_ENABLED!=='true')return executeApprovedForClient(null,plan);const client=await require('./clientStore').getOrCreateClient(phone);return executeApprovedForClient(client.id,plan);}
 async function executeApprovedForClient(clientId,plan) {
   let claimedFor=null;
@@ -31,6 +31,12 @@ async function executeApprovedForClient(clientId,plan) {
         await db.query("UPDATE meta_execution_attempts SET status='BLOCKED',updated_at=NOW() WHERE action_id=$1 AND client_id=$2",[plan.id,client.id]);
         await db.query("UPDATE action_plans SET status='BLOCKED',updated_at=NOW() WHERE id=$1 AND client_id=$2",[plan.id,client.id]);
         return{ok:false,blocked:true,reason:'SCOPED_AUTHORITY_BLOCKED',message:'מסגרת ההרשאה השתנתה או בוטלה. הפעולה נחסמה לפני ביצוע שינוי בפלטפורמה.'};
+      }
+      if(error.message==='CUSTOM_AUDIENCE_TOS_REQUIRED'){
+        // Meta definitively refused: the Custom Audience terms are not accepted yet.
+        await db.query("UPDATE meta_execution_attempts SET status='BLOCKED',updated_at=NOW() WHERE action_id=$1 AND client_id=$2",[plan.id,client.id]);
+        await db.query("UPDATE action_plans SET status='BLOCKED',updated_at=NOW() WHERE id=$1 AND client_id=$2",[plan.id,client.id]);
+        return{ok:false,blocked:true,reason:'CUSTOM_AUDIENCE_TOS_REQUIRED',message:require('./buyerAudiences').tosMessage(plan.target.accountId)};
       }
       await db.query("UPDATE meta_execution_attempts SET status='MANUAL_REVIEW',updated_at=NOW() WHERE action_id=$1 AND client_id=$2",[plan.id,client.id]);
       await db.query("UPDATE action_plans SET status='MANUAL_REVIEW',updated_at=NOW() WHERE id=$1 AND client_id=$2",[plan.id,client.id]);

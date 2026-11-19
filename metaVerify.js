@@ -2,6 +2,12 @@
 const meta=require('./metaConnection');
 async function verifyAction(plan,written) {
  const id=written.id || plan.target.campaignId;
+ if(['SYNC_BUYER_AUDIENCE','CREATE_LOOKALIKE'].includes(plan.intent)){
+  if(!/^\d+$/.test(String(id)))return{verified:false};
+  const c=await meta.credentials(meta.context.getStore());
+  const a=await meta.graph('/'+id,c.token,{fields:'id,account_id,name,subtype'});
+  return{verified:String(a.id)===String(id)&&'act_'+a.account_id===plan.target.accountId&&a.subtype===(plan.intent==='CREATE_LOOKALIKE'?'LOOKALIKE':'CUSTOM')&&(!!plan.parameters.audienceId||a.name===plan.parameters.name)};
+ }
  if(plan.intent==='CREATE_LEAD_FORM'){
   if(!/^\d+$/.test(String(id)))return{verified:false};
   const {form}=await require('./metaLeadForms').inspect(meta.context.getStore(),plan.parameters.pageId,String(id));
@@ -37,6 +43,20 @@ async function verifyAction(plan,written) {
      }
    }
    return {verified:true};
+ }
+ if(plan.intent==='DUPLICATE_CAMPAIGN') {
+   const o=written.objects;if(!o||!/^\d+$/.test(String(o.campaignId))||o.campaignId===plan.target.campaignId) return {verified:false};
+   const c=await meta.credentials(meta.context.getStore());
+   const copy=await meta.graph('/'+o.campaignId,c.token,{fields:'id,account_id,status,daily_budget'});
+   if('act_'+copy.account_id!==plan.target.accountId||copy.status!=='PAUSED') return {verified:false};
+   const holder=plan.target.adsetId?await meta.graph('/'+o.adsetIds[0],c.token,{fields:'id,account_id,campaign_id,daily_budget'}):copy;
+   if(plan.target.adsetId&&('act_'+holder.account_id!==plan.target.accountId||String(holder.campaign_id)!==String(o.campaignId))) return {verified:false};
+   return {verified:String(holder.daily_budget)===String(plan.parameters.dailyBudgetMinor)};
+ }
+ if(plan.intent==='CHANGE_BUDGET'&&plan.target.adsetId) {
+   const c=await meta.credentials(meta.context.getStore());
+   const set=await meta.graph('/'+plan.target.adsetId,c.token,{fields:'id,account_id,campaign_id,daily_budget'});
+   return {verified:String(set.id)===plan.target.adsetId&&'act_'+set.account_id===plan.target.accountId&&String(set.campaign_id)===plan.target.campaignId&&String(set.daily_budget)===String(plan.parameters.dailyBudgetMinor)};
  }
  if(plan.intent==='UPLOAD_IMAGE') {
    const c=await meta.credentials(meta.context.getStore());

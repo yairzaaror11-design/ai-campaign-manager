@@ -69,7 +69,7 @@ test('authenticated owner scope flows from HTTP consent through voice/task execu
   const revocable=await grant(sa);
   authority.approveIfCovered=async(client,plan)=>{const ok=await before.authorize(client,plan);if(ok){const r=await call('/app/api/authority/'+revocable.id+'/revoke',{revision:revocable.revision},sa);assert.equal(r.status,200);}return ok;};
   await send('revoked-request','תכין טופס מועמדות');await send('revoked-review','מאשר את החבילה');assert.equal(writes,1);assert.equal((await require('../taskAgent').current(a.id)).status,'BLOCKED');
-  assert.equal((await h.db.query("SELECT COUNT(*)::int AS n FROM meta_execution_attempts WHERE status='BLOCKED'")).rows[0].n,1);
+  assert.equal((await h.db.query("SELECT COUNT(*)::int AS n FROM meta_execution_attempts WHERE status='BLOCKED' AND client_id=$1",[a.id])).rows[0].n,1);
   const pB=await(await call('/app/api/authority/proposals',input(),sb)).json();await h.db.query('UPDATE clients SET meta_generation=meta_generation+1 WHERE id=$1',[b.id]);
   assert.equal((await call('/app/api/authority/'+pB.id+'/approve',{revision:1,confirmHash:pB.hash,confirmation:'APPROVE_SCOPED_AUTHORITY'},sb)).status,409);
   process.env.SCOPED_AUTOMATION_ENABLED='false';assert.equal((await call('/app/api/authority/proposals',input(),sa)).status,403);assert.ok((await(await call('/app/api/authority',null,sa)).json()).mandates.every(m=>m.remainingActions===0));

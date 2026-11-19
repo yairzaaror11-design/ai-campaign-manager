@@ -9,8 +9,8 @@ const enabled = () => process.env.LEAD_CHECKINS_ENABLED !== 'false';
 
 // Stage -> how long to wait after the lead entered it, and what to ask.
 const RULES = {
-  // Speed-to-lead: a lead still untouched after 20 minutes gets a nudge (the instant alert already went out).
-  NEW: { afterMinutes: 20, ask: (name, hours) => `⏱ ${name} השאיר/ה פרטים לפני ${hours < 1 ? Math.max(20, Math.round(hours * 60)) + ' דקות' : Math.round(hours) + ' שעות'} ועדיין מחכה. הספקת לחזור?\nמי שחוזר בדקות הראשונות סוגר הרבה יותר עסקאות.` },
+  // Speed-to-lead: a lead still untouched after 15 minutes (business hours) gets one gentle nudge.
+  NEW: { afterMinutes: 15, ask: (name, hours) => `⏱ ${name} השאיר/ה פרטים לפני ${hours < 1 ? Math.max(15, Math.round(hours * 60)) + ' דקות' : Math.round(hours) + ' שעות'} ועדיין מחכה. הספקת לחזור?\nמי שחוזר בדקות הראשונות סוגר הרבה יותר עסקאות.` },
   CONTACTED: { afterHours: 48, ask: (name) => `איך מתקדם עם ${name}? נקבעה פגישה או שיחה?` },
   APPOINTMENT: { afterHours: 48, ask: (name) => `איך הייתה הפגישה עם ${name}? נסגרה עסקה?` },
   // Existing customers: a month after the deal, suggest asking for a review, a referral or a repeat sale.
@@ -31,7 +31,7 @@ function businessHours(now = new Date()) {
 
 // The oldest lead per owner that is due for a question it has not been asked yet.
 async function dueLeads(limit = 200) {
-  return (await db.query(`SELECT DISTINCT ON (l.client_id) l.id, l.client_id, l.name, l.status, l.version, l.phone AS lead_phone,
+  return (await db.query(`SELECT DISTINCT ON (l.client_id) l.id, l.client_id, l.name, l.status, l.version, l.phone AS lead_phone, l.ready_message,
       EXTRACT(EPOCH FROM NOW()-l.updated_at)/3600 AS hours_in_stage, c.phone
     FROM crm_leads l
     JOIN clients c ON c.id=l.client_id
@@ -49,7 +49,7 @@ async function dueLeads(limit = 200) {
 async function ownerBusy(clientId) {
   const p = await require('./marketingStore').load(clientId);
   if (p?.crmFocus || p?.crmIntake || p?.crmFollowup) return true;
-  if (p?.ui && p.ui.expiresAt > Date.now() && p.ui.decisionKey !== 'crm_status') return true;
+  if (p?.ui && p.ui.expiresAt > Date.now() && !['crm_status', 'lead_contact'].includes(p.ui.decisionKey)) return true;
   return !!(await require('./humanSupport').current(clientId))?.bot_paused;
 }
 
@@ -70,6 +70,8 @@ async function askOne(lead) {
       }
       // Focus the lead so the status buttons update exactly this lead (optimistic version check).
       await require('./marketingStore').update(lead.client_id, null, (p) => { p.crmFocus = { id: lead.id, version: lead.version }; return { handled: false, changed: true }; });
+      const number = lead.status === 'NEW' && lead.ready_message ? require('./leadAlert').waNumber(lead.lead_phone) : null;
+      if (number) await require('./whatsapp').safeSend(lead.phone, `ההודעה המוכנה ל${name}, בלחיצה אחת:\nhttps://wa.me/${number}?text=${encodeURIComponent(lead.ready_message)}`);
       const ui = await require('./conversationUi').prepare(lead.client_id, question, 'crm_status');
       await require('./whatsapp').safeSend(lead.phone, ui.text, ui);
       return 'ASKED';

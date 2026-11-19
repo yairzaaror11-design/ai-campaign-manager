@@ -52,6 +52,7 @@ async function ingest(pageId, value, expectedGeneration) {
     return typeof value === 'string' ? value.trim() : '';
   };
   const phone = field('phone_number');
+  const answers = require('./leadSpeed').formAnswers(lead.field_data);
   const email = field('email');
   const saved = await crm.create(clientId,{
     name: field('full_name').slice(0,120) || 'ליד מ־Meta',
@@ -59,7 +60,8 @@ async function ingest(pageId, value, expectedGeneration) {
     email: email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null,
     campaignId: /^\d{1,40}$/.test(lead.campaign_id || '') ? String(lead.campaign_id) : null,
     source:'meta_lead_ads',
-    sourceEventId:value.leadgen_id
+    sourceEventId:value.leadgen_id,
+    note: require('./leadSpeed').answersNote(answers)
   }, async tx => {
     const current = await tx(`SELECT 1 FROM meta_lead_sources s JOIN clients c ON c.id=s.client_id
       WHERE s.form_id=$1 AND s.page_id=$2 AND s.client_id=$3 AND s.app_id=$4
@@ -69,7 +71,7 @@ async function ingest(pageId, value, expectedGeneration) {
   });
   if (saved.revoked) throw Error('CONNECTION_REVOKED');
   // A newly saved lead (not a duplicate) alerts the owner immediately.
-  if (saved.id) await require('./leadAlert').notifyOwner(clientId, saved);
+  if (saved.id) await require('./leadAlert').notifyOwner(clientId, saved, { answers });
 }
 
 async function enqueue(body) {

@@ -33,7 +33,7 @@ router.post('/app/api/logout',endpoint(async(req,res)=>{
  await db.query('DELETE FROM portal_sessions WHERE token_hash=$1',[req.portal.tokenHash]);
  res.setHeader('Set-Cookie',['cb_session=; Path=/app; HttpOnly; Secure; SameSite=Strict; Max-Age=0','cb_csrf=; Path=/app; Secure; SameSite=Strict; Max-Age=0']);res.json({ok:true});
 }));
-router.get('/app/api/leads',endpoint(async(req,res)=>res.json({leads:await require('./crmService').list(req.portal.clientId)})));
+router.get('/app/api/leads',endpoint(async(req,res)=>res.json({leads:await require('./crmService').list(req.portal.clientId),speed:await require('./leadSpeed').stats(req.portal.clientId,30).catch(()=>null)})));
 router.get('/app/api/leads/export.csv',endpoint(async(req,res)=>{const crm=require('./crmService');res.set({'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="leads.csv"'});res.send(crm.csv(await crm.list(req.portal.clientId,{limit:5000})));}));
 router.get('/app/api/leads/:id/timeline',endpoint(async(req,res)=>res.json({events:await require('./crmService').timeline(req.portal.clientId,req.params.id)})));
 router.post('/app/api/leads/:id/reminder',endpoint(async(req,res)=>{if(!/^[a-f0-9-]{36}$/i.test(req.params.id))return res.sendStatus(400);res.json(await require('./crmService').addReminder(req.portal.clientId,req.params.id,{date:req.body?.date,requestId:req.body?.requestId}));}));
@@ -128,6 +128,9 @@ router.post('/billing/webhook',require('./rateLimit').middleware('billing-webhoo
 router.get('/app/api/today',endpoint(async(req,res)=>{const f=require('./dashboardFeed');const [items,setup]=await Promise.all([f.today(req.portal.clientId),f.checklist(req.portal.clientId)]);res.json({items,setup});}));
 router.get('/app/api/trend',endpoint(async(req,res)=>res.json(await require('./dashboardFeed').trend(req.portal.clientId,req.query.days==='30'?30:14))));
 router.get('/app/api/campaigns',endpoint(async(req,res)=>res.json(await require('./dashboardFeed').campaigns(req.portal.clientId))));
+router.get('/app/api/campaigns/:id/budget',endpoint(async(req,res)=>res.json(await require('./budgetControl').info(req.portal.clientId,req.params.id))));
+router.post('/app/api/campaigns/:id/budget',require('./rateLimit').middleware('portal-campaign-action',20),endpoint(async(req,res)=>res.json(await require('./budgetControl').prepareBudgetChange(req.portal.clientId,req.params.id,req.body?.dailyBudget))));
+router.post('/app/api/campaigns/:id/duplicate',require('./rateLimit').middleware('portal-campaign-action',20),endpoint(async(req,res)=>res.json(await require('./budgetControl').prepareDuplicate(req.portal.clientId,req.params.id,req.body?.dailyBudget))));
 router.post('/app/api/campaigns/:id/action',require('./rateLimit').middleware('portal-campaign-action',20),endpoint(async(req,res)=>res.json(await require('./dashboardApprovals').prepareCampaignAction(req.portal.clientId,req.params.id,req.body?.kind))));
 // Ongoing organic content: three-month calendar, approvals, pause, photo shoots.
 router.get('/app/api/organic',endpoint(async(req,res)=>res.json(await require('./organicContent').overview(req.portal.clientId))));
