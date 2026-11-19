@@ -35,6 +35,7 @@ async function handle(clientId,input,options={}){
  const crm=await require('./crmConversation').handle(clientId,message);if(crm)return crm;
  // Ongoing organic content (three-month calendar) and photo-shoot requests.
  const organic=await require('./organicContent').handle(clientId,message);if(organic)return organic;
+ const spendCap=await require('./spendCap').handle(clientId,message);if(spendCap)return spendCap;
  if(message.startsWith('/')&&message!=='/start')return{handled:true,reply:'אפשר לכתוב כאן במילים מה תרצה להשיג. אמשיך מאותה בקשה ואציג את התוצרים לבדיקה לפני כל פעולה.'};
  const profile=await require('./marketingStore').load(clientId);
  const connection=['connect','disconnect','renew','connection_status','select_account'].includes(analysis.intent)||profile?.connection?.status==='ACCOUNT_SELECTION_REQUIRED'&&/^\d{1,3}$/.test(message)||profile?.connection?.status==='CONNECTION_OFFERED'&&analysis.intent==='yes';

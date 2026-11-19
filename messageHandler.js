@@ -61,7 +61,7 @@ async function handleApproval(from, code,actionId=null) {
     const next=await createApproval(from,require('./actionPlan').createActionPlan({intent:'ACTIVATE_BUNDLE',summary:'הפעלת הקמפיין שנוצר ואומת במצב מושהה',target:{accountId:consumed.approval.actionPlan.target.accountId,campaignId:o.campaignId},parameters:{adsetIds:o.adsetIds,adIds:o.adIds}}));
     const summary='הקמפיין נוצר ב־Meta ואומת במצב מושהה.\n\n'+formatActionPlan(next.actionPlan);
     const ui=await require('./conversationUi').prepareApproval(client.id,next,summary);await safeSend(from,ui.text,ui);return;
-    }catch{await safeSend(from,'הקמפיין נוצר ואומת במצב מושהה. לא הופעל פרסום. הכנת אישור ההפעלה לא הושלמה; אפשר לבקש אותו מחדש לאחר בדיקת החיבור.');return;}
+    }catch(error){if(error?.message==='SPEND_CAP_EXCEEDED'){await safeSend(from,'הקמפיין נוצר ואומת במצב מושהה. לא הופעל פרסום.\n\n'+error.reply);return;}await safeSend(from,'הקמפיין נוצר ואומת במצב מושהה. לא הופעל פרסום. הכנת אישור ההפעלה לא הושלמה; אפשר לבקש אותו מחדש לאחר בדיקת החיבור.');return;}
   }
   await safeSend(from,result.ok?'הפעולה בוצעה ואומתה מול Meta.':result.message||'הפעולה לא בוצעה.');
 }
@@ -136,7 +136,7 @@ async function processNaturalLanguage(from, text, prefix = '') {
     if (plan.missing?.length) continue;
     let approval;
     try {approval = await createApproval(from, plan);}
-    catch {reply+='\nההצעה לא קיבלה קוד אישור: נדרש חשבון מחובר וכל פרטי הפעולה, הקהל, המטבע והתאריכים. לא בוצע שינוי.';continue;}
+    catch(error){if(error?.message==='SPEND_CAP_EXCEEDED'){reply+='\n\n'+error.reply;continue;}reply+='\nההצעה לא קיבלה קוד אישור: נדרש חשבון מחובר וכל פרטי הפעולה, הקהל, המטבע והתאריכים. לא בוצע שינוי.';continue;}
     reply += `\n\n${formatActionPlan(approval.actionPlan)}${approvalInstruction(approval)}`;
     buttonApproval=approval;
   }
