@@ -15,20 +15,35 @@ async function withMeta(clientId, work) {
   } catch { return null; }
 }
 
+const ago = (date) => { const m = Math.max(1, Math.round((Date.now() - new Date(date)) / 60000)); return m < 60 ? `${m} דקות` : m < 1440 ? (Math.round(m / 60) === 1 ? 'שעה' : `${Math.round(m / 60)} שעות`) : (Math.round(m / 1440) === 1 ? 'יום' : `${Math.round(m / 1440)} ימים`); };
+const GUARD_TEXT = {
+  ACCOUNT: () => 'יש בעיה בחשבון המודעות שעוצרת את הפרסום. כדאי לבדוק עכשיו',
+  DELIVERY: (n) => `${n} לא מוצג לאנשים. כדאי לבדוק למה`,
+  WASTE: (n) => `${n} מוציא כסף בלי לידים. לכבות אותו?`,
+  WINNER: (n) => `${n} עובד מצוין 🎉 אפשר להגדיל לו תקציב`,
+  FATIGUE: (n) => `המודעה ב${n} מתחילה להישחק. הגיע הזמן לגרסה חדשה`
+};
+
 async function today(clientId) {
   const items = [];
   const approvals = (await db.query("SELECT COUNT(*)::int n FROM approvals WHERE client_id=$1 AND status='PENDING' AND expires_at>NOW()", [clientId])).rows[0].n;
-  if (approvals) items.push({ kind: 'APPROVAL', urgency: 3, text: approvals === 1 ? 'פעולה אחת מחכה לאישור שלך' : `${approvals} פעולות מחכות לאישור שלך`, screen: 'approvals' });
-  const waiting = (await db.query("SELECT COUNT(*)::int n, MIN(created_at) oldest FROM crm_leads WHERE client_id=$1 AND status='NEW' AND created_at<NOW()-INTERVAL '15 minutes'", [clientId])).rows[0];
-  if (waiting.n) items.push({ kind: 'LEADS_WAITING', urgency: 3, text: waiting.n === 1 ? 'ליד אחד מחכה למענה' : `${waiting.n} לידים מחכים למענה`, detail: 'פנייה בדקות הראשונות מגדילה מאוד את הסיכוי לסגור', screen: 'leads' });
+  if (approvals) items.push({ kind: 'APPROVAL', urgency: 3, text: approvals === 1 ? 'הכנתי פעולה, והיא מחכה לאישור שלך 👇' : `הכנתי ${approvals} פעולות, והן מחכות לאישור שלך 👇`, screen: 'approvals' });
+  const waiting = (await db.query("SELECT name, created_at FROM crm_leads WHERE client_id=$1 AND status='NEW' AND created_at<NOW()-INTERVAL '15 minutes' ORDER BY created_at LIMIT 50", [clientId])).rows;
+  if (waiting.length) {
+    const first = String(waiting[0].name || '').trim().split(/\s+/)[0] || 'ליד';
+    items.push({ kind: 'LEADS_WAITING', urgency: 3, text: waiting.length === 1 ? `${first} מחכה לתשובה כבר ${ago(waiting[0].created_at)} 📞` : `${first} ועוד ${waiting.length - 1} מחכים לתשובה 📞`, detail: 'מי שחוזרים אליו בדקות הראשונות, סוגרים איתו הרבה יותר', screen: 'leads' });
+  }
   const guard = (await db.query("SELECT DISTINCT ON (campaign_id,kind) campaign_id,kind FROM campaign_guard_alerts WHERE client_id=$1 AND sent_at>NOW()-INTERVAL '3 days' ORDER BY campaign_id,kind,sent_at DESC LIMIT 5", [clientId])).rows;
-  for (const g of guard) items.push({ kind: 'GUARD_' + g.kind, urgency: g.kind === 'WINNER' ? 2 : 3, text: GUARD_HE[g.kind], screen: 'campaign' });
+  if (guard.length) {
+    const names = Object.fromEntries(((await campaigns(clientId)).campaigns || []).map((c) => [c.id, c.name]));
+    for (const g of guard) items.push({ kind: 'GUARD_' + g.kind, urgency: g.kind === 'WINNER' ? 2 : 3, text: GUARD_TEXT[g.kind](names[g.campaign_id] ? `הקמפיין "${names[g.campaign_id]}"` : 'קמפיין אחד'), screen: 'campaign' });
+  }
   const stale = (await db.query("SELECT COUNT(*)::int n FROM crm_leads WHERE client_id=$1 AND status IN ('CONTACTED','APPOINTMENT') AND updated_at<NOW()-INTERVAL '3 days'", [clientId])).rows[0].n;
-  if (stale) items.push({ kind: 'LEADS_STALE', urgency: 2, text: `${stale} פניות בטיפול לא עודכנו 3 ימים`, detail: 'מה קרה איתן? עדכון קצר עוזר לדעת איזה קמפיין מביא כסף', screen: 'pipeline' });
+  if (stale) items.push({ kind: 'LEADS_STALE', urgency: 2, text: stale === 1 ? 'ליד אחד בטיפול לא עודכן כבר 3 ימים. מה קרה איתו?' : `${stale} לידים בטיפול לא עודכנו כבר 3 ימים. מה קרה איתם?`, screen: 'pipeline' });
   const noAmount = (await db.query("SELECT COUNT(*)::int n FROM crm_leads WHERE client_id=$1 AND status='WON' AND revenue_minor IS NULL", [clientId])).rows[0].n;
-  if (noAmount) items.push({ kind: 'WON_NO_AMOUNT', urgency: 1, text: `${noAmount} עסקאות נסגרו בלי סכום`, detail: 'עם הסכום נוכל לחשב כמה החזיר כל שקל בפרסום', screen: 'leads' });
-  const reminders = (await db.query(`SELECT COUNT(*)::int n FROM workspace_items WHERE client_id=$1 AND kind='tasks' AND payload->>'status'='OPEN' AND (payload->>'date') IS NOT NULL AND left(payload->>'date',10)<=to_char(NOW() AT TIME ZONE 'Asia/Jerusalem','YYYY-MM-DD')`, [clientId]).catch(() => ({ rows: [{ n: 0 }] }))).rows[0].n;
-  if (reminders) items.push({ kind: 'TASKS_DUE', urgency: 2, text: reminders === 1 ? 'משימה אחת להיום' : `${reminders} משימות להיום`, screen: 'tasks' });
+  if (noAmount) items.push({ kind: 'WON_NO_AMOUNT', urgency: 1, text: noAmount === 1 ? 'ליד אחד קנה ✅ אבל בלי סכום. כמה הוא שילם?' : `${noAmount} לידים קנו ✅ אבל בלי סכום. כמה הם שילמו?`, detail: 'עם הסכום אדע להגיד לך כמה החזיר כל שקל בפרסום', screen: 'leads' });
+  const due = (await db.query(`SELECT payload->>'title' AS title FROM workspace_items WHERE client_id=$1 AND kind='tasks' AND payload->>'status'='OPEN' AND (payload->>'date') IS NOT NULL AND left(payload->>'date',10)<=to_char(NOW() AT TIME ZONE 'Asia/Jerusalem','YYYY-MM-DD') LIMIT 20`, [clientId]).catch(() => ({ rows: [] }))).rows;
+  if (due.length) items.push({ kind: 'TASKS_DUE', urgency: 2, text: due.length === 1 ? `להיום: ${due[0].title}` : `יש לך ${due.length} משימות להיום`, screen: 'tasks' });
   return items.sort((a, b) => b.urgency - a.urgency);
 }
 
@@ -39,9 +54,9 @@ async function checklist(clientId) {
     EXISTS(SELECT 1 FROM action_plans p WHERE p.client_id=c.id AND p.intent IN ('CREATE_BUNDLE','CREATE_CAMPAIGN') AND p.status IN ('APPROVED','VERIFIED')) AS campaign
     FROM clients c WHERE c.id=$1`, [clientId])).rows[0] || {};
   const steps = [
-    { id: 'meta', title: 'לחבר את חשבון הפרסום של Meta', done: !!(c.connected && c.meta_ad_account_id), screen: 'integrations' },
-    { id: 'campaign', title: 'להכין קמפיין ראשון עם הסוכן', done: !!c.campaign, screen: 'agent' },
-    { id: 'leads', title: 'לחבר טופס לידים כדי שכל פנייה תיכנס לכאן', done: !!c.leads, screen: 'integrations' }
+    { id: 'meta', title: 'לחבר את חשבון הפרסום ב־Meta', done: !!(c.connected && c.meta_ad_account_id), screen: 'integrations' },
+    { id: 'campaign', title: 'להכין קמפיין ראשון עם העוזר', done: !!c.campaign, screen: 'agent' },
+    { id: 'leads', title: 'לחבר טופס לידים, כדי שכל ליד ייכנס לכאן', done: !!c.leads, screen: 'integrations' }
   ];
   return { steps, done: steps.filter((s) => s.done).length, total: steps.length };
 }

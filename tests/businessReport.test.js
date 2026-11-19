@@ -26,7 +26,7 @@ test('the report connects spend to leads, meetings, sales and revenue', async ()
     assert.equal(r.metrics.costPerLead, 200);
     assert.equal(r.metrics.costPerCustomer, 1200);
     assert.ok(Math.abs(r.metrics.revenuePerShekel - 2500 / 1200) < 1e-9);
-    assert.match(r.nextSteps[0], /1 פניות שלא טופלו/);
+    assert.match(r.nextSteps[0], /1 לידים שמחכים יותר מיום/);
     const text = report.format(r);
     assert.match(text, /פניות: 6 \(₪200 לפנייה\)/);
     assert.match(text, /כל ₪1 בפרסום החזיר ₪2\.1/);
@@ -39,14 +39,14 @@ test('no connected ad account and no leads still produce a useful report', async
     const client = (await db.query("INSERT INTO clients(phone) VALUES('972500000102') RETURNING id")).rows[0].id;
     const text = await report.businessReport(client, 'last_7d', { spendFor: async () => null });
     assert.match(text, /אין חשבון מטא מחובר/);
-    assert.match(text, /עוד אין פניות/);
+    assert.match(text, /עוד אין (פניות|לידים)/);
     await assert.rejects(report.build(client, 'last_year'), /UNSUPPORTED_REPORT_PERIOD/);
   } finally { await close(); }
 });
 
 test('spend without leads points at the campaign', () => {
   const f = { leads: 0, untouched: 0, staleUntouched: 0, contacted: 0, meetings: 0, won: 0, lost: 0, revenue: 0 };
-  assert.match(report.nextSteps(f, report.metrics(f, 500), 500)[0], /הוצאה על פרסום אבל לא נכנסו פניות/);
+  assert.match(report.nextSteps(f, report.metrics(f, 500), 500)[0], /על פרסום אבל לא נכנסו לידים/);
 });
 
 test('outcomes are split by campaign and a better-closing campaign is suggested, not executed', async () => {
@@ -62,7 +62,7 @@ test('outcomes are split by campaign and a better-closing campaign is suggested,
     assert.equal(r.spend, 800);
     const summer = r.campaigns.find((c) => c.id === '111');
     assert.deepEqual([summer.leads, summer.won, summer.revenue, summer.costPerCustomer], [4, 2, 1000, 200]);
-    assert.ok(r.nextSteps.some((s) => /״מבצע קיץ״ סוגר 50% מהפניות לעומת 0%/.test(s) && /בלי אישור שלך/.test(s)));
+    assert.ok(r.nextSteps.some((s) => /״מבצע קיץ״ סוגר 50% מהלידים לעומת 0%/.test(s) && /בלי אישור שלך/.test(s)));
     const text = report.format(r);
     assert.match(text, /לפי קמפיין:/);
     assert.match(text, /מבצע קיץ: 4 פניות, 2 נסגרו/);

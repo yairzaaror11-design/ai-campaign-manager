@@ -19,7 +19,7 @@ test('today lists what needs the owner, most urgent first; approvals can be reje
     await db.query("INSERT INTO approvals(client_id,action_id,code,expires_at,plan_hash) VALUES($1,$2,'c',NOW()+INTERVAL '1 hour','h')", [id, plan.id]);
     const items = await feed.today(id);
     assert.deepEqual(items.map((x) => x.kind), ['APPROVAL', 'LEADS_WAITING', 'WON_NO_AMOUNT']);
-    assert.match(items[1].text, /ליד אחד מחכה/);
+    assert.match(items[1].text, /דנה מחכה לתשובה כבר 2 שעות/);
     const pending = await approvals.pending(id);
     assert.equal(pending.length, 1); assert.equal(pending[0].startsSpending, false); assert.match(pending[0].summary, /נדרש אישור מפורש/);
     assert.match((await approvals.reject(id, plan.id)).reply, /בוטלה/);

@@ -54,7 +54,7 @@ async function prepareCampaignAction(clientId, campaignId, kind) {
   const { createActionPlan } = require('./actionPlan');
   const intent = kind === 'PAUSE' ? 'PAUSE_CAMPAIGN' : 'RESUME_CAMPAIGN';
   const approval = await require('./approvalEngine').createApprovalForClient(clientId, createActionPlan({ intent,
-    summary: (kind === 'PAUSE' ? 'השהיית הקמפיין ' : 'הפעלה מחדש של הקמפיין ') + '"' + String(campaign.name || campaignId).slice(0, 80) + '"',
+    summary: (kind === 'PAUSE' ? 'כיבוי הקמפיין ' : 'הפעלה מחדש של הקמפיין ') + '"' + String(campaign.name || campaignId).slice(0, 80) + '"',
     target: { accountId: c.meta_ad_account_id, campaignId: String(campaignId) } }));
   return { ok: true, actionId: approval.actionId };
 }
