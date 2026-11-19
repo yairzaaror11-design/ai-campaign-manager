@@ -45,7 +45,12 @@ function issue(task){
 }
 function feedback(code){return{code,instruction:'Prepare the complete campaign package, not just copy. Keep accepted step IDs. Revise an existing draft with campaignDraft:{objective,audience,geography,placements,budgetNote,scheduleNote,headline,cta,designBrief,referenceMediaIds?:[]}, concrete ad content and requested formDraft. All setting strings at most 400 characters, headline/cta at most 100; all nine fields are mandatory. The audience must match this goal (applicants for recruitment). Unprovided budget/schedule stay explicitly not set; recommendations are proposals, not authority. Headline/cta are the exact short Hebrew text for the graphic. The server owns the packageImage step and generates it after the draft; do not add duplicate image steps or request review before it exists. Meta creation and activation still require separate approvals.'};}
 function imageDecision(task,ready){
- if(!required(task.request,task.state.planningMode))return null;const d=draft(task),step=task.state.steps.find(s=>s.packageImage&&s.status==='PENDING');
+ if(!required(task.request,task.state.planningMode))return null;
+ // The owner changed the copy after the graphic was made: the old graphic no longer
+ // matches the headline/CTA, so it is regenerated (only before anything was uploaded).
+ const current=draft(task),prepared=task.state.steps.find(s=>s.packageImage&&s.status==='PREPARED'&&s.artifact?.imageText);
+ if(current&&prepared&&(prepared.artifact.imageText.headline!==current.headline||prepared.artifact.imageText.cta!==current.cta)&&!task.state.steps.some(s=>s.kind==='meta'&&s.intent==='UPLOAD_IMAGE'&&s.status!=='PENDING')){prepared.status='PENDING';delete prepared.artifact;delete prepared.result;}
+ const d=current,step=task.state.steps.find(s=>s.packageImage&&s.status==='PENDING');
  if(!d||!step||!ready(task,step))return null;const p=checked(d);
  return{next:{op:'image',stepId:step.id,prompt:[p.designBrief,'Create one advertisement graphic. Render this exact Hebrew headline and CTA legibly, right-to-left, without extra text: '+JSON.stringify({headline:p.headline,cta:p.cta}),'Use supplied owned references as visual brand/product references. Do not invent a logo, salary, guarantees or requirements.'].join('\n').slice(0,2000),referenceMediaIds:p.referenceMediaIds,imageText:{headline:p.headline,cta:p.cta}}};
 }
