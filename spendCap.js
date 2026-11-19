@@ -52,8 +52,9 @@ async function handle(clientId, message) {
 // Daily budget (minor units) that an approved plan would commit, or 0 if it adds none.
 function planDailyMinor(plan) {
   const p = plan?.parameters || {}, n = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  if (['CREATE_BUNDLE', 'CREATE_ADSET', 'CHANGE_BUDGET'].includes(plan?.intent)) return n(p.dailyBudgetMinor);
-  if (plan?.intent === 'ACTIVATE_BUNDLE') return (plan.review?.adSets || []).reduce((t, s) => t + n(s.daily_budget), 0);
+  if (['CREATE_BUNDLE', 'CREATE_ADSET', 'CHANGE_BUDGET', 'DUPLICATE_CAMPAIGN'].includes(plan?.intent)) return n(p.dailyBudgetMinor);
+  // Ad set budgets, plus the campaign budget when the campaign holds it (a copy of such a campaign).
+  if (plan?.intent === 'ACTIVATE_BUNDLE') return (plan.review?.adSets || []).reduce((t, s) => t + n(s.daily_budget), 0) + n(plan.review?.currentDailyBudgetMinor);
   if (plan?.intent === 'RESUME_CAMPAIGN') return n(plan.review?.currentDailyBudgetMinor);
   return 0;
 }

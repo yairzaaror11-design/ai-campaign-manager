@@ -10,7 +10,7 @@ async function post(plan,path,data) {
   if(process.env.META_WRITES_ENABLED!=='true') throw Error('TENANT_WRITES_DISABLED');
   if(process.env.READ_ONLY!=='false') throw Error('READ_ONLY_BLOCK');
   const permit=require('./metaExecution').assertPermit(plan);
-  for(const id of [plan.target.campaignId,plan.parameters.campaignId,plan.parameters.adsetId,plan.parameters.creativeId].filter(Boolean)) await assertOwned(id,permit);
+  for(const id of [plan.target.campaignId,plan.target.adsetId,plan.parameters.campaignId,plan.parameters.adsetId,plan.parameters.creativeId].filter(Boolean)) await assertOwned(id,permit);
   if(['CREATE_CREATIVE','CREATE_BUNDLE'].includes(plan.intent)) {
     const pages=await meta.graph('/me/accounts',permit.token,{fields:'id',limit:100});
     if(!pages.data?.some(p=>p.id===plan.parameters.pageId)) throw Error('PAGE_NOT_GRANTED');
@@ -74,7 +74,23 @@ async function createAd(plan) {
  const p=plan.parameters;
  return post(plan,'/'+plan.target.accountId+'/ads',{name:p.name,adset_id:p.adsetId,creative:{creative_id:p.creativeId},status:'PAUSED'});
 }
-const changeBudget=plan=>post(plan,'/'+plan.target.campaignId,{daily_budget:plan.parameters.dailyBudgetMinor});
+// The budget is written where it lives: on the campaign, or on its single ad set.
+const changeBudget=plan=>post(plan,'/'+(plan.target.adsetId||plan.target.campaignId),{daily_budget:plan.parameters.dailyBudgetMinor});
+// Duplicate a winning campaign: Meta deep copy (campaign, ad sets, ads), PAUSED,
+// then the approved daily budget on the copy. Activation is a separate approval.
+async function duplicateCampaign(plan) {
+ const permit=require('./metaExecution').assertPermit(plan);
+ const copy=await post(plan,'/'+plan.target.campaignId+'/copies',{deep_copy:true,status_option:'PAUSED',rename_options:{rename_strategy:'ONLY_TOP_LEVEL_RENAME',rename_suffix:' — עותק'}});
+ const id=String(copy?.copied_campaign_id||'');
+ if(!/^\d+$/.test(id)) throw Error('COPY_RESULT_UNCERTAIN');
+ const sets=(await meta.graph('/'+id+'/adsets',permit.token,{fields:'id,campaign_id',limit:50})).data||[];
+ const ads=(await meta.graph('/'+id+'/ads',permit.token,{fields:'id,adset_id',limit:50})).data||[];
+ const adsetIds=sets.filter(s=>String(s.campaign_id)===id).map(s=>String(s.id)),adIds=ads.filter(a=>adsetIds.includes(String(a.adset_id))).map(a=>String(a.id));
+ if(!adsetIds.length||!adIds.length||[...adsetIds,...adIds].some(x=>!/^\d+$/.test(x))) throw Error('COPY_RESULT_UNCERTAIN');
+ if(plan.target.adsetId){if(adsetIds.length!==1) throw Error('COPY_RESULT_UNCERTAIN');await post(plan,'/'+adsetIds[0],{daily_budget:plan.parameters.dailyBudgetMinor});}
+ else await post(plan,'/'+id,{daily_budget:plan.parameters.dailyBudgetMinor});
+ return {id,objects:{campaignId:id,adsetIds,adIds}};
+}
 const pauseCampaign=plan=>post(plan,'/'+plan.target.campaignId,{status:'PAUSED'});
 const resumeCampaign=plan=>post(plan,'/'+plan.target.campaignId,{status:'ACTIVE'});
 const editCampaign=plan=>post(plan,'/'+plan.target.campaignId,{name:plan.parameters.name});
@@ -121,4 +137,4 @@ async function activateBundle(plan) {
  for(const id of [...adIds,...adsetIds,campaignId]) await post(plan,'/'+id,{status:'ACTIVE'});
  return {id:campaignId,objects:{campaignId,adsetIds,adIds}};
 }
-module.exports={NO_ENHANCEMENTS,ENHANCEMENT_FEATURES,createLeadForm,createBundle,activateBundle,uploadImage,createCampaign,createAdSet,createCreative,createAd,changeBudget,pauseCampaign,resumeCampaign,editCampaign};
+module.exports={NO_ENHANCEMENTS,ENHANCEMENT_FEATURES,createLeadForm,createBundle,activateBundle,uploadImage,createCampaign,createAdSet,createCreative,createAd,changeBudget,duplicateCampaign,pauseCampaign,resumeCampaign,editCampaign};

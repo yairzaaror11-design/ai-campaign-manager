@@ -3,7 +3,7 @@ const db=require('./db');
 const policy=require('./approvalPolicy');
 const meta=require('./metaConnection');
 const write=require('./metaWrite');
-const handlers={CREATE_LEAD_FORM:write.createLeadForm,CREATE_BUNDLE:write.createBundle,ACTIVATE_BUNDLE:write.activateBundle,UPLOAD_IMAGE:write.uploadImage,CREATE_CAMPAIGN:write.createCampaign,CREATE_ADSET:write.createAdSet,CREATE_CREATIVE:write.createCreative,CREATE_AD:write.createAd,CHANGE_BUDGET:write.changeBudget,PAUSE_CAMPAIGN:write.pauseCampaign,RESUME_CAMPAIGN:write.resumeCampaign,EDIT_CAMPAIGN:write.editCampaign};
+const handlers={CREATE_LEAD_FORM:write.createLeadForm,CREATE_BUNDLE:write.createBundle,ACTIVATE_BUNDLE:write.activateBundle,UPLOAD_IMAGE:write.uploadImage,CREATE_CAMPAIGN:write.createCampaign,CREATE_ADSET:write.createAdSet,CREATE_CREATIVE:write.createCreative,CREATE_AD:write.createAd,CHANGE_BUDGET:write.changeBudget,DUPLICATE_CAMPAIGN:write.duplicateCampaign,PAUSE_CAMPAIGN:write.pauseCampaign,RESUME_CAMPAIGN:write.resumeCampaign,EDIT_CAMPAIGN:write.editCampaign};
 async function executeApprovedAction(phone,plan){if(process.env.READ_ONLY!=='false'||process.env.META_WRITES_ENABLED!=='true')return executeApprovedForClient(null,plan);const client=await require('./clientStore').getOrCreateClient(phone);return executeApprovedForClient(client.id,plan);}
 async function executeApprovedForClient(clientId,plan) {
   let claimedFor=null;

@@ -99,13 +99,45 @@
   const stats30=Object.fromEntries((report.metaCampaigns||[]).map(x=>[x.id,x])),STATUS={ACTIVE:'פעיל',PAUSED:'כבוי',CAMPAIGN_PAUSED:'כבוי',ADSET_PAUSED:'כבוי',IN_PROCESS:'בבדיקה',WITH_ISSUES:'יש בעיה',DISAPPROVED:'נדחה',PENDING_REVIEW:'בבדיקה',ARCHIVED:'בארכיון',DELETED:'נמחק'};
   const c=card('הקמפיינים בחשבון הפרסום','30 הימים האחרונים');
   const rows=list.campaigns.filter(x=>!['ARCHIVED','DELETED'].includes(x.status)).map(x=>{const st=stats30[x.id]||{spend:0,leads:0,won:0,revenue:0},act=el('div','','actions');
-   if(['ACTIVE','PAUSED','CAMPAIGN_PAUSED'].includes(x.status)){const pause=x.status==='ACTIVE',b=button(pause?'כיבוי':'הפעלה',()=>run(b,async()=>{const r=await api('campaigns/'+x.id+'/action',{kind:pause?'PAUSE':'RESUME'});if(!r.ok){tell(r.reply,true);return;}tell('הכנתי את זה. רק צריך את האישור שלך 👇');navigate('approvals');}),'secondary');act.append(b);}
+   if(['ACTIVE','PAUSED','CAMPAIGN_PAUSED'].includes(x.status)){const pause=x.status==='ACTIVE',b=button(pause?'כיבוי':'הפעלה',()=>run(b,async()=>{const r=await api('campaigns/'+x.id+'/action',{kind:pause?'PAUSE':'RESUME'});if(!r.ok){tell(r.reply,true);return;}tell('הכנתי את זה. רק צריך את האישור שלך 👇');navigate('approvals');}),'secondary');act.append(b);
+    act.append(button('שינוי תקציב',()=>budgetDialog(x,'budget',st),'secondary'));
+    if(st.winner)act.append(button('🏆 שכפל קמפיין מנצח',()=>budgetDialog(x,'duplicate',st),'secondary budget-winner'));}
    return [x.name,badge(STATUS[x.status]||x.status,x.status==='ACTIVE'?'':'warning'),shekel(st.spend),st.leads,st.leads?shekel(st.spend/st.leads):'—',st.won,shekel(st.revenue),act];});
   if(!rows.length)return;
   c.append(table(['קמפיין','מצב','סכום שהוצא','לידים','עלות לליד','מכירות','הכנסות','פעולות'],rows));
-  c.append(el('p','שינוי תקציב או מודעה: מבקשים מהעוזר, והוא מכין את השינוי לאישור שלך.','muted'));
+  c.append(el('p','שינוי תקציב או שכפול קמפיין מנצח: מכינים כאן, רואים כמה זה יעלה, ושום דבר לא משתנה ב־Meta עד שתאשר.','muted'));
   const actions=el('div','','actions');actions.append(button('לבקש מהעוזר שיפור לקמפיין',()=>openAgent(true),'secondary'),go('ביצועים מלאים','performance'));c.append(actions);
   const emptyState=dynamic.querySelector('.empty-state');if(emptyState)emptyState.replaceWith(c);else dynamic.children[0]?.after(c);
+ }
+ // Change a daily budget, or duplicate a winner (paused) with a new budget: pick an amount,
+ // see current vs new and the cost, prepare the approval, then confirm it explicitly.
+ async function budgetDialog(x,mode,st){
+  const dup=mode==='duplicate',d=dialog(dup?'שכפול קמפיין מנצח':'שינוי תקציב יומי',{className:'budget-dialog'}),body=el('div','','budget-body');d.append(body);d.showModal();
+  body.append(el('p','בודק את התקציב הנוכחי ב־Meta…','muted'));
+  let info;try{info=await api('campaigns/'+x.id+'/budget');}catch(e){body.replaceChildren(el('p',e.message,'form-error'));return;}
+  body.replaceChildren(el('h3',info.name||x.name));
+  if(!info.ok){body.append(el('p',info.reply,'form-error'));return;}
+  const current=info.currentDailyBudget,round=v=>Math.max(1,Math.round(v));
+  if(dup&&st.winner)body.append(el('p',(st.winner.by==='SALE'?'מכירה כאן עולה ':'ליד כאן עולה ')+shekel(st.winner.cost)+', לעומת '+shekel(st.winner.average)+' בממוצע בחשבון. העותק ייווצר מושהה, עם אותן מודעות וקהלים, ותוכל להפעיל אותו באישור נפרד.','budget-why'));
+  body.append(el('p','תקציב יומי נוכחי'+(dup?' בקמפיין המקורי':'')+': '+shekel(current),'budget-current'));
+  const form=el('form','','budget-form'),chips=el('div','','budget-chips');chips.setAttribute('role','group');chips.setAttribute('aria-label','שינוי מהיר');
+  const input=field(form,dup?'תקציב יומי לעותק (₪)':'תקציב יומי חדש (₪)','dailyBudget',{type:'number',value:String(dup?current:round(current*1.2)),required:true});input.step='1';input.min='1';input.inputMode='numeric';
+  [['−20%',0.8],['+20%',1.2],['+50%',1.5]].forEach(([label,f])=>{const b=button(label,()=>{input.value=String(round(current*f));update();},'secondary budget-chip');chips.append(b);});
+  form.prepend(chips);
+  const preview=el('p','','budget-preview'),cap=el('p','','muted'),error=el('p','','form-error');preview.setAttribute('aria-live','polite');error.setAttribute('role','alert');
+  if(info.capDaily)cap.textContent='תקרת ההוצאה היומית שקבעת: '+shekel(info.capDaily);
+  const cost=el('p','','budget-cost');form.append(cost);
+  const update=()=>{const v=Number(input.value);if(!(v>=1)){preview.textContent=cost.textContent='';return;}preview.textContent=dup?'תקציב יומי לעותק: '+shekel(v)+' (במקור '+shekel(current)+')':'מ־'+shekel(current)+' ל־'+shekel(v)+' ליום';cost.textContent='💸 '+(dup?'אחרי ההפעלה, ':'')+'עד '+shekel(v)+' ליום · בערך '+shekel(v*30)+' לחודש';};
+  input.addEventListener('input',update);update();
+  const submit=button('הכנה לאישור',null,'primary');submit.type='submit';form.append(preview,cost,cap,error,submit);body.append(form);
+  form.addEventListener('submit',e=>{e.preventDefault();run(submit,async()=>{error.textContent='';
+   const r=await api('campaigns/'+x.id+'/'+(dup?'duplicate':'budget'),{dailyBudget:Number(input.value)});
+   if(!r.ok){error.textContent=r.reply;return;}
+   form.hidden=true;const review=el('div','','budget-review');review.append(el('p','זה מה שיישלח ל־Meta. שום דבר לא משתנה עד שתאשר:','muted'),el('pre',r.summary,'approval-summary'));
+   const result=el('p','','approval-result');result.setAttribute('role','status');
+   const ok=button(dup?'מאשר, לשכפל (מושהה)':'מאשר את השינוי',()=>run(ok,async()=>{const a=await api('approvals/'+encodeURIComponent(r.actionId)+'/approve',{confirm:true});result.textContent=a.reply;ok.remove();no.remove();tell(a.reply,!a.ok);if(a.ok)setTimeout(()=>{d.close();navigate('campaign');},1500);}),'primary');
+   const no=button('לא לבצע',()=>run(no,async()=>{const a=await api('approvals/'+encodeURIComponent(r.actionId)+'/reject',{});result.textContent=a.reply;ok.remove();no.remove();}),'secondary');
+   const acts=el('div','','actions');acts.append(ok,no);review.append(acts,result);body.append(review);ok.focus();});});
  }
  async function renderScreen(id){
   if(id==='performance')return [heading('ביצועי קמפיינים','מהכסף שהוצא ועד המכירות'),performanceCard()];if(id==='pages')return pageDirectory();if(id==='approvals')return approvalsScreen();if(id==='onboarding')return onboarding();if(id==='home')return home();if(id==='brand')return brand();if(['products','tasks','expenses'].includes(id))return records(id);if(id==='content')return content();if(['sales','pipeline','customers'].includes(id))return sales(id);if(id==='creative')return creative();if(id==='landing')return landing();if(id==='integrations')return integrations();if(['finance','profitability'].includes(id))return finance(id);if(id==='help')return help();if(id==='account')return settings();if(id==='research')return research();if(id==='users')return users();if(id==='agent')return [heading('העוזר שלך','ממשיכים מהפרטים שכבר נשמרו'),empty('מה נרצה לקדם עכשיו?','העוזר מכיר את העסק שלך. שום דבר לא עולה לאוויר בלי האישור שלך.',button('פתיחת שיחה',()=>openAgent(true),'primary'))];

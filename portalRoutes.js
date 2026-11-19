@@ -128,6 +128,9 @@ router.post('/billing/webhook',require('./rateLimit').middleware('billing-webhoo
 router.get('/app/api/today',endpoint(async(req,res)=>{const f=require('./dashboardFeed');const [items,setup]=await Promise.all([f.today(req.portal.clientId),f.checklist(req.portal.clientId)]);res.json({items,setup});}));
 router.get('/app/api/trend',endpoint(async(req,res)=>res.json(await require('./dashboardFeed').trend(req.portal.clientId,req.query.days==='30'?30:14))));
 router.get('/app/api/campaigns',endpoint(async(req,res)=>res.json(await require('./dashboardFeed').campaigns(req.portal.clientId))));
+router.get('/app/api/campaigns/:id/budget',endpoint(async(req,res)=>res.json(await require('./budgetControl').info(req.portal.clientId,req.params.id))));
+router.post('/app/api/campaigns/:id/budget',require('./rateLimit').middleware('portal-campaign-action',20),endpoint(async(req,res)=>res.json(await require('./budgetControl').prepareBudgetChange(req.portal.clientId,req.params.id,req.body?.dailyBudget))));
+router.post('/app/api/campaigns/:id/duplicate',require('./rateLimit').middleware('portal-campaign-action',20),endpoint(async(req,res)=>res.json(await require('./budgetControl').prepareDuplicate(req.portal.clientId,req.params.id,req.body?.dailyBudget))));
 router.post('/app/api/campaigns/:id/action',require('./rateLimit').middleware('portal-campaign-action',20),endpoint(async(req,res)=>res.json(await require('./dashboardApprovals').prepareCampaignAction(req.portal.clientId,req.params.id,req.body?.kind))));
 // Ongoing organic content: three-month calendar, approvals, pause, photo shoots.
 router.get('/app/api/organic',endpoint(async(req,res)=>res.json(await require('./organicContent').overview(req.portal.clientId))));
