@@ -18,11 +18,21 @@ async function post(plan,path,data) {
   let token=permit.token;
   if(plan.intent==='CREATE_LEAD_FORM')token=(await require('./metaLeadForms').pageAccess(permit.clientId,plan.parameters.pageId)).token;
   if(plan.parameters.formId)await require('./metaLeadForms').inspect(permit.clientId,plan.parameters.pageId,plan.parameters.formId);
+  const send=body=>axios.post('https://graph.facebook.com/'+meta.config().version+path,
+      new URLSearchParams(Object.entries(body).filter(([,v])=>v!==undefined).map(([k,v])=>[k,typeof v==='object'?JSON.stringify(v):String(v)])),
+      {headers:{Authorization:'Bearer '+token},params:{appsecret_proof:require('crypto').createHmac('sha256',process.env.META_APP_SECRET).update(token).digest('hex')},maxRedirects:0,timeout:15000});
   try {
-    return (await axios.post('https://graph.facebook.com/'+meta.config().version+path,
-      new URLSearchParams(Object.entries(data).filter(([,v])=>v!==undefined).map(([k,v])=>[k,typeof v==='object'?JSON.stringify(v):String(v)])),
-      {headers:{Authorization:'Bearer '+token},params:{appsecret_proof:require('crypto').createHmac('sha256',process.env.META_APP_SECRET).update(token).digest('hex')},maxRedirects:0,timeout:15000})).data;
-  } catch {throw Error('META_WRITE_UNCERTAIN');}
+    return (await send(data)).data;
+  } catch(error) {
+    // A 400 is a definite rejection (nothing was created). If Meta rejects the
+    // enhancement opt-out itself, create the creative without it rather than
+    // leaving the campaign stuck, and log it so the opt-out keys can be fixed.
+    if(error?.response?.status===400&&data.degrees_of_freedom_spec&&error.response.data?.error){
+      require('./logger').logger.warn('Meta rejected enhancement opt-out; creating creative without it',{code:Number(error.response.data.error.code)||null});
+      try{const {degrees_of_freedom_spec,...rest}=data;return (await send(rest)).data;}catch{throw Error('META_WRITE_UNCERTAIN');}
+    }
+    throw Error('META_WRITE_UNCERTAIN');
+  }
 }
 async function uploadImage(plan) {
  if(process.env.META_WRITES_ENABLED!=='true'||process.env.READ_ONLY!=='false') throw Error('TENANT_WRITES_DISABLED');
