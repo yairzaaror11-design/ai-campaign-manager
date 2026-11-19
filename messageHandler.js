@@ -224,6 +224,9 @@ async function routeText(from, text, prefix = '') {
   }
   if(configured()){
     const client=await getOrCreateClient(from);
+    // Billing (cancel, refund, plan status) answers the same way in every conversation mode.
+    const billing=require('./billingConversation').matches(text)?await require('./billingConversation').handle(client.id,text):null;
+    if(billing){await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:billing.reply}]);const ui=billing.decisionKey?await require('./conversationUi').prepare(client.id,billing.reply,billing.decisionKey):{text:billing.reply};await safeSend(from,ui.text,ui);return;}
     const controller=require('./conversationController');
     const result=await controller.handle(client.id,{message:text,requestId:'whatsapp:'+require('./whatsappDelivery').messageContext.getStore()?.eventId,channel:'WHATSAPP'},{onProgress:notice=>notifyProcessing(from,notice)});
     if(result?.delegateApproval){await handleApproval(from,result.delegateApproval);return;}
