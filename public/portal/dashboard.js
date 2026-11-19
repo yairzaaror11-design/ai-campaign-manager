@@ -254,8 +254,60 @@
   };
   search.addEventListener('input',()=>{query=search.value;draw();});if(kind!=='expenses'){const select=el('select');select.setAttribute('aria-label','סינון מצב');for(const [v,l]of [['all','הכל'],[kind==='products'?'active':'open',kind==='products'?'פעילים':'פתוחות']]){const o=el('option',l);o.value=v;select.append(o);}select.addEventListener('change',()=>{filter=select.value;draw();});toolbar.append(select);}draw();return [...out,toolbar,list];
  }
+
+ // Ongoing organic content: a three-month calendar the owner approves; each post
+ // arrives on WhatsApp ready to publish on its day.
+ const ORGANIC_MEDIA={AI_GRAPHIC:'גרפיקה AI',AI_VIDEO:'סרטון AI',PHOTO:'צילום אמיתי',MIXED:'שילוב'},ORGANIC_FORMAT={POST:'פוסט',STORY:'סטורי',REEL:'רילס'},ORGANIC_STATUS={DRAFT:'מחכה לאישור',APPROVED:'מאושר ✓',SENDING:'נשלח עכשיו',SENT:'נשלח אליך ✓',SKIPPED:'דילגנו',FAILED:'לא נשלח'};
+ const dayLabel=d=>new Date(d+'T12:00:00').toLocaleDateString('he-IL',{weekday:'long',day:'numeric',month:'numeric'});
+ function organicCard(){
+  const c=card('תוכן שוטף','כל יום פרסום הפוסט מגיע אליך לוואטסאפ, מוכן להעתקה');c.classList.add('organic-card');const body=el('div');body.append(el('p','טוען…','muted'));c.append(body);
+  const reload=()=>navigate('content');
+  api('organic').then(o=>{body.replaceChildren();
+   if(!o.plan){
+    const form=el('div','','organic-setup');let perWeek=3,media='MIXED';
+    const pick=(label,options,value,set)=>{const g=el('div','','organic-pick');g.append(el('strong',label));const row=el('div','','quick-chips');options.forEach(([v,l])=>{const b=button(l,()=>{set(v);row.querySelectorAll('button').forEach(x=>x.classList.toggle('primary',x===b));},v===value?'primary':'secondary');row.append(b);});g.append(row);return g;};
+    form.append(el('p','בחרו כמה פוסטים בשבוע ואיך ליצור את התמונות. נכין לוח ל־3 חודשים, ושום דבר לא נשלח בלי האישור שלכם.'),pick('כמה פוסטים בשבוע?',[[2,'2'],[3,'3'],[5,'5']],perWeek,v=>perWeek=v),pick('איך ליצור את התמונות?',[['AI_GRAPHIC','🖼 גרפיקות AI'],['AI_VIDEO','🎬 סרטוני AI'],['PHOTO','📸 צילום אמיתי'],['MIXED','✨ שילוב']],media,v=>media=v));
+    const go=button('בנו לי לוח ל־3 חודשים','','primary');go.addEventListener('click',()=>run(go,async()=>{tell('מכין את הלוח… זה לוקח כחצי דקה');const r=await api('organic/plan',{perWeek,media});tell(`✅ מוכן: ${r.count} פוסטים`);reload();}));
+    form.append(go);body.append(form);body.append(shootBox());return;}
+   const p=o.plan,head=el('div','','setup-steps');
+   head.append(el('strong',`${ORGANIC_MEDIA[p.media_mode]} · ${p.posts_per_week} פוסטים בשבוע · עד ${dayLabel(p.ends_on)}${p.status==='PAUSED'?' · בהשהיה':''}`));
+   const actions=el('div','','actions');
+   if(o.waiting){const all=button(`אשר את כל ${o.waiting} הפוסטים`,()=>run(all,async()=>{const r=await api('organic/approve-all',{});tell(`✅ אישרת ${r.approved} פוסטים`);reload();}),'primary');actions.append(all);}
+   const toggle=button(p.status==='PAUSED'?'להמשיך':'השהיה',()=>run(toggle,async()=>{await api('organic/status',{status:p.status==='PAUSED'?'ACTIVE':'PAUSED'});reload();}),'secondary');
+   const more=button('עוד 3 חודשים',()=>run(more,async()=>{tell('מכין עוד 3 חודשים…');const r=await api('organic/plan',{perWeek:p.posts_per_week,media:p.media_mode,extend:true});tell(`✅ נוספו ${r.count} פוסטים`);reload();}),'secondary');
+   actions.append(toggle);if(p.daysLeft<=30)actions.append(more);head.append(actions);body.append(head);
+   const upcoming=o.posts.filter(x=>x.publish_on>=o.today),past=o.posts.filter(x=>x.publish_on<o.today);let shown=8;
+   const list=el('div','','organic-list');
+   const draw=()=>{list.replaceChildren();upcoming.slice(0,shown).forEach(x=>list.append(postRow(x,reload)));if(upcoming.length>shown){const m=button(`להציג עוד (${upcoming.length-shown})`,()=>{shown+=12;draw();},'ghost');list.append(m);}};draw();
+   body.append(list);
+   if(past.length){const d=el('details');d.append(el('summary',`פוסטים מהשבועיים האחרונים (${past.length})`));past.slice().reverse().forEach(x=>d.append(postRow(x,reload)));body.append(d);}
+   body.append(shootBox(o.shoots));
+  }).catch(()=>{body.replaceChildren(el('p','לא הצלחנו לטעון את התוכן השוטף.','muted'));});
+  return c;
+ }
+ function postRow(x,reload){
+  const row=el('div','','today-row organic-row'),copy=el('div');
+  copy.append(el('strong',`${dayLabel(x.publish_on)} · ${ORGANIC_FORMAT[x.format]} · ${ORGANIC_MEDIA[x.media]}`),el('small',x.topic));
+  const text=el('p',x.caption,'organic-caption');copy.append(text,badge(ORGANIC_STATUS[x.status]||x.status,x.status==='DRAFT'?'warning':''));
+  const actions=el('div','','actions');
+  if(x.status==='DRAFT'){const ok=button('אשר',()=>run(ok,async()=>{await api('organic/posts/'+x.id,{action:'approve'});reload();}),'primary');actions.append(ok);}
+  if(['DRAFT','APPROVED'].includes(x.status)){
+   const edit=button('עריכה',()=>{const area=el('textarea');area.value=x.caption;area.maxLength=1000;area.rows=5;area.setAttribute('aria-label','טקסט הפוסט');const save=button('שמירה',()=>run(save,async()=>{await api('organic/posts/'+x.id,{action:'edit',caption:area.value});reload();}),'primary');text.replaceWith(area);actions.replaceChildren(save,button('ביטול',reload,'ghost'));},'secondary');
+   const skip=button('דלג',()=>run(skip,async()=>{await api('organic/posts/'+x.id,{action:'skip'});reload();}),'ghost');actions.append(edit,skip);}
+  if(x.status==='SKIPPED'&&x.publish_on>=new Date().toISOString().slice(0,10)){const back=button('להחזיר',()=>run(back,async()=>{await api('organic/posts/'+x.id,{action:'restore'});reload();}),'ghost');actions.append(back);}
+  if(['SENT','SKIPPED','FAILED'].includes(x.status)){const cp=button('העתקת הטקסט',()=>{navigator.clipboard?.writeText(x.caption).then(()=>tell('הטקסט הועתק ✓'),()=>tell('לא הצלחנו להעתיק',true));},'ghost');actions.append(cp);}
+  row.append(copy,actions);return row;
+ }
+ function shootBox(shoots=[]){
+  const box=el('div','','organic-shoot');box.append(el('h3','📸 יום צילום בעסק'),el('p','צלם מקצועי מגיע לעסק לכמה שעות. התמונות נכנסות לפוסטים ולמודעות שלכם לחודשים קדימה.','muted'));
+  const open=shoots.find(s=>['REQUESTED','SCHEDULED'].includes(s.status));
+  if(open){box.append(badge(open.status==='SCHEDULED'?'נקבע ✓':'הבקשה התקבלה, נחזור אליך לתיאום'));return box;}
+  const area=el('textarea');area.rows=3;area.maxLength=1000;area.placeholder='כתובת העסק, ימים ושעות נוחים, ומה חשוב לצלם (צוות, מוצרים, המקום)';area.setAttribute('aria-label','פרטים ליום הצילום');
+  const send=button('הזמנת יום צילום',()=>run(send,async()=>{if(area.value.trim().length<5){tell('כתבו כתובת וזמנים נוחים',true);return;}await api('organic/photo-shoot',{details:area.value});box.replaceChildren(el('h3','📸 יום צילום בעסק'),badge('הבקשה התקבלה, נחזור אליך לתיאום'));tell('✅ הבקשה נשלחה');}),'secondary');
+  box.append(area,send);return box;
+ }
  async function content(){
-  const data=await api('workspace/content'),month=contentMonth.toLocaleDateString('he-IL',{month:'long',year:'numeric'}),out=[heading('לוח תוכן',data.items.length+' טיוטות · תכנון פנימי לפני פרסום',[button('＋ צור פוסט',()=>editRecord('content'),'primary')]),el('p','מתכננים כאן פוסטים. פרסום אוטומטי לרשתות יגיע בקרוב.','notice')];
+  const data=await api('workspace/content'),month=contentMonth.toLocaleDateString('he-IL',{month:'long',year:'numeric'}),out=[heading('תוכן לסושיאל','פוסטים קבועים לשלושה חודשים קדימה',[button('＋ צור פוסט',()=>editRecord('content'),'secondary')]),organicCard(),el('h2','טיוטות שמורות','section-title')];
   const controls=el('div','','toolbar'),moves=el('div','','actions');moves.append(button('→',()=>{contentMonth=new Date(contentMonth.getFullYear(),contentMonth.getMonth()-1,1);navigate('content');}),el('strong',month),button('←',()=>{contentMonth=new Date(contentMonth.getFullYear(),contentMonth.getMonth()+1,1);navigate('content');}),button('החודש הנוכחי',()=>{contentMonth=new Date();navigate('content');}));moves.firstChild.setAttribute('aria-label','חודש קודם');moves.children[2].setAttribute('aria-label','חודש הבא');controls.append(moves,tabs([['calendar','לוח תוכן'],['list','רשימת טיוטות']],contentMode,id=>{contentMode=id;navigate('content');}));
   const grid=el('div','','split-grid'),calendar=card(),preview=card('תצוגה מקדימה','בחרו טיוטה מהלוח לעריכה מלאה');preview.append(empty('אין תוכן להצגה','בחרו טיוטה מהלוח.'));
   const show=x=>{preview.replaceChildren(el('h2',x.payload.title),badge(x.payload.channel+' · טיוטה'),el('p',x.payload.body),el('p',x.payload.date||'ללא תאריך','muted'),button('עריכת הטיוטה',()=>editRecord('content',x)));};
