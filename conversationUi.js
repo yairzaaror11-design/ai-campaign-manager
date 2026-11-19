@@ -3,7 +3,7 @@ const crypto=require('node:crypto'),store=require('./marketingStore');
 const FOOTER='אפשר גם לכתוב או לשלוח הודעה קולית';
 function context(p){return JSON.stringify([p.planId,p.journey?.stage,p.journey?.pendingField,p.journey?.revision,p.journey?.inputMode,p.journey?.detour,p.connection?.status,p.connection?.account?.id,p.connection?.accountPage,p.connection?.accountQuery,JSON.stringify((p.connection?.accounts||[]).map(a=>a.id)),p.connection?.pendingQuestion,p.mediaContext?.assetId,p.mediaBudgetQuestion?.amount,p.businessImport?.foundAt,p.businessEntry?.awaitingConfirmation,p.socialContent?.id,p.socialContent?.revision,p.socialContent?.focus,p.offerReview?.hash,p.offerReview?.expiresAt,JSON.stringify(p.contentBrief||null),JSON.stringify(p.socialInput||null),p.journey?.requestedOutput,p.journey?.socialFeedbackPending,JSON.stringify(p.crmIntake||null),JSON.stringify(p.crmFollowup||null),p.crmFocus?.id,p.crmFocus?.version,JSON.stringify(p.crmMenu||[])]);}
 const choice=(title,text,description)=>({title,text,...(description?{description}:{})});
-const DECISIONS=["offer_use","social_intent","advantage","journey_route","social_review","management_connect","crm_leads","crm_status","business_entry","business_import","plan_review","media_variant", "budget_period", "media_action", "has_ad_account", "connected", "connection_offer", "account_selection", "businessGoal", "dailyBudget", "leadDestination", "offerMediaSeparate", "strategy_review", "creative_review", "welcome", "task_review"];
+const DECISIONS=["offer_use","social_intent","advantage","journey_route","social_review","management_connect","crm_leads","crm_status","business_entry","business_import","plan_review","media_variant", "budget_period", "media_action", "has_ad_account", "connected", "connection_offer", "account_selection", "businessGoal", "dailyBudget", "leadDestination", "offerMediaSeparate", "strategy_review", "creative_review", "welcome", "task_review", "guard_alert"];
 function choices(p,decisionKey){
  if(decisionKey==null)return [];
  if(!DECISIONS.includes(decisionKey))throw Error('INVALID_DECISION_KEY');
@@ -97,10 +97,11 @@ async function prepareApproval(clientId,approval,summary){
  await store.update(clientId,null,p=>{p.ui={nonce,decisionKey:'action_approval',context:context(p),choices:items,expiresAt:new Date(approval.expiresAt).getTime()};return{handled:false,changed:true};});
  return{text:summary,leadingText:summary,interactivePayload:payload(creating?'לאשר יצירה במצב מושהה לפי הסיכום? אין הפעלה בשלב זה.':activating?'לאשר הפעלה לפי הסיכום? ההפעלה עשויה להתחיל הוצאה מתקציב הפרסום.':'לאשר את השינוי המדויק שבסיכום?',items,nonce)};
 }
-async function prepareTaskReview(clientId,body,items){
+async function prepareChoices(clientId,body,items,decisionKey){
  const nonce=crypto.randomBytes(12).toString('hex');
- await store.update(clientId,null,p=>{p.ui={nonce,decisionKey:'task_review',context:context(p),choices:items,expiresAt:Date.now()+24*60*60*1000};return{handled:false,changed:true};});
+ await store.update(clientId,null,p=>{p.ui={nonce,decisionKey,context:context(p),choices:items,expiresAt:Date.now()+24*60*60*1000};return{handled:false,changed:true};});
  return{text:body,interactivePayload:payload(body,items,nonce)};
 }
-module.exports={choices,payload,prepare,prepareApproval,prepareTaskReview,consume,context,refresh};
+const prepareTaskReview=(clientId,body,items)=>prepareChoices(clientId,body,items,'task_review');
+module.exports={choices,payload,prepare,prepareApproval,prepareTaskReview,prepareChoices,consume,context,refresh};
 
