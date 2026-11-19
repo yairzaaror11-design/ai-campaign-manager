@@ -58,8 +58,15 @@ async function consumeForClient(client,selector,byAction){
     return {ok:true,approval:{actionId:r.action_id,actionPlan:r.payload,expiresAt:r.expires_at}};
   });
 }
+// Dashboard approval by action id for the signed-in owner (the session is the proof of identity).
+async function consumeActionForClient(clientId,actionId){
+ if(!/^[A-Za-z0-9-]{6,64}$/.test(String(actionId||'')))return{ok:false,reason:'NOT_FOUND'};
+ const client=(await db.query('SELECT id,phone FROM clients WHERE id=$1',[clientId])).rows[0];if(!client)return{ok:false,reason:'NOT_FOUND'};
+ if(!await require('./rateLimit').take('approval:'+client.id,8,600))return{ok:false,reason:'RATE_LIMITED'};
+ return consumeForClient(client,actionId,true);
+}
 async function cancelPendingApprovals(phone) {
  const client=await getOrCreateClient(phone);
  await db.query("UPDATE approvals SET status='CANCELLED' WHERE client_id=$1 AND status='PENDING'",[client.id]);
 }
-module.exports={createApproval,createApprovalForClient,consumeApproval,consumeApprovalForClient,consumeButtonApproval,cancelPendingApprovals};
+module.exports={createApproval,createApprovalForClient,consumeApproval,consumeApprovalForClient,consumeButtonApproval,consumeActionForClient,cancelPendingApprovals};

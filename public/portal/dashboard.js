@@ -19,7 +19,7 @@
   d.addEventListener('close',()=>{document.querySelector('[data-mobile-nav=more]')?.setAttribute('aria-expanded','false');document.body.classList.remove('sheet-open');if(history.state?.scorpioSheet)history.back();},{once:true});d.showModal();
  }
  const system=[['agent','סוכן AI'],['users','משתמשים והרשאות'],['billing','מנויים וחיובים'],['help','מרכז עזרה ותמיכה'],['account','הגדרות']];
- const titles={...Object.fromEntries([...Object.values(groups).flatMap(g=>g.items),...system]),onboarding:'היכרות עם העסק',pages:'כל הדפים',performance:'ביצועים',support:'תמיכה'};
+ const titles={...Object.fromEntries([...Object.values(groups).flatMap(g=>g.items),...system]),onboarding:'היכרות עם העסק',pages:'כל הדפים',performance:'ביצועים',support:'תמיכה',approvals:'אישורים ממתינים'};
  let current='home',department='home',generation=0,ready=false,drawer=null,chatMessages=[],guide=null,brandTab='kit',settingsTab='display',contentMonth=new Date(),contentMode='calendar',researchTab='personas',showCampaignTools=false,sidebarIdentity,departmentNavigation;
  const dynamic=el('section','','page-content'),sidebar=el('aside','','sidebar'),backdrop=el('div','','sidebar-backdrop');
  dynamic.id='dashboard-screen';dynamic.setAttribute('aria-label','תוכן המסך');
@@ -42,7 +42,7 @@
   const nav=el('nav','','department-nav');nav.setAttribute('aria-label','מחלקות');Object.entries(groups).forEach(([id,g])=>{const b=button(g.label,()=>navigate(g.items[0][0]),'ghost');b.dataset.department=id;nav.append(b);});departmentNavigation=nav;const indicator=el('span','','department-indicator');indicator.setAttribute('aria-hidden','true');nav.prepend(indicator);const positionIndicator=()=>{const active=nav.querySelector('[aria-current=true]');if(!active||!nav.getClientRects().length)return;indicator.style.width=active.offsetWidth+'px';indicator.style.transform='translateX('+active.offsetLeft+'px)';};new ResizeObserver(positionIndicator).observe(nav);nav.addEventListener('departmentchange',positionIndicator);
   const searchWrap=el('form','','header-search');searchWrap.append(UI.icon('search'));const search=el('input');search.type='search';search.placeholder='חיפוש במערכת…';search.setAttribute('aria-label','חיפוש במערכת');searchWrap.append(search,el('kbd','⌘ K'));searchWrap.addEventListener('submit',e=>{e.preventDefault();openCommands(search.value);});
   const tools=el('div','','header-tools'),toggle=button('',()=>{const open=!sidebar.classList.contains('open');sidebar.classList.toggle('open',open);backdrop.classList.toggle('open',open);toggle.setAttribute('aria-expanded',String(open));document.body.classList.toggle('sidebar-open',open);if(open)sidebar.querySelector('nav button')?.focus();},'icon-button menu-toggle');toggle.append(UI.icon('menu'));toggle.id='sidebar-toggle';toggle.setAttribute('aria-label','פתיחת תפריט');toggle.setAttribute('aria-expanded','false');toggle.setAttribute('aria-controls','scorpio-sidebar');
-  const notices=button('',()=>{const d=dialog('עדכוני העסק');d.append(el('p',state.draft?.stale?'פרטי העסק השתנו. יש לבדוק ולאשר מחדש את טיוטת הקמפיין.':'אין כרגע התראות מערכת נוספות.'),button('פתיחת המשימות',()=>{d.close();navigate('tasks');}));d.showModal();},'icon-button');notices.append(UI.icon('bell'));notices.setAttribute('aria-label','התראות ועדכונים');
+  const notices=button('',async()=>{const d=dialog('מה לעשות היום'),list=el('div');d.append(list);d.showModal();try{const {items}=await api('today');if(!items.length)list.append(el('p','✓ אין משהו דחוף כרגע.'));items.forEach(item=>{const row=el('div','','today-row urgency-'+item.urgency),copy=el('div');copy.append(el('strong',item.text));if(item.detail)copy.append(el('small',item.detail));row.append(copy,button('לטפל',()=>{d.close();navigate(item.screen);},'secondary'));list.append(row);});}catch{list.append(el('p','לא הצלחנו לטעון עדכונים.','muted'));}},'icon-button');notices.append(UI.icon('bell'));notices.setAttribute('aria-label','התראות ועדכונים');
   const settingsButton=button('',()=>navigate('account'),'icon-button');settingsButton.append(UI.icon('account'));settingsButton.setAttribute('aria-label','הגדרות');
   const avatar=button('',()=>{settingsTab='account';navigate('account');},'profile-avatar');avatar.id='profile-avatar';avatar.setAttribute('aria-label','פרופיל משתמש');
   const mobileSearch=button('',()=>openCommands(),'icon-button mobile-search');mobileSearch.append(UI.icon('search'));mobileSearch.setAttribute('aria-label','פתיחת חיפוש');const themeButton=button('',themeToggle,'icon-button theme-toggle');themeButton.id='theme-toggle';tools.append(themeButton,mobileSearch,notices,settingsButton,avatar,toggle);header.replaceChildren(identity,nav,searchWrap,tools,headerCopy);updateThemeControl();
@@ -67,7 +67,7 @@
   primaryItems.forEach(([id,label])=>nav.append(navButton(id,label)));
   if(advancedItems.length){const advanced=el('details','','advanced-navigation');advanced.open=advancedItems.some(([id])=>id===current);advanced.append(el('summary','כלים נוספים · '+advancedItems.length));advancedItems.forEach(([id,label])=>advanced.append(navButton(id,label)));nav.append(advanced);}
 
-  if(department==='home')[['agent','סוכן AI'],['performance','ביצועים']].forEach(([id,label])=>nav.append(navButton(id,label)));
+  if(department==='home')[['agent','סוכן AI'],['performance','ביצועים'],['approvals','אישורים ממתינים']].forEach(([id,label])=>nav.append(navButton(id,label)));
   sidebar.append(nav);
   const bottom=el('div','','sidebar-bottom');[['pages','כל הדפים'],['users','ניהול משתמשים והרשאות'],['account','הגדרות'],['help','מרכז עזרה']].forEach(([id,label])=>bottom.append(navButton(id,label)));const profile=button('',()=>{settingsTab='account';navigate('account');},'sidebar-profile');profile.append(UI.icon('profile'),el('span',state.account?.display_name||'פרופיל משתמש','nav-label'));profile.setAttribute('aria-label','פרופיל משתמש');bottom.append(profile,logout);sidebar.append(bottom);
   document.querySelectorAll('[data-mobile-nav]').forEach(b=>{const active=b.dataset.mobileNav==='home'?current==='home':b.dataset.mobileNav==='more'?department==='finance'||!Object.values(groups).some(g=>g.items.some(([id])=>id===current)):b.dataset.mobileNav===department&&department!=='home'&&Object.values(groups).some(g=>g.items.some(([id])=>id===current));b.setAttribute('aria-current',active?'page':'false');});
@@ -94,15 +94,21 @@
  }
  // Campaigns running in the connected Meta account, joined with CRM results.
  async function liveCampaigns(version){
-  let r;try{r=await api('business-report?period=last_30d');}catch{return;}
-  if(version!==generation||!r.metaCampaigns?.length)return;
+  let list,report;try{[list,report]=await Promise.all([api('campaigns'),api('business-report?period=last_30d').catch(()=>({metaCampaigns:[]}))]);}catch{return;}
+  if(version!==generation||!list.connected||!list.campaigns.length)return;
+  const stats30=Object.fromEntries((report.metaCampaigns||[]).map(x=>[x.id,x])),STATUS={ACTIVE:'פעיל',PAUSED:'מושהה',CAMPAIGN_PAUSED:'מושהה',IN_PROCESS:'בבדיקה',WITH_ISSUES:'יש בעיה',DISAPPROVED:'נדחה',PENDING_REVIEW:'בבדיקת Meta',ARCHIVED:'בארכיון',DELETED:'נמחק'};
   const c=card('הקמפיינים בחשבון הפרסום','30 הימים האחרונים: הוצאה מ־Meta, פניות ומכירות מה־CRM');
-  c.append(table(['קמפיין','הוצאה','פניות','עלות לפנייה','נסגרו','הכנסות'],r.metaCampaigns.map(x=>[x.name,shekel(x.spend),x.leads,x.leads?shekel(x.spend/x.leads):'—',x.won,shekel(x.revenue)])));
+  const rows=list.campaigns.filter(x=>!['ARCHIVED','DELETED'].includes(x.status)).map(x=>{const st=stats30[x.id]||{spend:0,leads:0,won:0,revenue:0},act=el('div','','actions');
+   if(['ACTIVE','PAUSED','CAMPAIGN_PAUSED'].includes(x.status)){const pause=x.status==='ACTIVE',b=button(pause?'השהיה':'הפעלה מחדש',()=>run(b,async()=>{const r=await api('campaigns/'+x.id+'/action',{kind:pause?'PAUSE':'RESUME'});if(!r.ok){tell(r.reply,true);return;}tell('הפעולה הוכנה. מאשרים אותה במסך האישורים.');navigate('approvals');}),'secondary');act.append(b);}
+   return [x.name,badge(STATUS[x.status]||x.status,x.status==='ACTIVE'?'':'warning'),shekel(st.spend),st.leads,st.leads?shekel(st.spend/st.leads):'—',st.won,shekel(st.revenue),act];});
+  if(!rows.length)return;
+  c.append(table(['קמפיין','מצב','הוצאה','פניות','עלות לפנייה','נסגרו','הכנסות','פעולות'],rows));
+  c.append(el('p','שינוי תקציב או מודעה: מבקשים מהסוכן, והוא מכין את השינוי לאישור שלך.','muted'));
   const actions=el('div','','actions');actions.append(button('לבקש מהסוכן שיפור לקמפיין',()=>openAgent(true),'secondary'),go('ביצועים מלאים','performance'));c.append(actions);
   const emptyState=dynamic.querySelector('.empty-state');if(emptyState)emptyState.replaceWith(c);else dynamic.children[0]?.after(c);
  }
  async function renderScreen(id){
-  if(id==='performance')return [heading('ביצועי קמפיינים','נתוני הפלטפורמה לפי החיבורים הקיימים'),performanceCard()];if(id==='pages')return pageDirectory();if(id==='onboarding')return onboarding();if(id==='home')return home();if(id==='brand')return brand();if(['products','tasks','expenses'].includes(id))return records(id);if(id==='content')return content();if(['sales','pipeline','customers'].includes(id))return sales(id);if(id==='creative')return creative();if(id==='landing')return landing();if(id==='integrations')return integrations();if(['finance','profitability'].includes(id))return finance(id);if(id==='help')return help();if(id==='account')return settings();if(id==='research')return research();if(id==='users')return users();if(id==='agent')return [heading('סוכן AI','ממשיכים מהפרטים שכבר נשמרו'),empty('מה נרצה לקדם עכשיו?','הסוכן מחובר לתכנון הקמפיין ולפרטי העסק. פעולות פרסום והודעות דורשות תהליך ואישור נפרדים.',button('פתיחת שיחה',()=>openAgent(true),'primary'))];
+  if(id==='performance')return [heading('ביצועי קמפיינים','נתוני הפלטפורמה לפי החיבורים הקיימים'),performanceCard()];if(id==='pages')return pageDirectory();if(id==='approvals')return approvalsScreen();if(id==='onboarding')return onboarding();if(id==='home')return home();if(id==='brand')return brand();if(['products','tasks','expenses'].includes(id))return records(id);if(id==='content')return content();if(['sales','pipeline','customers'].includes(id))return sales(id);if(id==='creative')return creative();if(id==='landing')return landing();if(id==='integrations')return integrations();if(['finance','profitability'].includes(id))return finance(id);if(id==='help')return help();if(id==='account')return settings();if(id==='research')return research();if(id==='users')return users();if(id==='agent')return [heading('סוכן AI','ממשיכים מהפרטים שכבר נשמרו'),empty('מה נרצה לקדם עכשיו?','הסוכן מחובר לתכנון הקמפיין ולפרטי העסק. פעולות פרסום והודעות דורשות תהליך ואישור נפרדים.',button('פתיחת שיחה',()=>openAgent(true),'primary'))];
   const descriptions={scripts:'הסוכן הקיים יכול לסייע באפיון מסר ומכירה בשיחת WhatsApp. ספריית תסריטים עם עריכה ושמירה טרם מומשה.',automations:'תורי ההודעות והפעולות המאושרות הקיימים נשמרים. בניית כללי אוטומציה בדשבורד טרם מומשה.',whatsapp:'הסוכן ושיחת העסק פועלים דרך חיבור WhatsApp הקיים. תיבת שיחות לצוות ושליחה מהדשבורד טרם מומשו.',bot:'מנוע השיחה הקיים ממשיך לנהל את תהליך השיווק. עורך בוטים ופרסום בוט מותאם טרם מומשו.',forecasts:'כדי לבנות תחזית נדרשים יעדים, טווחי זמן ומודל הנחות. אפשר לתעד מוצרים והוצאות; מודול התחזיות טרם מומש.',advisor:'אפיון רווחיות קיים במנוע השיחה. ייעוץ המבוסס על דוח הכנסות והוצאות מאוחד טרם מומש.',calendar:'אין עדיין מודול זמינות ותורים מחובר. תאריך במשימה אינו הזמנה ביומן.',bookings:'יצירת תור תדרוש שירות, צוות, אזור זמן ובדיקת זמינות במסד. מנגנון זה טרם מומש.',services:'קטלוג מוצרים ושירותים לשיווק זמין. משך שירות, זמני המתנה וזמינות להזמנה עדיין אינם מחוברים.',team:'ניהול צוות, שעות עבודה והרשאות תורים טרם מומש.', 'calendar-settings':'חיבור Google Calendar ואזור זמן ליומן עדיין אינם מוגדרים.',support:'אפשר למצוא עזרה במדריכים המקומיים. שליחת פנייה לנציג ומערכת קריאות שירות טרם חוברו.'};
   if(['calendar','bookings'].includes(id))return [heading(titles[id],'תורים וזמינות טרם חוברו',[button('תזכורת למעקב',()=>editRecord('tasks'),'primary')]),card('מה אפשר לעשות עכשיו?','אפשר לשמור משימת מעקב עם תאריך ולנהל את המשך הטיפול. זו תזכורת בלבד — היא אינה מזמינה פגישה ואינה בודקת זמינות.'),go('פתיחת המשימות','tasks')];
   return [heading(titles[id],'סטטוס היכולת'),empty('היכולת הזו עדיין אינה מחוברת',descriptions[id]||'מסך זה דורש השלמת חיבור.',go('למשימות והמשך העבודה','tasks'))];
@@ -168,7 +174,44 @@
    alerts.push(alert);
   }
   const directory=el('details','','home-page-directory');directory.append(el('summary','כל דפי השיווק והכלים של העסק'),marketingDirectory());
-  return [heading('שלום, '+(state.account?.display_name||'ברוכים הבאים'),'מה שקורה בעסק שלך, במקום אחד',[go('כל הדפים','pages')]),...alerts,overview,center,lower,directory];
+  return [heading('שלום, '+(state.account?.display_name||'ברוכים הבאים'),'מה שקורה בעסק שלך, במקום אחד',[go('כל הדפים','pages')]),todayCard(),...alerts,overview,trendCard(),center,lower,directory];
+ }
+ // "What to do today": the few actions that move revenue, plus the first-run checklist.
+ function todayCard(){
+  const c=card('מה לעשות היום','הדברים שהכי משפיעים על ההכנסות שלך עכשיו');c.classList.add('today-card');const body=el('div','','today-body');body.append(el('p','טוען…','muted'));c.append(body);
+  api('today').then(({items,setup})=>{body.replaceChildren();
+   if(setup.done<setup.total){const s=el('div','','setup-steps');s.append(el('strong',`הקמה: ${setup.done} מתוך ${setup.total} הושלמו`));const bar=el('progress');bar.max=setup.total;bar.value=setup.done;s.append(bar);setup.steps.forEach(step=>{const row=el('div','','setup-row'+(step.done?' done':''));row.append(el('span',step.done?'✓':'○','setup-mark'),el('span',step.title));if(!step.done)row.append(button('להתחיל',()=>step.screen==='agent'?openAgent(true):navigate(step.screen),'secondary'));s.append(row);});body.append(s);}
+   if(!items.length){body.append(el('p','✓ אין משהו דחוף כרגע. הכול מטופל.','today-clear'));return;}
+   items.forEach(item=>{const row=el('div','','today-row urgency-'+item.urgency),copy=el('div');copy.append(el('strong',item.text));if(item.detail)copy.append(el('small',item.detail));row.append(copy,button('לטפל',()=>navigate(item.screen),item.urgency>=3?'primary':'secondary'));body.append(row);});
+   updateBell(items.length);
+  }).catch(()=>{body.replaceChildren(el('p','לא הצלחנו לטעון את המשימות להיום.','muted'));});
+  return c;
+ }
+ function updateBell(count){const bell=document.querySelector('[aria-label^="התראות"]');if(!bell)return;bell.querySelector('.bell-count')?.remove();if(count){const dot=el('span',String(count),'bell-count');bell.append(dot);bell.setAttribute('aria-label','התראות ועדכונים · '+count);}}
+ // Daily leads (bars) and ad spend (line) with the change against the previous period.
+ function trendCard(){
+  const c=card('מגמה','לידים והוצאה ביום, מול התקופה הקודמת'),controls=el('div','','performance-controls'),period=el('select');period.setAttribute('aria-label','תקופת המגמה');[['14','14 ימים'],['30','30 ימים']].forEach(([v,l])=>{const o=el('option',l);o.value=v;period.append(o);});controls.append(period);const body=el('div');c.append(controls,body);
+  const load=async()=>{body.replaceChildren(el('p','טוען…','muted'));try{const t=await api('trend?days='+period.value);body.replaceChildren();
+   const change=t.change===null?'':(t.change>=0?'▲ ':'▼ ')+Math.abs(Math.round(t.change*100))+'% מול '+t.days+' הימים הקודמים';
+   body.append(el('p',`${t.leads} לידים ב־${t.days} הימים האחרונים`+(change?' · '+change:''),t.change!==null&&t.change<0?'trend-down':'trend-up'));
+   const w=600,h=160,pad=4,n=t.series.length,bw=(w-pad*2)/n,maxL=Math.max(1,...t.series.map(x=>x.leads)),hasSpend=t.series.some(x=>x.spend!==null),maxS=Math.max(1,...t.series.map(x=>x.spend||0));
+   const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox',`0 0 ${w} ${h+20}`);svg.setAttribute('class','trend-chart');svg.setAttribute('role','img');svg.setAttribute('aria-label','גרף לידים והוצאה לפי יום');
+   t.series.forEach((x,i)=>{const r=document.createElementNS(ns,'rect'),bh=Math.round(x.leads/maxL*(h-10));r.setAttribute('x',w-pad-(i+1)*bw+2);r.setAttribute('y',h-bh);r.setAttribute('width',Math.max(2,bw-4));r.setAttribute('height',bh);r.setAttribute('class','trend-bar');const tip=document.createElementNS(ns,'title');tip.textContent=`${x.day}: ${x.leads} לידים`+(x.spend!==null?`, ₪${Math.round(x.spend)}`:'');r.append(tip);svg.append(r);});
+   if(hasSpend){const pts=t.series.map((x,i)=>`${w-pad-(i+0.5)*bw},${h-Math.round((x.spend||0)/maxS*(h-10))}`).join(' ');const line=document.createElementNS(ns,'polyline');line.setAttribute('points',pts);line.setAttribute('class','trend-line');svg.append(line);}
+   body.append(svg);const legend=el('div','','trend-legend');legend.append(el('span','■ לידים','legend-bars'));if(hasSpend)legend.append(el('span','━ הוצאה על פרסום','legend-line'));body.append(legend);
+  }catch(e){body.replaceChildren(el('p',e.message,'error'));}};
+  period.addEventListener('change',load);load();return c;
+ }
+ // Pending approvals: the same ones sent on WhatsApp, approved through the same path.
+ async function approvalsScreen(){
+  const {approvals}=await api('approvals'),out=[heading('אישורים ממתינים','כל פעולה בחשבון הפרסום מתבצעת רק אחרי אישור שלך')];
+  if(!approvals.length){out.push(empty('אין אישורים ממתינים','כשהסוכן או השומר יכינו פעולה, היא תופיע כאן ובוואטסאפ.',go('חזרה לבית','home')));return out;}
+  approvals.forEach(a=>{const c=card(a.startsSpending?'⚠️ פעולה שמתחילה לחייב':'פעולה לאישור');c.append(el('pre',a.summary,'approval-summary'),el('small','בתוקף עד '+new Date(a.expiresAt).toLocaleString('he-IL',{timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit',day:'numeric',month:'numeric'})));
+   const result=el('p','','approval-result');result.setAttribute('role','status');
+   const ok=button(a.startsSpending?'מאשר, להפעיל':'מאשר ✅',()=>run(ok,async()=>{if(a.startsSpending&&!await UI.confirm('הפעלת פרסום','האישור מפעיל פרסום ומתחיל לחייב מהתקציב. להמשיך?','מאשר להפעיל'))return;const r=await api('approvals/'+encodeURIComponent(a.actionId)+'/approve',{confirm:true});result.textContent=r.reply;ok.remove();no.remove();tell(r.reply,!r.ok);}),'primary');
+   const no=button(a.task?'ביטול המשימה':'לא לבצע',()=>run(no,async()=>{const r=await api('approvals/'+encodeURIComponent(a.actionId)+'/reject',{});result.textContent=r.reply;ok.remove();no.remove();}),'secondary');
+   const actions=el('div','','actions');actions.append(ok,no);c.append(actions,result);out.push(c);});
+  return out;
  }
  function brand(){
   const out=[heading('ניהול מותג','ערכת מותג, זהות ואסטרטגיית תוכן',[button('עדכון פרטי העסק עם הסוכן',()=>openAgent(true),'secondary')]),tabs([['kit','ערכת מותג'],['identity','זהות ותוכן'],['products','מוצרים ושירותים'],['context','הקשר עסקי']],brandTab,async id=>{if(!await allowLeave())return;if(id==='products')navigate('products');else{brandTab=id;navigate('brand');}})];
