@@ -73,7 +73,7 @@ function formatActionPlan(plan) {
   add('💰','תקציב יומי',p.dailyBudget!==undefined?money(p.dailyBudget,currency):null);
   add('▶️','התחלה',when(p.startTime||sets[0]?.startTime||sets[0]?.start_time));
   add('⏹','סיום',when(p.endTime||sets[0]?.endTime||sets[0]?.end_time));
-  if(plan.intent==='CREATE_LEAD_FORM'){add('📝','שאלות בטופס',(p.questions||[]).map(q=>q.label||({FULL_NAME:'שם מלא',PHONE:'טלפון',EMAIL:'אימייל',CITY:'עיר'})[q.type]||q.key||q.type||q).join(', '));add('🔒','מדיניות פרטיות',p.privacyPolicyUrl);}
+  if(plan.intent==='CREATE_LEAD_FORM'){lines.push('✅ טופס "כוונה גבוהה": הפונה מאשר את הפרטים לפני שליחה, פחות לידים מקריים');add('📝','שאלות בטופס',(p.questions||[]).map(q=>q.label||({FULL_NAME:'שם מלא',PHONE:'טלפון',EMAIL:'אימייל',CITY:'עיר'})[q.type]||q.key||q.type||q).join(', '));add('🔒','מדיניות פרטיות',p.privacyPolicyUrl);}
   lines.push('');
   lines.push(plan.intent==='CREATE_LEAD_FORM'?'האישור יוצר טופס בלבד. שום מודעה לא תופעל.':plan.intent==='ACTIVATE_BUNDLE'||plan.intent==='RESUME_CAMPAIGN'?'⚠️ האישור מפעיל פרסום ומתחיל לחייב מהתקציב.':plan.intent.startsWith('CREATE_')||plan.intent==='UPLOAD_IMAGE'?'הכול נוצר במצב מושהה. אין פרסום ואין חיוב עד אישור הפעלה נפרד.':'האישור חל רק על הפעולה הזו.');
   lines.push('מס׳ אישור: '+require('./approvalPolicy').planHash(plan).slice(0,8));
