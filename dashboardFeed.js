@@ -44,6 +44,7 @@ async function today(clientId) {
   if (noAmount) items.push({ kind: 'WON_NO_AMOUNT', urgency: 1, text: noAmount === 1 ? 'ליד אחד קנה ✅ אבל בלי סכום. כמה הוא שילם?' : `${noAmount} לידים קנו ✅ אבל בלי סכום. כמה הם שילמו?`, detail: 'עם הסכום אדע להגיד לך כמה החזיר כל שקל בפרסום', screen: 'leads' });
   const due = (await db.query(`SELECT payload->>'title' AS title FROM workspace_items WHERE client_id=$1 AND kind='tasks' AND payload->>'status'='OPEN' AND (payload->>'date') IS NOT NULL AND left(payload->>'date',10)<=to_char(NOW() AT TIME ZONE 'Asia/Jerusalem','YYYY-MM-DD') LIMIT 20`, [clientId]).catch(() => ({ rows: [] }))).rows;
   if (due.length) items.push({ kind: 'TASKS_DUE', urgency: 2, text: due.length === 1 ? `להיום: ${due[0].title}` : `יש לך ${due.length} משימות להיום`, screen: 'tasks' });
+  const advice = await require('./dailyAdvice').todayItem(clientId).catch(() => null); if (advice) items.push(advice);
   return items.sort((a, b) => b.urgency - a.urgency);
 }
 
