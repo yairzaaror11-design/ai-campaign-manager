@@ -122,7 +122,7 @@
   body.append(el('p','תקציב יומי נוכחי'+(dup?' בקמפיין המקורי':'')+': '+shekel(current),'budget-current'));
   const form=el('form','','budget-form'),chips=el('div','','budget-chips');chips.setAttribute('role','group');chips.setAttribute('aria-label','שינוי מהיר');
   const input=field(form,dup?'תקציב יומי לעותק (₪)':'תקציב יומי חדש (₪)','dailyBudget',{type:'number',value:String(dup?current:round(current*1.2)),required:true});input.step='1';input.min='1';input.inputMode='numeric';
-  [['−20%',0.8],['+20%',1.2],['+50%',1.5]].forEach(([label,f])=>{const b=button(label,()=>{input.value=String(round(current*f));update();},'secondary budget-chip');chips.append(b);});
+  [['−20%',0.8],['+20%',1.2],['+50%',1.5]].forEach(([label,f])=>{const b=button(label,()=>{input.value=String(round(current*f));update();},'secondary budget-chip');b.dir='ltr';chips.append(b);});
   form.prepend(chips);
   const preview=el('p','','budget-preview'),cap=el('p','','muted'),error=el('p','','form-error');preview.setAttribute('aria-live','polite');error.setAttribute('role','alert');
   if(info.capDaily)cap.textContent='תקרת ההוצאה היומית שקבעת: '+shekel(info.capDaily);
