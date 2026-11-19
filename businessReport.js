@@ -111,7 +111,10 @@ async function build(clientId, preset = 'last_7d', { spendFor = metaSpend } = {}
   const steps = nextSteps(f, m, spend || 0);
   const suggestion = budgetSuggestion(campaigns);
   if (suggestion) steps.splice(1, 0, suggestion);
-  return { preset, days, funnel: f, spend, metrics: m, campaigns, nextSteps: steps.slice(0, 3) };
+  // Every campaign that spent in the period, with its CRM results when there are any.
+  const byId = Object.fromEntries(campaigns.map((x) => [x.id, x]));
+  const metaCampaigns = Object.entries(raw && typeof raw === 'object' ? raw.campaigns : {}).map(([id, x]) => ({ id, name: x.name || 'קמפיין ' + id.slice(-4), spend: x.spend, leads: byId[id]?.leads || 0, won: byId[id]?.won || 0, revenue: byId[id]?.revenue || 0 })).sort((a, b) => b.spend - a.spend).slice(0, 20);
+  return { preset, days, funnel: f, spend, metrics: m, campaigns, metaCampaigns, nextSteps: steps.slice(0, 3) };
 }
 
 function format(report) {

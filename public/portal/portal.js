@@ -34,7 +34,7 @@ async function refresh(){
  $('lead-form').hidden=!state.account;
  $('subscription').replaceChildren(text('p','מסלול: '+state.subscription.plan_code),text('p',state.subscription.notice),text('p','ניסיונות יצירת תמונות ב-24 השעות האחרונות: '+state.usage.graphicsAttemptsLast24Hours));
  const c=state.crm.counts;$('lead-count').textContent=Object.values(c).reduce((a,b)=>a+b,0)+' פניות במערכת';
- tell('פרטי העסק נטענו.');document.dispatchEvent(new CustomEvent('portal:refresh',{detail:state}));
+ $('status').textContent='';document.dispatchEvent(new CustomEvent('portal:refresh',{detail:state}));
 }
 // Israeli local numbers (05x...) become international (9725x...), like the WhatsApp lead alert.
 function waNumber(phone){let d=String(phone||'').replace(/\D/g,'');if(/^0\d{8,9}$/.test(d))d='972'+d.slice(1);return /^\d{8,15}$/.test(d)?d:null;}
@@ -42,7 +42,7 @@ async function loadLeads(){
  const data=await api('leads'),list=$('leads-list');list.replaceChildren();
  if(!data.leads.length)list.append(text('p','עדיין אין פניות. אפשר להוסיף פנייה ידנית או לחבר מקור פניות.'));
  for(const lead of data.leads){
-  const card=text('article','','card lead'),details=text('div','');details.append(text('h3',lead.name),text('p',[lead.phone,lead.email].filter(Boolean).join(' · ')),text('p','מקור: '+lead.source),text('p',lead.note));
+  const card=text('article','','card lead'),details=text('div','');details.append(text('h3',lead.name),text('p',[lead.phone,lead.email].filter(Boolean).join(' · ')),text('p','מקור: '+({meta_lead_ads:'טופס לידים ב־Meta',whatsapp_manual:'נוסף בוואטסאפ',manual:'הוספה ידנית',landing_page:'עמוד מכירה'}[lead.source]||(/^landing/.test(lead.source)?'עמוד מכירה':lead.source))),text('p',lead.note));
   card.id='lead-'+lead.id;card.tabIndex=-1;
   const select=document.createElement('select');select.setAttribute('aria-label','מצב הטיפול ב-'+lead.name);
   for(const [v,label]of Object.entries(statuses)){const option=document.createElement('option');option.value=v;option.textContent=label;option.selected=v===lead.status;select.append(option);}
