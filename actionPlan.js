@@ -54,6 +54,21 @@ function audience(t){
  if(Array.isArray(t.genders)&&t.genders.length===1)parts.push(t.genders[0]===1?'גברים':'נשים');
  return parts.join(' · ')||null;
 }
+// What the owner will actually pay, in plain numbers, before approving anything that spends.
+function dailyTotal(p,sets){
+  if(p.dailyBudget!==undefined&&p.dailyBudget!==null&&p.dailyBudget!=='')return Number(p.dailyBudget);
+  const v=sets.map(s=>s.dailyBudget!==undefined?Number(s.dailyBudget):s.daily_budget!==undefined&&s.daily_budget!==null?Number(s.daily_budget)/100:NaN);
+  return v.length&&v.every(Number.isFinite)?v.reduce((a,b)=>a+b,0):null;
+}
+function costLine(plan,p,sets,currency){
+  if(!['ACTIVATE_BUNDLE','RESUME_CAMPAIGN','CHANGE_BUDGET','CREATE_BUNDLE','CREATE_ADSET'].includes(plan.intent))return null;
+  const day=dailyTotal(p,sets);if(!Number.isFinite(day)||day<=0)return null;
+  const start=new Date(p.startTime||sets[0]?.startTime||sets[0]?.start_time||Date.now()),end=new Date(p.endTime||sets[0]?.endTime||sets[0]?.end_time||NaN);
+  const days=Number.isFinite(end-start)&&end>start?Math.ceil((end-start)/864e5):null;
+  const round=n=>Math.round(n).toLocaleString('he-IL');
+  const prefix=plan.intent.startsWith('CREATE_')?'אחרי ההפעלה, ':'';
+  return '💸 כמה זה יעלה: '+prefix+'עד '+money(round(day),currency)+' ליום'+(days?' · עד '+money(round(day*days),currency)+' לכל התקופה ('+days+' ימים)':' · בערך '+money(round(day*30),currency)+' לחודש')+'. התשלום עובר ישירות ל־Meta.';
+}
 function formatActionPlan(plan) {
   const p=plan.parameters || {},t=plan.target || {},currency=p.currency||plan.review?.currency,lines=[];
   const add=(icon,label,value)=>{if(value!==null&&value!==undefined&&String(value).trim())lines.push(icon+' '+label+': '+value);};
@@ -76,6 +91,7 @@ function formatActionPlan(plan) {
   add('▶️','התחלה',when(p.startTime||sets[0]?.startTime||sets[0]?.start_time));
   add('⏹','סיום',when(p.endTime||sets[0]?.endTime||sets[0]?.end_time));
   if(plan.intent==='CREATE_LEAD_FORM'){lines.push('✅ טופס "כוונה גבוהה": הפונה מאשר את הפרטים לפני שליחה, פחות לידים מקריים');add('📝','שאלות בטופס',(p.questions||[]).map(q=>q.label||({FULL_NAME:'שם מלא',PHONE:'טלפון',EMAIL:'אימייל',CITY:'עיר'})[q.type]||q.key||q.type||q).join(', '));add('🔒','מדיניות פרטיות',p.privacyPolicyUrl);}
+  const cost=costLine(plan,p,sets,currency);if(cost)lines.push(cost);
   lines.push('');
   lines.push(plan.intent==='CREATE_LEAD_FORM'?'האישור יוצר טופס בלבד. שום מודעה לא תופעל.':plan.intent==='ACTIVATE_BUNDLE'||plan.intent==='RESUME_CAMPAIGN'?'⚠️ האישור מפעיל פרסום ומתחיל לחייב מהתקציב.':plan.intent.startsWith('CREATE_')||plan.intent==='UPLOAD_IMAGE'?'הכול נוצר במצב מושהה. אין פרסום ואין חיוב עד אישור הפעלה נפרד.':'האישור חל רק על הפעולה הזו.');
   lines.push('מס׳ אישור: '+require('./approvalPolicy').planHash(plan).slice(0,8));
@@ -83,6 +99,7 @@ function formatActionPlan(plan) {
 }
 
 module.exports = {
+  INTENT_HE,
   WRITE_INTENTS,
   isWriteIntent,
   createActionPlan,

@@ -216,9 +216,19 @@
   }catch(e){body.replaceChildren(el('p',e.message,'error'));}};
   period.addEventListener('change',load);load();return c;
  }
+
+ // "What I did and why": every action prepared or done, with its reason.
+ function activityCard(){
+  const c=card('מה עשיתי ולמה','30 הימים האחרונים · שום פעולה שעולה כסף לא בוצעה בלי אישור שלך'),body=el('div');body.append(el('p','טוען…','muted'));c.append(body);
+  api('activity').then(({items})=>{body.replaceChildren();if(!items.length){body.append(el('p','עוד לא בוצעו פעולות בחשבון הפרסום.','muted'));return;}
+   items.slice(0,15).forEach(x=>{const row=el('div','','today-row'),copy=el('div');copy.append(el('strong',x.what),el('small',new Date(x.at).toLocaleDateString('he-IL',{weekday:'short',day:'numeric',month:'numeric'})+' · '+x.status));if(x.why)copy.append(el('p','למה: '+x.why,'muted'));row.append(copy);body.append(row);});
+  }).catch(()=>{body.replaceChildren(el('p','לא הצלחנו לטעון את היומן.','muted'));});
+  return c;
+ }
  // Pending approvals: the same ones sent on WhatsApp, approved through the same path.
  async function approvalsScreen(){
   const {approvals}=await api('approvals'),out=[heading('אישורים ממתינים','כל פעולה בחשבון הפרסום מתבצעת רק אחרי אישור שלך')];
+  out.push(activityCard());
   if(!approvals.length){out.push(empty('אין אישורים ממתינים','כשהעוזר או השומר יכינו פעולה, היא תופיע כאן ובוואטסאפ.',go('חזרה לבית','home')));return out;}
   approvals.forEach(a=>{const c=card(a.startsSpending?'⚠️ פעולה שמתחילה לחייב':'פעולה לאישור');c.append(el('pre',a.summary,'approval-summary'),el('small','בתוקף עד '+new Date(a.expiresAt).toLocaleString('he-IL',{timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit',day:'numeric',month:'numeric'})));
    const result=el('p','','approval-result');result.setAttribute('role','status');

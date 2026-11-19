@@ -33,6 +33,8 @@ async function handle(clientId,input,options={}){
  const dashboard=await require('./dashboardLink').handle(clientId,message);if(dashboard)return dashboard;
  // Lead status updates (also the buttons of proactive check-ins) and CRM commands.
  const crm=await require('./crmConversation').handle(clientId,message);if(crm)return crm;
+ // "What did you do and why": the activity log.
+ const activity=await require('./activityLog').handle(clientId,message);if(activity)return activity;
  // Ongoing organic content (three-month calendar) and photo-shoot requests.
  const organic=await require('./organicContent').handle(clientId,message);if(organic)return organic;
  if(message.startsWith('/')&&message!=='/start')return{handled:true,reply:'אפשר לכתוב כאן במילים מה תרצה להשיג. אמשיך מאותה בקשה ואציג את התוצרים לבדיקה לפני כל פעולה.'};
