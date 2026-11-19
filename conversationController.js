@@ -29,6 +29,8 @@ async function handle(clientId,input,options={}){
  // Ad account list, search, page and named switch have their own verified menu.
  const accountRequest=require('./readConversation').request(message);
  if(accountRequest&&accountRequest.type!=='report')return require('./readConversation').handle(clientId,message);
+ // Dashboard sign-in link, optionally to a specific screen.
+ const dashboard=await require('./dashboardLink').handle(clientId,message);if(dashboard)return dashboard;
  // Lead status updates (also the buttons of proactive check-ins) and CRM commands.
  const crm=await require('./crmConversation').handle(clientId,message);if(crm)return crm;
  if(message.startsWith('/')&&message!=='/start')return{handled:true,reply:'אפשר לכתוב כאן במילים מה תרצה להשיג. אמשיך מאותה בקשה ואציג את התוצרים לבדיקה לפני כל פעולה.'};

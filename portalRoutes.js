@@ -113,6 +113,11 @@ router.post('/app/api/billing/checkout',endpoint(async(req,res)=>res.json(await 
 router.post('/app/api/billing/manage',endpoint(async(req,res)=>res.json(await require('./billingService').management(req.portal.clientId))));
 router.get('/app/api/billing/invoices',endpoint(async(req,res)=>{const r=await db.query('SELECT amount_paid_minor,currency,status,hosted_url,created_at FROM billing_invoices WHERE client_id=$1 ORDER BY created_at DESC LIMIT 50',[req.portal.clientId]);res.json({invoices:r.rows});}));
 router.post('/billing/webhook',require('./rateLimit').middleware('billing-webhook',120),async(req,res)=>{try{const event=require('./billingService').verify(req.rawBody,req.headers['stripe-signature']);res.json(await require('./billingService').apply(event));}catch{res.status(400).json({error:'Invalid billing event'});}});
+// Structured business report: spend, funnel, per-campaign results and next steps.
+router.get('/app/api/business-report',endpoint(async(req,res)=>{
+ const preset=['last_7d','last_14d','last_30d'].includes(req.query.period)?req.query.period:'last_7d';
+ res.json(await require('./businessReport').build(req.portal.clientId,preset));
+}));
 router.get('/app/api/report',endpoint(async(req,res)=>{
  const v=await require('./metaConversation').verify(req.portal.clientId);if(!v.canRead)return res.status(409).json({error:require('./metaConversation').statusReply(v)});
  res.json({text:await require('./reportService').campaignReport(req.portal.clientId,'last_7d')});

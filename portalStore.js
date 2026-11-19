@@ -2,14 +2,15 @@
 const crypto=require('node:crypto'),db=require('./db');
 const hash=v=>crypto.createHash('sha256').update(String(v)).digest('hex');
 function origin(){const u=new URL(process.env.APP_PUBLIC_URL||'');if(u.protocol!=='https:'||u.username||u.password||u.pathname!=='/'||u.search||u.hash)throw Error('PUBLIC_ORIGIN_REQUIRED');return u.origin;}
-async function createTicket(clientId){
+async function createTicket(clientId,screen=null){
+ if(screen!==null&&!require('./dashboardLink').ALLOWED.has(screen))throw Error('INVALID_SCREEN');
  const token=crypto.randomBytes(32).toString('hex');
  await db.transaction(async tx=>{
   const c=await tx('SELECT id FROM clients WHERE id=$1 FOR UPDATE',[clientId]);if(!c.rows.length)throw Error('CLIENT_NOT_FOUND');
   await tx('DELETE FROM portal_login_tickets WHERE client_id=$1',[clientId]);
   await tx("INSERT INTO portal_login_tickets(token_hash,client_id,expires_at) VALUES($1,$2,NOW()+INTERVAL '10 minutes')",[hash(token),clientId]);
   await tx("INSERT INTO tenant_audit(client_id,event,result) VALUES($1,'PORTAL_LINK','ISSUED')",[clientId]);
- });return origin()+'/app#login='+token;
+ });return origin()+'/app'+(screen?'/'+screen:'')+'#login='+token;
 }
 async function redeem(token){
  if(typeof token!=='string'||!(/^[a-f0-9]{64}$/).test(token))throw Error('INVALID_PORTAL_LINK');

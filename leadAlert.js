@@ -36,6 +36,7 @@ function alertText(lead, reply) {
   }
   lines.push('');
   lines.push('כדי לעדכן מה קרה עם הפנייה, כתבו: הלידים שלי');
+  lines.push(require('./dashboardLink').hint('leads'));
   return lines.join('\n');
 }
 
