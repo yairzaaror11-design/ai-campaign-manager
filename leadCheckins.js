@@ -40,6 +40,7 @@ async function dueLeads(limit = 200) {
       AND l.updated_at < NOW() - CASE l.status WHEN 'NEW' THEN make_interval(mins => $1::int) WHEN 'WON' THEN make_interval(hours => $5::int) ELSE make_interval(hours => $2::int) END
       AND l.updated_at > NOW() - CASE WHEN l.status='WON' THEN INTERVAL '60 days' ELSE INTERVAL '30 days' END
       AND NOT EXISTS (SELECT 1 FROM lead_checkins k WHERE k.lead_id=l.id AND k.stage=l.status)
+      AND (l.status<>'WON' OR NOT EXISTS (SELECT 1 FROM growth_outreach g WHERE g.lead_id=l.id))
       AND (l.status='NEW' OR NOT EXISTS (SELECT 1 FROM lead_checkins k WHERE k.client_id=l.client_id AND k.sent_at>NOW()-make_interval(hours => $3::int)))
     ORDER BY l.client_id, l.updated_at
     LIMIT $4`, [RULES.NEW.afterMinutes, RULES.CONTACTED.afterHours, QUIET_HOURS, limit, RULES.WON.afterHours])).rows;

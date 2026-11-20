@@ -170,7 +170,7 @@ test('self-check: expired or revoked Meta access alerts the operator in Hebrew; 
   const view = await selfCheck.healthView();
   assert.ok(['ok', 'warn', 'fail'].includes(view.meta));
   const json = JSON.stringify(view);
-  assert.ok(!json.includes(expired.id) && !json.includes('token') && !json.includes(op.phone));
+  assert.ok(!/clientId|client_id|problems/.test(json) && !json.includes('token') && !json.includes(op.phone), 'health view must not expose customer ids, tokens or phones');
   assert.ok(['ok', 'warn', 'fail'].includes(view.overall));
   await db().query('DELETE FROM meta_connections WHERE client_id IN ($1,$2)', [expired.id, revoked.id]);
 }));

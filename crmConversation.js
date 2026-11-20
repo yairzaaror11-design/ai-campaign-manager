@@ -24,6 +24,15 @@ async function handle(clientId,text){
   const m=text.match(/^(?:סכום העסקה(?: הוא)?\s*)?(\d+(?:\.\d{1,2})?)\s*(₪|שח|ש״ח|שקל(?:ים)?|ILS|USD|EUR|דולר|אירו)$/i);
   let update=null;
   if(follow.kind==='REVENUE'&&m){const cents=Math.round(Number(m[1])*100);if(Number.isSafeInteger(cents))update={revenueMinor:cents,currency:/₪|ש|ILS/i.test(m[2])?'ILS':/USD|דולר/i.test(m[2])?'USD':'EUR'};}
+  // Deal value in the business's own terms (real estate: price + commission %), in shekels.
+  if(follow.kind==='REVENUE'&&!update&&(!m||/^(?:ILS|₪|שח|ש״ח|שקל(?:ים)?)$/i.test(m[2]))){
+   const growth=require('./growth');let terms=null;try{terms=await growth.termsFor(clientId,follow.id);}catch{}
+   if(terms&&growth.parseDeal(text,terms)){
+    let saved;try{saved=await growth.recordDeal(clientId,follow.id,{text});}catch{return{handled:true,reply:'הפנייה השתנתה בינתיים. אפשר לפתוח אותה שוב דרך ״הפניות שלי״.'};}
+    await store.update(clientId,null,profile=>{delete profile.crmFollowup;return{handled:false,changed:true};});
+    return{handled:true,reply:saved.text};
+   }
+  }
   if(follow.kind==='LOST_REASON'&&require('./conversationAnalysis').localAnalysis(text).intent==='other'&&!/[?？]/.test(text)&&!require('./conversationFlexibility').isDetour(text)&&text.length<=1000)update={note:'סיבת אי סגירה שדווחה: '+text};
   if(update){
    try{await crm.update(clientId,follow.id,{status:follow.status,version:follow.version,...update});}
@@ -52,7 +61,8 @@ async function handle(clientId,text){
   catch{return{handled:true,reply:'הפנייה עודכנה במקום אחר או אינה זמינה. אפשר לבקש ״הפניות שלי״ כדי לרענן.'};}
   await store.update(clientId,null,profile=>{delete profile.crmFocus;delete profile.crmMenu;delete profile.crmFollowup;if(['WON','LOST'].includes(updated.status))profile.crmFollowup={id:updated.id,version:updated.version,status:updated.status,kind:updated.status==='WON'?'REVENUE':'LOST_REASON'};return{handled:false,changed:true};});
   const told=updated.source==='meta_lead_ads'&&require('./metaCrmFeedback').enabled()?' אעדכן את Meta שהפנייה הזו הפכה ללקוח, כדי שתביא עוד אנשים כמוה.':'';
-  return{handled:true,reply:updated.status==='WON'?'העסקה סומנה כנסגרה.'+told+' מה סכום העסקה ובאיזה מטבע? למשל 500 ₪. אפשר גם לדלג.':updated.status==='LOST'?'הפנייה סומנה כלא הבשילה. מה הייתה הסיבה? אפשר גם לדלג.':'מצב הפנייה עודכן. אפשר לבקש ״הפניות שלי״ כדי להמשיך לפנייה הבאה.'};
+  let dealQuestion='מה סכום העסקה ובאיזה מטבע? למשל 500 ₪.';if(updated.status==='WON'){try{dealQuestion=(await require('./growth').termsFor(clientId,updated.id)).question;}catch{}}
+  return{handled:true,reply:updated.status==='WON'?'העסקה סומנה כנסגרה.'+told+' '+dealQuestion+' אפשר גם לדלג.':updated.status==='LOST'?'הפנייה סומנה כלא הבשילה. מה הייתה הסיבה? אפשר גם לדלג.':'מצב הפנייה עודכן. אפשר לבקש ״הפניות שלי״ כדי להמשיך לפנייה הבאה.'};
  }
  return null;
 }

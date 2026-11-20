@@ -156,7 +156,9 @@ async function afterConfirm(clientId, id) {
   catch (error) { if (['ITEM_CONSENT_REQUIRED', 'ITEM_INCOMPLETE'].includes(error.message)) return next(clientId, id); throw error; }
   await setIntake(clientId, null);
   const profile = profileOf(item), license = profile.license ? `\n\nבכל מודעה ופוסט יופיע ה${profile.license.label} ${item.attributes.licenseNumber}.` : '';
-  return ui(clientId, `✅ ${catalog.title(item)} נשמר ומשווק.\n\nמה להכין לו?\n• קמפיין לידים ב־Meta (טיוטה לבדיקה שלך)\n• פוסטים לרשתות${license}`, [choice('קמפיין לידים', `/catalog-campaign ${id}`), choice('פוסטים', `/catalog-posts ${id}`), choice('אחר כך', '/catalog-later')]);
+  // Its own public page with a lead form (published when the work agreement allows it).
+  const page = require('./landingPages').itemLine(await require('./landingPages').onItemActive(clientId, item).catch(() => null));
+  return ui(clientId, `✅ ${catalog.title(item)} נשמר ומשווק.${page ? '\n' + page : ''}\n\nמה להכין לו?\n• קמפיין לידים ב־Meta (טיוטה לבדיקה שלך)\n• פוסטים לרשתות${license}`, [choice('קמפיין לידים', `/catalog-campaign ${id}`), choice('פוסטים', `/catalog-posts ${id}`), choice('אחר כך', '/catalog-later')]);
 }
 
 async function open(clientId, id) {
