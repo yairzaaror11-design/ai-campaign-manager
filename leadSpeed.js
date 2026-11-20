@@ -87,8 +87,10 @@ function withTimeout(promise, ms) {
 async function firstMessage(clientId, lead, { answers = [], writer } = {}) {
   const [facts, owner] = await Promise.all([businessFacts(clientId), ownerName(clientId)]);
   const fallback = templateMessage(lead, facts, owner);
-  const write = writer || (aiEnabled() ? aiWriter : null);
-  if (!write) return { text: fallback, ai: false };
+  const chosen = writer || (aiEnabled() ? aiWriter : null);
+  if (!chosen) return { text: fallback, ai: false };
+  // Lead imports run outside a conversation: bill the AI draft to this business.
+  const write = (input) => require('./usageLedger').forClient(clientId, () => chosen(input));
   const input = {
     task: 'Write ONE short WhatsApp message in Hebrew that a small-business owner will send personally to a new lead who just left details in a form. ' +
       'Return JSON only: {"message":"..."}. 1-3 short sentences, warm and personal, like a real person, one emoji at most. ' +

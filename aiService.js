@@ -29,7 +29,10 @@ async function processMessage(text,history=[],options={}) {
  const name=options.provider||process.env.AI_PROVIDER||'gemini';
  const provider=resolve(name);
  if(!provider) throw Error('AI_PROVIDER_UNSUPPORTED');
- const response=await withFallback(name,options,()=>provider(text,history,options),fallback=>resolve(fallback)(text,history,{...options,model:undefined}));
+ // Over the monthly AI cost cap the same provider answers with its cheaper model.
+ const cap=require('./aiCostCap');
+ const primaryOptions=await cap.textOptions(name,options);
+ const response=await withFallback(name,options,()=>provider(text,history,primaryOptions),async fallback=>resolve(fallback)(text,history,await cap.textOptions(fallback,{...options,model:undefined})));
  if(!response || typeof response.text!=='string'||response.text.length>16000||!Array.isArray(response.actionPlans)||response.actionPlans.length>5) throw Error('INVALID_AI_OUTPUT');
  if(options.planningOnly&&response.actionPlans.length)throw Error('PLANNING_ACTION_REJECTED');
  for(const plan of response.actionPlans) {
@@ -44,7 +47,7 @@ async function analyzeConversation(text,context={},options={}) {
   const r=await providers.get(name)(text,[],{...options,task:'conversation_analysis',context});
   if(!r?.analysis)throw Error('ANALYSIS_UNAVAILABLE');return r.analysis;
  }
- const analyze=n=>n==='gemini'?require('./gemini').analyzeConversation(text,context,options):n==='claude'?require('./claude').analyzeConversation(text,context,options):Promise.reject(Error('AI_PROVIDER_UNSUPPORTED'));
+ const analyze=async n=>{const o=await require('./aiCostCap').textOptions(n,options);return n==='gemini'?require('./gemini').analyzeConversation(text,context,o):n==='claude'?require('./claude').analyzeConversation(text,context,o):Promise.reject(Error('AI_PROVIDER_UNSUPPORTED'));};
  if(!['gemini','claude'].includes(name))throw Error('AI_PROVIDER_UNSUPPORTED');
  return withFallback(name,options,()=>analyze(name),analyze);
 }

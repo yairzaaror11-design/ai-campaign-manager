@@ -197,6 +197,7 @@ async function handleTenantMessage(message, contact) {
   }
 
   if(message.type==='interactive'){
+    if(message.interactive?.button_reply?.id===require('./dataRetention').KEEP_BUTTON_ID){await routeText(from,require('./dataRetention').KEEP_TEXT);return;}
     const client=await getOrCreateClient(from);
     // An approval button from an earlier card (expired, or another card arrived since) still works:
     // it approves exactly that action, or re-offers it with fresh numbers if it expired.
@@ -231,6 +232,7 @@ async function routeText(from, text, prefix = '') {
   {const item=await require('./catalogConversation').handleText(from,text);if(item){if(item.task)await deliverTaskReply(from,item.clientId,item.task);else await safeSend(from,item.text,item);return;}}
   {const lc=await require('./leadConcierge').handleOwnerText(from,text);if(lc){if(lc.buttons&&configured()){const c=await getOrCreateClient(from),ui=await require('./conversationUi').prepareChoices(c.id,lc.reply,lc.buttons,lc.decisionKey);await safeSend(from,ui.text,ui);}else await safeSend(from,lc.reply);return;}}
   if(await require('./weeklyReportOffer').handleText(from,text))return;
+  {const kept=await require('./dataRetention').handleText(from,text);if(kept){await safeSend(from,kept.reply);return;}}
 
   if(require('./conversationControl').isReset(text)){
     await resetSession(from);
@@ -365,7 +367,7 @@ async function routeText(from, text, prefix = '') {
     }
     try{
       const result=await require('./videoService').request(client.id,from,videoRequest,{eventId:require('./whatsappDelivery').messageContext.getStore()?.eventId,referenceMediaId});
-      const replies={QUEUED:'קיבלתי, מכין לך סרטון קצר למודעה. זה לוקח בדרך כלל כמה דקות, ואשלח אותו כאן כשהוא מוכן.',ALREADY_QUEUED:'הסרטון כבר בהכנה. אשלח אותו כאן כשהוא מוכן.',MONTHLY_LIMIT:`הגעת למכסת ${result.limit} הסרטונים החודשית בחבילה שלך. אפשר להמשיך עם גרפיקות, או לדבר איתנו על הרחבה.`,RATE_LIMIT:'כבר הוזמנו סרטונים בשעה האחרונה. אפשר לבקש שוב בעוד קצת זמן.'};
+      const replies={QUEUED:'קיבלתי, מכין לך סרטון קצר למודעה. זה לוקח בדרך כלל כמה דקות, ואשלח אותו כאן כשהוא מוכן.',ALREADY_QUEUED:'הסרטון כבר בהכנה. אשלח אותו כאן כשהוא מוכן.',MONTHLY_LIMIT:`הגעת למכסת ${result.limit} הסרטונים החודשית בחבילה שלך. אפשר להמשיך עם גרפיקות, או לדבר איתנו על הרחבה.`,RATE_LIMIT:'כבר הוזמנו סרטונים בשעה האחרונה. אפשר לבקש שוב בעוד קצת זמן.',COST_CAP:'החודש כבר נוצר אצלך הרבה תוכן, אז סרטונים חדשים ייפתחו שוב בתחילת החודש הבא. בינתיים אפשר להמשיך עם גרפיקות וטקסטים.'};
       if(replies[result.status]){await safeSend(from,replies[result.status]);return;}
     }catch{await safeSend(from,'לא הצלחתי להתחיל את הכנת הסרטון. אפשר לנסות שוב עם תיאור קצר של העסק והמסר.');return;}
   }
@@ -387,7 +389,7 @@ async function routeText(from, text, prefix = '') {
         const ui=await require('./conversationUi').prepare(client.id,reply,'budget_period');await safeSend(from,ui.text,ui);
       }else if(graphicRequest.count>1){const ui=await require('./conversationUi').prepare(client.id,'איזו גרסה נרצה להכין למודעה?','media_variant');await safeSend(from,ui.text,ui);}
     } catch(error){
-      const reply=['REFERENCE_IMAGE_REQUIRED','MEDIA_EXPIRED_OR_NOT_OWNED'].includes(error.message)?'כדי לשמור על מראה המוצר, אפשר לשלוח שוב את התמונה שלו?':error.completed?`הכנתי ${error.completed} גרסאות. השאר לא הושלמו כרגע. אפשר לבחור מהן או לנסות את השאר בהמשך.`:'יצירת הגרפיקה לא הושלמה כרגע. אפשר לנסות שוב עם תיאור קצר של הכיוון הרצוי.';
+      const reply=['REFERENCE_IMAGE_REQUIRED','MEDIA_EXPIRED_OR_NOT_OWNED'].includes(error.message)?'כדי לשמור על מראה המוצר, אפשר לשלוח שוב את התמונה שלו?':error.message==='AI_COST_CAP_REACHED'?'החודש כבר נוצרו אצלך הרבה גרפיקות, אז גרפיקות חדשות ייפתחו שוב בתחילת החודש הבא. אפשר להמשיך לעבוד על הטקסטים והקמפיין.':error.completed?`הכנתי ${error.completed} גרסאות. השאר לא הושלמו כרגע. אפשר לבחור מהן או לנסות את השאר בהמשך.`:'יצירת הגרפיקה לא הושלמה כרגע. אפשר לנסות שוב עם תיאור קצר של הכיוון הרצוי.';
       await safeSend(from,reply);
     }
     return;

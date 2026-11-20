@@ -155,6 +155,9 @@ router.get('/app/api/agreement',endpoint(async(req,res)=>{const w=require('./wor
 router.post('/app/api/agreement',agreementEndpoint(req=>require('./scopedAuthority').setAgreement(req.portal.clientId,req.body)));
 router.post('/app/api/agreement/pause',agreementEndpoint(req=>require('./scopedAuthority').pauseAll(req.portal.clientId)));
 router.post('/app/api/agreement/resume',agreementEndpoint(req=>require('./scopedAuthority').resumeAll(req.portal.clientId)));
+// AI cost this month: the owner sees their own business; support operators see everyone.
+router.get('/app/api/usage',endpoint(async(req,res)=>res.json(await require('./usageLedger').ownerSummary(req.portal.clientId))));
+router.get('/app/api/usage/operator',endpoint(async(req,res)=>{if(!require('./opsAlerts').operatorIds().includes(String(req.portal.clientId)))return res.sendStatus(403);res.json(await require('./usageLedger').operatorSummary());}));
 router.get('/app/api/activity',endpoint(async(req,res)=>res.json({items:await require('./activityLog').list(req.portal.clientId,{days:30})})));
 router.get('/app/api/approvals',endpoint(async(req,res)=>res.json({approvals:await require('./dashboardApprovals').pending(req.portal.clientId)})));
 router.post('/app/api/approvals/:id/approve',endpoint(async(req,res)=>{if(req.body?.confirm!==true)return res.sendStatus(400);res.json(await require('./dashboardApprovals').approve(req.portal.clientId,req.params.id));}));
