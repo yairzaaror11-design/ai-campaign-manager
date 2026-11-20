@@ -291,8 +291,9 @@ async function processWithGemini(text, history = [], options = {}) {
 async function analyzeConversation(text,context={},options={}) {
  if(!options.ai&&!process.env.GEMINI_API_KEY)throw Error('GEMINI_API_KEY_REQUIRED');
  const ai=options.ai||new GoogleGenAI({apiKey:process.env.GEMINI_API_KEY});
- const response=await ai.models.generateContent({model:process.env.GEMINI_MODEL||'gemini-3.5-flash',contents:[{role:'user',parts:[{text:JSON.stringify({context,currentUserMessage:text})}]}],config:{systemInstruction:require('./conversationAnalysis').ANALYSIS_SYSTEM,responseMimeType:'application/json',maxOutputTokens:1800,httpOptions:{timeout:12000}}});
- if(response?.usageMetadata)void require('./usageLedger').record({provider:'gemini',model:process.env.GEMINI_MODEL||'gemini-3.5-flash',kind:'analysis',...require('./usageLedger').fromGemini(response.usageMetadata)});
+ const analysisModel=options.model||process.env.GEMINI_MODEL||'gemini-3.5-flash';
+ const response=await ai.models.generateContent({model:analysisModel,contents:[{role:'user',parts:[{text:JSON.stringify({context,currentUserMessage:text})}]}],config:{systemInstruction:require('./conversationAnalysis').ANALYSIS_SYSTEM,responseMimeType:'application/json',maxOutputTokens:1800,httpOptions:{timeout:12000}}});
+ if(response?.usageMetadata)void require('./usageLedger').record({provider:'gemini',model:analysisModel,kind:'analysis',...require('./usageLedger').fromGemini(response.usageMetadata)});
  return JSON.parse(response.text);
 }
 module.exports = { processWithGemini, toGeminiHistory, SYSTEM, runTool, functionDeclarations, analyzeConversation };

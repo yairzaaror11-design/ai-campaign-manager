@@ -26,6 +26,18 @@ WEEKLY_REPORTS_ENABLED=true
 
 > יש פניות שמחכות לעדכון. עדכון קצר של מה קרה עם כל פנייה עוזר לדעת איזה קמפיין באמת מביא לקוחות. כתבו ״הפניות שלי״ כדי לעדכן.
 
+## 4. `data_retention_notice` (optional, used only outside the 24h window)
+
+> שמנו לב שלא עבדנו יחד על השיווק כבר הרבה זמן. לפי מדיניות הפרטיות, בעוד 7 ימים נמחק את פרטי השיווק ששמרנו על העסק. כדי לשמור אותם כתבו ״שמור את המידע שלי״.
+
+Set `DATA_RETENTION_TEMPLATE=data_retention_notice` and add it to `WHATSAPP_APPROVED_TEMPLATES`.
+
+## 5. `ops_alert` (optional, for the support operator only)
+
+> יש תקלה במערכת SCORPIO שדורשת בדיקה. הפרטים בדף הבריאות של המערכת ובלוגים של Render.
+
+Set `OPS_ALERT_TEMPLATE=ops_alert` and add it to `WHATSAPP_APPROVED_TEMPLATES`.
+
 ## How each feature behaves
 
 | Feature | Inside the 24h window | Outside the window |

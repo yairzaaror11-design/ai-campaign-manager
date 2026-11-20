@@ -89,6 +89,7 @@ async function createGraphic(clientId,prompt,{generateImage=generate,uploadImage
  if(String(tenant)!==String(clientId)||!event?.eventId) throw Error('GRAPHIC_CONTEXT_REQUIRED');
  if(typeof prompt!=='string'||prompt.length<3||prompt.length>2000) throw Error('INVALID_GRAPHIC_BRIEF');
  references({referenceImage,referenceImages});
+ if(await require('./aiCostCap').imageLimit(clientId,1)<1) throw Error('AI_COST_CAP_REACHED');
  const dedupe=crypto.createHash('sha256').update(String(clientId)+':'+event.eventId).digest('hex');
  const claim=await db.query("INSERT INTO graphic_jobs(id,client_id,status,expires_at) VALUES($1,$2,'PROCESSING',NOW()+INTERVAL '1 day') ON CONFLICT DO NOTHING RETURNING id",[dedupe,clientId]);
  if(!claim.rows.length) {
@@ -125,6 +126,10 @@ async function createVariants(clientId,request,onImage,{loadReference=referenceF
  if(!Number.isInteger(request.count)||request.count<1||request.count>3)throw Error('GRAPHIC_COUNT_LIMIT');
  const base=require('./whatsappDelivery').messageContext.getStore();
  if(!base?.eventId||String(require('./metaConnection').context.getStore())!==String(clientId))throw Error('GRAPHIC_CONTEXT_REQUIRED');
+ // Over the monthly AI cost cap: one image per request, then none until next month.
+ const allowed=await require('./aiCostCap').imageLimit(clientId,request.count);
+ if(allowed<1)throw Error('AI_COST_CAP_REACHED');
+ request.count=allowed; // the caller reads the final count (variant choice, captions)
  const referenceImage=request.usesReference?await loadReference(clientId):undefined;
  const profile=await require('./marketingStore').load(clientId);
  const context=JSON.stringify({facts:profile?require('./conversationFacts').all(profile):{},brand:profile?.brand?{colors:profile.brand.colors||[]}:null,social:profile?.socialContent&&!profile.socialContent.stale?profile.socialContent.items.map(x=>({headline:x.headline,body:x.body})):null}).slice(0,900);
