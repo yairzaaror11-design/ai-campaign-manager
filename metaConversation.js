@@ -72,12 +72,59 @@ async function verify(clientId){
   return{status,accounts:[],permissions:[],canRead:false,canManage:false,error:safeError(error)};
  }
 }
-function statusDecision(v){return v.status==='CONNECTED'?'connected':v.status==='ACCOUNT_SELECTION_REQUIRED'&&v.accounts?.length?'account_selection':null;}
+// Official Meta page for opening an ad account (Business settings → Ad accounts).
+const AD_ACCOUNT_URL='https://business.facebook.com/settings/ad-accounts';
+// Text of the "סיימתי" button; it reads as a connection-status question on every route.
+const RECHECK_TEXT='סיימתי, תבדוק שוב את מצב החשבון';
+function noAccountGuide(intro='עוד אין לעסק חשבון מודעות פעיל ב־Meta, ובלי חשבון כזה אי אפשר לפרסם.'){
+ return intro+' פתיחה לוקחת כ־5 דקות:\n'
+  +'1. היכנס לעמוד חשבונות המודעות של Meta: '+AD_ACCOUNT_URL+'\n'
+  +'2. לחץ ״הוספה״ ואז ״יצירת חשבון מודעות חדש״.\n'
+  +'3. תן לחשבון את שם העסק, בחר אזור זמן ישראל ומטבע שקל ₪ (את המטבע אי אפשר לשנות אחר כך).\n'
+  +'4. הוסף אמצעי תשלום לחשבון.\n'
+  +'5. חזור לכאן ולחץ ״סיימתי״, ואבדוק שוב את החיבור.\n'
+  +'לא אבקש סיסמה או פרטי אשראי בצ׳אט.';
+}
+function statusDecision(v){return v.status==='CONNECTED'?'connected':v.status==='ACCOUNT_SELECTION_REQUIRED'?(v.accounts?.length?'account_selection':'no_ad_account'):null;}
+// After an account is connected, pick up the saved work instead of starting over.
+function connectedNext(p,v,lead=''){
+ const base=lead+statusReply(v);
+ if(p?.journey?.stage==='PLAN_REVIEW'||p?.launch?.stage==='SETUP')return{handled:true,reply:base+'\n\nהתוכנית שלך שמורה. נמשיך ליצירת הקמפיין? הוא ייווצר מושהה, ושום כסף לא יוצא בלי אישור נפרד שלך.',decisionKey:'meta_continue'};
+ if(p?.journey?.stage&&p.journey.stage!=='IDLE')return{handled:true,reply:base+'\n\nהטיוטה שלך שמורה. ממשיכים בדיוק מאיפה שעצרנו, פשוט תענה לי כאן.',decisionKey:null};
+ return{handled:true,reply:base,decisionKey:'connected'};
+}
+async function afterConnect(clientId,verified){
+ let v=verified;
+ // One ad account: nothing to choose, select it for the owner.
+ if(v.status==='ACCOUNT_SELECTION_REQUIRED'&&v.accounts?.length===1){try{await meta.selectAccount(clientId,v.accounts[0].id);v=await verify(clientId);}catch{}}
+ const p=await store.load(clientId);
+ if(v.status==='CONNECTED')return{verified:v,...connectedNext(p,v,'החיבור ל־Meta הושלם ✓\n')};
+ if(v.status==='ACCOUNT_SELECTION_REQUIRED'&&v.accounts?.length)return{verified:v,handled:true,reply:'החיבור ל־Meta הושלם ✓\n'+require('./accountMenu').reply({accounts:v.accounts}),decisionKey:'account_selection'};
+ if(v.status==='ACCOUNT_SELECTION_REQUIRED')return{verified:v,handled:true,reply:noAccountGuide('החיבור ל־Meta הושלם ✓ אבל עוד אין לעסק חשבון מודעות פעיל.'),decisionKey:'no_ad_account'};
+ return{verified:v,...statusResult(v)};
+}
+// OAuth finished in the browser: continue the WhatsApp conversation from our side.
+// The outbox keeps the 24-hour window rules; a failure never breaks the callback page.
+async function notifyConnected(clientId,verified){
+ const next=await afterConnect(clientId,verified);
+ try{
+  const phone=(await db.query('SELECT phone FROM clients WHERE id=$1',[clientId])).rows[0]?.phone;
+  if(!phone)return{...next,sent:false};
+  await meta.context.run(String(clientId),()=>require('./whatsappDelivery').messageContext.run({eventId:'meta-connected:'+clientId+':'+require('node:crypto').randomUUID(),sequence:0},async()=>{
+   const ui=await require('./conversationUi').prepare(clientId,next.reply,next.decisionKey||null);
+   await require('./whatsapp').safeSend(phone,ui.text,ui);
+  }));
+  return{...next,sent:true};
+ }catch(error){
+  require('./logger').logger.warn('Meta connection follow-up not sent',{error:/^[A-Z_]+$/.test(error?.message)?error.message:'FOLLOW_UP_FAILED'});
+  return{...next,sent:false};
+ }
+}
 function statusResult(v){return{handled:true,reply:statusReply(v),decisionKey:statusDecision(v)};}
 function statusReply(v){
  if(v.status==='CONNECTED')return`החשבון ״${v.account.name}״ אומת וחובר. ${v.canManage?'כל שינוי ידרוש אישור נפרד.':'אפשר לקרוא נתונים; שינוי קמפיינים אינו זמין כרגע.'} אפשר לבדוק קמפיינים קיימים או להכין טיוטה חדשה.`;
- if(v.status==='ACCOUNT_SELECTION_REQUIRED')return v.accounts.length?require('./accountMenu').reply({accounts:v.accounts}):'ההרשאה נקלטה, אך לא נמצא חשבון מודעות פעיל שאפשר לבחור. אפשר לבדוק גישה במנהל המודעות או להכין טיוטה מקומית.';
- if(v.status==='MISSING_PERMISSIONS')return v.missing?.includes('ads_read')?'חסרה הרשאת ads_read לקריאת נתוני הפרסום. אין כרגע גישה לדוחות. אפשר לבדוק את הרשאות החיבור ב-Meta ולחבר מחדש.':'Meta חסמה את בדיקת הגישה בגלל הרשאות. אין כרגע אפשרות לקרוא דוחות; צריך לבדוק את ההרשאה לחשבון ולחיבור ב-Meta לפני ניסיון נוסף.';
+ if(v.status==='ACCOUNT_SELECTION_REQUIRED')return v.accounts.length?require('./accountMenu').reply({accounts:v.accounts}):noAccountGuide()+'\nאם כבר פתחת חשבון ועדיין לא רואה אותו כאן, צריך לאשר אליו גישה: לחץ ״חיבור מחדש״.';
+ if(v.status==='MISSING_PERMISSIONS')return v.missing?.includes('ads_read')?'במסך של Meta לא אושרה גישה לנתוני הפרסום, ולכן אין לי כרגע גישה לדוחות. אפשר לחבר מחדש ולהשאיר את כל ההרשאות מסומנות.':'Meta חסמה את בדיקת הגישה בגלל הרשאות. אין כרגע אפשרות לקרוא דוחות; צריך לבדוק את ההרשאה לחשבון ולחיבור ב-Meta לפני ניסיון נוסף.';
  if(v.status==='TOKEN_EXPIRED'||v.status==='RECONNECT_REQUIRED')return'ההרשאה אינה תקפה כרגע. אפשר להכין טיוטה מקומית או לבקש קישור אישי לחיבור מחדש.';
  if(v.status==='CONNECTION_FAILED')return'לא הצלחתי לאמת את החיבור מול Meta כרגע. לא אסמן אותו כמחובר. אפשר לנסות בדיקה חדשה או להמשיך בטיוטה מקומית.';
  return'אין כרגע חשבון Meta מחובר ומאומת. אפשר לחבר אותו או להכין קודם טיוטה מקומית.';
@@ -120,7 +167,7 @@ async function handle(clientId,text,analysis,eventId){
   await store.update(clientId,null,profile=>{profile.connection.pendingQuestion=null;profile.connection.hasAdAccount=analysis.intent==='yes';return{handled:false,changed:true};});
   if(analysis.intent==='no'){
     await store.update(clientId,null,profile=>{require('./campaignJourney').init(profile).pendingAction='prepare_local_draft';return{handled:false,changed:true};});
-    return{handled:true,reply:'אפשר להכין כאן אסטרטגיה ומודעות גם לפני פתיחת חשבון. את החשבון והגישה צריך להקים במסך הרשמי של Meta; לא אבקש סיסמה בצ׳אט. להכין קודם טיוטת קמפיין?'};
+    return{handled:true,reply:noAccountGuide('אין בעיה. כדי לפרסם צריך חשבון מודעות ב־Meta.')+'\n\nבינתיים אפשר להכין כאן אסטרטגיה ומודעות גם לפני שהחשבון מוכן. להכין קודם טיוטת קמפיין?',decisionKey:'no_ad_account'};
   }
   return offer(clientId,eventId);
  }
@@ -131,7 +178,7 @@ async function handle(clientId,text,analysis,eventId){
   const visible=(p.connection?.accounts||fresh.accounts||[]).filter(a=>!p.connection?.accountQuery||require('./accountMenu').normalize(a.name).includes(require('./accountMenu').normalize(p.connection.accountQuery)));
   const id=explicit?.[1]||visible[(analysis.intent==='yes'?1:Number(n))-1]?.id;
   if(!id||!fresh.accounts?.some(a=>a.id===id))return{handled:true,reply:'החשבון הזה אינו ברשימת החשבונות שאומתו עבורך.\n'+statusReply(fresh)};
-  try {await meta.selectAccount(clientId,id);return statusResult(await verify(clientId));}
+  try {await meta.selectAccount(clientId,id);const v=await verify(clientId);return v.status==='CONNECTED'?connectedNext(await store.load(clientId),v):statusResult(v);}
   catch{return{handled:true,reply:'לא ניתן לבחור את החשבון הזה בלי גישה תקפה. אפשר לבדוק שוב את רשימת החשבונות.'};}
  }
  if(analysis.intent==='yes'&&p?.connection?.status==='CONNECTION_OFFERED')return invite(clientId,eventId);
@@ -162,5 +209,5 @@ async function handle(clientId,text,analysis,eventId){
  }
  return{handled:false};
 }
-module.exports={STATES,TRANSITIONS,move,recordStatus,verify,statusReply,offer,invite,handle};
+module.exports={STATES,TRANSITIONS,AD_ACCOUNT_URL,RECHECK_TEXT,move,recordStatus,verify,statusReply,offer,invite,handle,afterConnect,notifyConnected,noAccountGuide};
 
