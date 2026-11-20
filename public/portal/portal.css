@@ -1054,3 +1054,10 @@ details.home-page-directory>summary{font-weight:700;color:var(--text);cursor:poi
 .lg-layout{grid-template-columns:minmax(0,1fr)}
 .lg-main,.lg-rail{min-width:0}
 @media (min-width:1201px){.lg-layout{grid-template-columns:minmax(0,1fr) 340px}}
+
+/* Agent window on phones: stack top to bottom (the grid layout is desktop only) */
+@media (max-width:640px){
+ .agent-expanded[open]{display:flex;flex-direction:column}
+ .agent-expanded .agent-body{flex:1;min-height:0;overflow:auto}
+ .agent-expanded .dialog-heading,.agent-expanded .agent-composer{flex:none}
+}

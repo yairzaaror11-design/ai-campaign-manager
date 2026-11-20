@@ -21,7 +21,7 @@ async function refresh(){
   if(draft.mediaAssetId||state.brand?.images?.length){const img=document.createElement('img');img.alt='תמונה שנבחרה למודעה';img.src=draft.mediaAssetId?'/app/api/creative-image':'/app/api/brand-image?slot=0';img.addEventListener('error',()=>img.remove(),{once:true});ad.append(img);}
   ad.append(text('h3',creative.headline),text('p',creative.body),text('div',creative.cta,'cta'));
   if(draft.stale)ad.prepend(text('p','הפרטים השתנו. צריך לרענן ולאשר את הטיוטה בשיחה.','error'));
- }else ad.append(text('p','המודעה תופיע כאן אחרי שהעוזר יכין אותה בשיחה.'));
+ }else ad.append(text('p','המודעה תופיע כאן אחרי שהסוכן יכין אותה בשיחה.'));
  $('draft-missing').textContent=draft?.missing?.length?'להשלמה: '+draft.missing.join(', '):'';
  const plan=$('plan');plan.replaceChildren();
  for(const [label,value]of [['מטרה',draft?.businessGoal||b.businessGoal],['שירות',draft?.product||b.product],['קהל',draft?.audience||b.audience],['אזור',draft?.geography||b.geography],['תקציב',draft?.budgetText],['יעד פנייה',draft?.destination||b.leadDestination]])field(plan,label,value);
