@@ -89,6 +89,9 @@ function statusDecision(v){return v.status==='CONNECTED'?'connected':v.status===
 // After an account is connected, pick up the saved work instead of starting over.
 function connectedNext(p,v,lead=''){
  const base=lead+statusReply(v);
+ // Onboarding V2: the first campaign comes next (same paused flow, wording from onboardingCopy).
+ const onboarding=p?.journey?.stage==='PLAN_REVIEW'&&require('./onboarding').afterMetaConnected(p);
+ if(onboarding)return{handled:true,reply:onboarding,decisionKey:'meta_continue'};
  if(p?.journey?.stage==='PLAN_REVIEW'||p?.launch?.stage==='SETUP')return{handled:true,reply:base+'\n\nהתוכנית שלך שמורה. נמשיך ליצירת הקמפיין? הוא ייווצר מושהה, ושום כסף לא יוצא בלי אישור נפרד שלך.',decisionKey:'meta_continue'};
  if(p?.journey?.stage&&p.journey.stage!=='IDLE')return{handled:true,reply:base+'\n\nהטיוטה שלך שמורה. ממשיכים בדיוק מאיפה שעצרנו, פשוט תענה לי כאן.',decisionKey:null};
  return{handled:true,reply:base,decisionKey:'connected'};

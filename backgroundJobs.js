@@ -40,6 +40,7 @@ function startBackgroundJobs({intervalMs=1000}={}) {
   if(cycles%600===17) await track('audiences',()=>require('./buyerAudiences').runDue());
   if(cycles%3600===19) await track('retentionNotices',()=>require('./dataRetention').warnDue());
   if(cycles%60===23&&require('./leadConcierge').enabled()) await track('leadConcierge',()=>require('./leadConcierge').runDue());
+  if(cycles%600===31&&require('./onboarding').enabled()) await track('onboardingFollowups',()=>require('./onboarding').runDue());
   await require('./db').query("INSERT INTO worker_heartbeats(worker_id,role,last_success_at) VALUES($1,'MESSAGES',NOW()) ON CONFLICT(worker_id) DO UPDATE SET last_success_at=NOW()",[workerId]);
   if(cycles%300===29&&process.env.SELF_CHECK_ENABLED!=='false') await track('selfCheck',()=>require('./selfCheck').run());
  },'maintenance');

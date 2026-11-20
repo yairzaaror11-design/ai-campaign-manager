@@ -11,6 +11,8 @@ async function list(clientId, { days = 7 } = {}) {
   const plans = (await db.query(`SELECT p.id,p.intent,p.payload,p.status,p.updated_at,u.reason AS auto_reason,(u.action_id IS NOT NULL) AS autonomous FROM action_plans p
     LEFT JOIN authority_uses u ON u.action_id=p.id AND u.client_id=p.client_id
     WHERE p.client_id=$1 AND p.updated_at>NOW()-($2::int*INTERVAL '1 day') ORDER BY p.updated_at DESC LIMIT 30`, [clientId, days])).rows;
+  // "החזר למצב הקודם": budget changes, pauses and activations of the last 24 hours.
+  const undoable = await require('./undoActions').undoableIds(clientId);
   const items = plans.map((p) => {
     const t = p.payload?.target || {}, name = t.campaignName || p.payload?.parameters?.name || '';
     return {
@@ -19,7 +21,9 @@ async function list(clientId, { days = 7 } = {}) {
       why: String(p.auto_reason || p.payload?.summary || p.payload?.reason || '').slice(0, 300),
       status: (STATUS[p.status] || 'בטיפול') + (p.autonomous ? ' · לבד, לפי הסכם העבודה' : ''),
       autonomous: !!p.autonomous,
-      kind: 'ad'
+      kind: 'ad',
+      actionId: p.id,
+      undo: undoable.has(p.id) ? { label: require('./onboardingCopy').undoButton } : null
     };
   });
   let posts = [];
@@ -37,8 +41,8 @@ async function handle(clientId, text) {
   const items = await list(clientId);
   if (!items.length) return { handled: true, reply: 'השבוע לא עשיתי שום פעולה בחשבון הפרסום שלך. כל פעולה שאני מכין מחכה קודם לאישור שלך ✋' };
   const lines = items.slice(0, 8).map((x) => `• ${day(x.at)} · ${x.what} · ${x.status}` + (x.why ? `\n  למה: ${x.why.slice(0, 140)}` : ''));
-  const auto = items.some((x) => x.autonomous);
-  return { handled: true, reply: `📋 מה עשיתי ב־7 הימים האחרונים:\n\n${lines.join('\n')}\n\n${auto ? 'מה שסומן "לבד" נעשה בתוך הסכם העבודה שלך. שום דבר לא עבר את התקרה שקבעת.' : 'שום דבר שעולה כסף לא בוצע בלי האישור שלך.'}\n${require('./dashboardLink').hint('approvals')}` };
+  const auto = items.some((x) => x.autonomous), canUndo = items.some((x) => x.undo);
+  return { handled: true, reply: `📋 מה עשיתי ב־7 הימים האחרונים:\n\n${lines.join('\n')}\n\n${auto ? 'מה שסומן "לבד" נעשה בתוך הסכם העבודה שלך. שום דבר לא עבר את התקרה שקבעת.' : 'שום דבר שעולה כסף לא בוצע בלי האישור שלך.'}${canUndo ? '\n' + require('./onboardingCopy').undoWhatsAppLine : ''}\n${require('./dashboardLink').hint('approvals')}` };
 }
 
 // The five things the owner must always see: done, running now, waiting for approval, failed, actual spend.
