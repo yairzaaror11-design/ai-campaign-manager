@@ -62,11 +62,11 @@ function fakeGraph({ permissions = ['pages_show_list', 'pages_manage_posts', 'pa
 }
 
 test('migration 048 is idempotent', async () => {
-  const { pg, close } = await openDatabase();
+  const { db, close } = await openDatabase();
   try {
     const sql = fs.readFileSync(path.join(__dirname, '..', 'migrations', '048_channels.sql'), 'utf8');
-    await pg.exec(sql); await pg.exec(sql);
-    const cols = (await pg.query("SELECT column_name FROM information_schema.columns WHERE table_name='crm_leads' AND column_name IN ('ad_id','utm','landing_page_id','measurement_consent')")).rows;
+    await db.query(sql); await db.query(sql);
+    const cols = (await db.query("SELECT column_name FROM information_schema.columns WHERE table_name='crm_leads' AND column_name IN ('ad_id','utm','landing_page_id','measurement_consent')")).rows;
     assert.equal(cols.length, 4);
   } finally { await close(); }
 });
