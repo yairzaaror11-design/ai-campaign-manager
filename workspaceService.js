@@ -47,14 +47,14 @@ async function save(clientId,kind,input,{id,version,requestId}={}){
 async function saveBrand(clientId,input){
  const businessName=string(input?.businessName,120,true),businessType=string(input?.businessType,500),logo=string(input?.logo,2000);
  if(logo){try{require('./publicWebsite').url(logo);if(new URL(logo).hash)throw Error('HASH');}catch{throw Error('INVALID_BRAND_LOGO');}}
- if(!Array.isArray(input?.colors)||input.colors.length!==5||input.colors.some(c=>typeof c!=='string'||!/^#[0-9a-f]{6}$/i.test(c)))throw Error('INVALID_BRAND_COLORS');
+ if(input?.colors!==undefined&&input?.colors!==null)if(!Array.isArray(input?.colors)||input.colors.length!==5||input.colors.some(c=>typeof c!=='string'||!/^#[0-9a-f]{6}$/i.test(c)))throw Error('INVALID_BRAND_COLORS');
  if(!Number.isSafeInteger(input.version)||input.version<0)throw Error('INVALID_WORKSPACE_INPUT');
  return require('./marketingStore').update(clientId,null,p=>{
   if((p.version||0)!==input.version)throw Error('WORKSPACE_STALE');
   const facts=require('./conversationFacts');const changed=[];
   if(facts.write(p,'businessName',businessName,{source:'portal_explicit',evidence:businessName}))changed.push('businessName');
   if(facts.write(p,'businessType',businessType||null,{status:businessType?'known':'unknown',source:'portal_explicit',evidence:businessType}))changed.push('businessType');
-  p.brand={...(p.brand||{}),logo:logo||null,colors:input.colors.map(c=>c.toUpperCase())};
+  p.brand={...(p.brand||{}),logo:logo||null,colors:Array.isArray(input.colors)?input.colors.map(c=>c.toUpperCase()):(p.brand?.colors||null)};
   facts.correctionsInvalidate(p,[...changed,'brand']);
   return {handled:false,changed:true,audit:'PORTAL_BRAND_SAVED',saved:true};
  });

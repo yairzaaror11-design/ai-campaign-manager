@@ -40,6 +40,7 @@ test('workspace persists tenant-owned records, rejects stale and foreign edits, 
    await assert.rejects(workspace.saveBrand(a.id,input),/WORKSPACE_STALE/);assert.equal(await store.load(b.id),null);
    for(const logo of ['javascript:alert(1)','http://example.test/logo.png','https://user:password@example.test/x'])await assert.rejects(workspace.saveBrand(a.id,{...input,logo,version:after.version}),/INVALID_BRAND_LOGO/);
    await assert.rejects(workspace.saveBrand(a.id,{...input,colors:['red'],version:after.version}),/INVALID_BRAND_COLORS/);
+   const {colors:_unused,...noColors}=input;await workspace.saveBrand(a.id,{...noColors,businessName:'העסק החדש 2',version:after.version});assert.deepEqual((await store.load(a.id)).brand.colors,input.colors,'saving without colors keeps the business colors');
   });
   await t.test('planning agent reuses journey facts, validates screen, persists history and has no provider effects',async()=>{
    const agent=require('../portalAgent'),axios=require('axios'),get=axios.get,post=axios.post;let calls=0;axios.get=axios.post=async()=>{calls++;throw Error('UNEXPECTED_PROVIDER_CALL');};
