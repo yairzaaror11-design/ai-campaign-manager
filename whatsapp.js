@@ -9,9 +9,29 @@ async function transport(to,payload) {
     {headers:{Authorization:'Bearer '+process.env.WHATSAPP_ACCESS_TOKEN},timeout:15000,maxRedirects:0})).data;
  } catch {throw Error('WHATSAPP_SEND_UNCERTAIN');}
 }
+// Splits a long reply into WhatsApp-sized parts at a paragraph break, else a line break,
+// else the end of a sentence, else a space; a hard cut only for one endless word.
+function splitMessage(text,max=3800){
+ const parts=[];let rest=String(text);
+ while(rest.length>max){
+  const window=rest.slice(0,max+1),floor=Math.floor(max*0.5);
+  let cut=-1;
+  for(const re of [/\n\s*\n/g,/\n/g,/[.!?…]["״׳')]*(?=\s)/g,/\s/g]){
+   let m,last=-1;re.lastIndex=0;
+   while((m=re.exec(window)))if(m.index+m[0].length<=max)last=m.index+m[0].length;
+   if(last>=floor){cut=last;break;}
+  }
+  if(cut<1)cut=max;
+  const head=rest.slice(0,cut).trimEnd();
+  if(head)parts.push(head);
+  rest=rest.slice(cut).replace(/^\s+/,'');
+ }
+ if(rest.trim()||!parts.length)parts.push(rest);
+ return parts;
+}
 async function sendWhatsAppMessage(to,text,options={}) {
  const delivery=require('./whatsappDelivery');
- const enqueueText=async body=>{let result;for(let i=0;i<body.length;i+=3800)result=await delivery.enqueue(to,delivery.textPayload(body.slice(i,i+3800)));return result;};
+ const enqueueText=async body=>{let result;for(const part of splitMessage(body))result=await delivery.enqueue(to,delivery.textPayload(part));return result;};
  if(options.leadingText)await enqueueText(options.leadingText);
  if(options.interactivePayload)return delivery.enqueue(to,options.interactivePayload);
  return enqueueText(String(text));
@@ -31,5 +51,5 @@ async function statusTransport(body) {
   {headers:{Authorization:'Bearer '+process.env.WHATSAPP_ACCESS_TOKEN},timeout:5000,maxRedirects:0})).data;
 }
 const safeSend=sendWhatsAppMessage;
-module.exports={transport,sendWhatsAppMessage,safeSend,markReadTyping,statusTransport};
+module.exports={transport,sendWhatsAppMessage,safeSend,splitMessage,markReadTyping,statusTransport};
 

@@ -36,7 +36,7 @@ function approvalInstruction(approval) {
     '',
     process.env.READ_ONLY === 'false'
       ? 'לאחר אישור, המערכת עשויה לבצע את הפעולה בחשבון Meta.'
-      : 'READ_ONLY פעיל כרגע, לכן האישור ייבדק אך לא ישנה את Meta.'
+      : 'כרגע המערכת במצב בדיקה בלבד: האישור ייבדק, אבל שום דבר לא ישתנה בחשבון הפרסום.'
   ].join('\n');
 }
 
@@ -216,6 +216,7 @@ async function routeText(from, text, prefix = '') {
   if(await require('./buyerAudiences').handleText(from,text))return;
   {const advice=await require('./dailyAdvice').handleReply(from,text);if(advice?.route)text=advice.route;else if(advice)return;}
   {const speed=await require('./leadSpeed').handleReply(from,text);if(speed){await safeSend(from,speed.reply);return;}}
+  if(await require('./weeklyReportOffer').handleText(from,text))return;
 
   if(require('./conversationControl').isReset(text)){
     await resetSession(from);
@@ -263,18 +264,14 @@ async function routeText(from, text, prefix = '') {
         return; // No post-deletion message may recreate the client or outbox row.
       }
       else if (text === '/meta-renew') { await meta.renew(client.id); reply='הרשאת Meta חודשה. לא בוצע שינוי בקמפיינים.'; }
-      else if (text === '/meta-connect') reply = 'קישור אישי לחיבור Meta (10 דקות, אין להעביר): ' + await meta.createInvite(client.id);
-      else if (text === '/meta-accounts') {const list=(await meta.accounts(client.id)).data||[];reply=list.length?'*חשבונות הפרסום שלך:*\n'+list.slice(0,20).map((a,i)=>(i+1)+'. '+(a.name||'ללא שם')+(a.account_status===1?'':' (לא פעיל)')).join('\n')+'\n\nכדי להחליף חשבון, כתוב ״החשבונות שלי״ ובחר מהרשימה.':'לא מצאתי חשבונות פרסום בחיבור הנוכחי. אפשר לחבר מחדש עם /meta-connect.';}
+      else if (text === '/meta-connect') reply = 'קישור אישי לחיבור חשבון הפרסום (תקף ל־10 דקות, אל תעביר אותו לאחרים): ' + await meta.createInvite(client.id);
+      else if (text === '/meta-accounts') {const list=(await meta.accounts(client.id)).data||[];reply=list.length?'*חשבונות הפרסום שלך:*\n'+list.slice(0,20).map((a,i)=>(i+1)+'. '+(a.name||'ללא שם')+(a.account_status===1?'':' (לא פעיל)')).join('\n')+'\n\nכדי להחליף חשבון, כתוב ״החשבונות שלי״ ובחר מהרשימה.':'לא מצאתי חשבונות פרסום בחיבור הנוכחי. כדי לחבר מחדש, כתוב ״חבר את חשבון המודעות״.';}
       else if (/^\/meta-select act_\d+$/.test(text)) { const a=await meta.selectAccount(client.id,text.split(' ')[1]); reply = '✅ עברתי לחשבון ״'+(a?.name||'החשבון שבחרת')+'״.\nמעכשיו כל הקמפיינים והדוחות יהיו בחשבון הזה. אפשר לכתוב ״אני רוצה קמפיין״.'; }
-      else if (text === '/meta-disconnect') { await meta.disconnect(client.id); reply = 'החיבור המקומי והטוקן נמחקו. ניתן להסיר את האפליקציה גם בהגדרות Meta.'; }
-      else reply = 'פקודות: /meta-connect /meta-accounts /meta-select act_ID /meta-disconnect';
+      else if (text === '/meta-disconnect') { await meta.disconnect(client.id); reply = 'החיבור לחשבון הפרסום נותק ונמחק אצלנו. אפשר גם להסיר את האפליקציה בהגדרות של פייסבוק.'; }
+      else reply = 'אפשר לכתוב לי במילים: ״חבר את חשבון המודעות״, ״החשבונות שלי״ או ״נתק את חשבון מטא״.';
       await safeSend(from,reply);
-    } catch { await safeSend(from,'חיבור Meta אינו זמין או שההרשאה פגה. בקש /meta-connect מחדש.'); }
+    } catch { await safeSend(from,'החיבור לחשבון הפרסום לא זמין כרגע או שפג תוקפו. כתוב ״חבר את חשבון המודעות״ ואשלח קישור חדש.'); }
     return;
-  }
-  if (text === '/notifications-on' || text === '/notifications-off') {
-    await require('./db').query('UPDATE whatsapp_contacts SET opted_in=$2 WHERE phone=$1',[from,text==='/notifications-on']);
-    await safeSend(from,text==='/notifications-on'?'הסכמת לקבלת עדכונים נרשמה. ניתן לבטל עם /notifications-off.':'הסכמת העדכונים בוטלה.');return;
   }
   const competitorMatch=text.match(require('./competitorAds').PATTERN);
   if (competitorMatch) {await safeSend(from,require('./competitorAds').reply(competitorMatch[1]));return;}
@@ -284,7 +281,7 @@ async function routeText(from, text, prefix = '') {
   }
   const businessReportMatch=text.match(/^(?:\/business-report|דוח עסקי)(?:\s+(7|14|30))?$/);
   if (businessReportMatch) {
-    try {const client=await getOrCreateClient(from);await safeSend(from,await require('./businessReport').businessReport(client.id,'last_'+(businessReportMatch[1]||'7')+'d'));}
+    try {const client=await getOrCreateClient(from);await safeSend(from,await require('./businessReport').businessReport(client.id,'last_'+(businessReportMatch[1]||'7')+'d'));await require('./weeklyReportOffer').offer(client.id,from);}
     catch {await safeSend(from,'לא ניתן להפיק את הדוח העסקי כרגע. אפשר לנסות שוב בעוד כמה דקות.');}return;
   }
   if (/^\/report(?: (today|yesterday|last_7d|last_14d|last_30d|this_month|last_month))?$/.test(text)) {
@@ -379,7 +376,7 @@ async function routeText(from, text, prefix = '') {
   if (text === '/start' && (!configured() || !require('./marketingConversation').enabled())) {
     await safeSend(
       from,
-      'היי, אני SCORPIO AI. אפשר לבקש קמפיין, גרפיקה ודוחות בעברית. לחיבור חשבון פרסום: /meta-connect. ליצירת גרפיקה: צור לי גרפיקה ותאר את העסק והמסר. לדוח: /report. כל שינוי בקמפיין דורש אישור; פרסום זמין רק כאשר הרשאות הכתיבה מופעלות.'
+      'היי, אני SCORPIO AI. אפשר לבקש קמפיין, גרפיקה ודוחות בעברית. לחיבור חשבון פרסום כתוב ״חבר את חשבון המודעות״. ליצירת גרפיקה: צור לי גרפיקה ותאר את העסק והמסר. לדוח: /report. כל שינוי בקמפיין דורש אישור; פרסום זמין רק כאשר הרשאות הכתיבה מופעלות.'
     );
     return;
   }
