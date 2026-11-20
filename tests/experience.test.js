@@ -19,7 +19,7 @@ test('onboarding wording: one module, buttons fit WhatsApp, singular and honest'
     copy.summaryYes, copy.summaryFix, copy.consentYes, copy.consentNo, copy.agreementDefaults, copy.agreementCustom, copy.agreementLater,
     copy.metaConnect, copy.metaNoAccount, copy.metaLater, copy.followupContinue, copy.followupMeta, copy.followupCampaign, ...Object.values(copy.sellSuggestions).flat()];
   for (const t of titles) assert.ok(t.length <= 20, 'button too long: ' + t);
-  assert.match(copy.intro, /אף פעם לא מוציא כסף או מפעיל משהו בלי האישור שלך/);
+  assert.match(copy.intro, /דואג לשיווק וללידים/); assert.match(copy.intro, /בלי האישור שלך/);
   assert.equal(copy.tour.length, 5);
   assert.match(copy.progressTitle(2, 5), /2 מתוך 5/);
   assert.doesNotMatch(Object.values(copy).filter((v) => typeof v === 'string').join(' '), /שלחו|לחצו|תבחרו/, 'singular masculine');
@@ -48,13 +48,23 @@ test('experience flows on the database', async (t) => {
         const inspect = async (url) => ({ source: url, facts: { businessName: 'תיווך הגבעה', businessType: 'משרד תיווך נדל"ן בגבעתיים' }, brand: { images: [] } });
         const sell = await run('https://hagiva.example.co.il', { inspect });
         assert.match(sell.leadTexts[0], /קראתי את העמוד של תיווך הגבעה/);
-        assert.deepEqual(sell.interactivePayload.interactive.action.buttons.map((b) => b.reply.title), ['דירה למכירה', 'דירה להשכרה', copy.sellOtherButton]);
+        assert.deepEqual(sell.interactivePayload.interactive.action.buttons.map((b) => b.reply.title), ['נכס למכירה/השכרה', 'נכסים בבלעדיות', copy.sellOtherButton]);
         assert.match((await run('דירה למכירה')).text, /שאלה 2 מתוך 3/);
         assert.match((await run(copy.goals.LEADS.button)).text, /שאלה 3 מתוך 3/);
         const card = await run(copy.budgetButton(100));
-        assert.match(card.text, /הנה מה שהבנתי/);
+        assert.match(card.text, /הבנתי נכון/);
         assert.match(card.text, /100 ₪ ליום \(בערך 3000 ₪ בחודש\)/);
-        assert.match((await run(copy.summaryYes)).text, /מאשר שאשלח לך התראות/);
+        // Value first: the sample ad comes right after the card; brokers are then asked for the license number.
+        const lic = await run(copy.summaryYes, { makeImage: async () => ({ id: 'wa-media-1' }) });
+        assert.match(lic.leadTexts[0], /מודעה לדוגמה/);
+        assert.match(lic.leadTexts[0], /שום דבר לא עלה לאוויר/);
+        assert.deepEqual(lic.media, [{ id: 'wa-media-1', caption: copy.sampleImageCaption }]);
+        assert.match(lic.text, /רישיון התיווך/);
+        assert.match((await run('12')).leadTexts[0], /3 עד 10 ספרות/);
+        const consent = await run('רישיון 1234567');
+        assert.equal(consent.leadTexts[0], copy.licenseSaved('1234567'));
+        assert.match(consent.text, /אשלח לך אותו מיד/);
+        assert.equal((await require('../marketingStore').load(id)).brokerLicense, '1234567');
         const p = await require('../marketingStore').load(id), facts = require('../conversationFacts');
         assert.equal(facts.value(p, 'product'), 'דירה למכירה');
         assert.deepEqual(facts.value(p, 'dailyBudget'), { amount: 100, currency: 'ILS', period: 'day' });
@@ -62,16 +72,14 @@ test('experience flows on the database', async (t) => {
         assert.equal(item.vertical, 'real_estate');
         assert.equal(item.attributes.dealType, 'SALE');
         const agreement = await run(copy.consentNo);
-        assert.match(agreement.leadTexts[0], /לא אשלח לך הודעה על כל ליד חדש/);
+        assert.match(agreement.leadTexts[0], /לידים חדשים יחכו לך בדשבורד/);
         assert.equal(await onboarding.alertsDeclined(id), true);
         assert.equal((await require('../leadAlert').notifyOwner(id, { id: crypto.randomUUID(), name: 'דנה' })).status, 'ALERTS_DECLINED');
-        assert.match(agreement.text, /3000 ₪ בחודש, עד 100 ₪ ליום/);
-        const meta = await run(copy.agreementDefaults, { makeImage: async () => ({ id: 'wa-media-1' }) });
-        assert.equal(meta.leadTexts[0], copy.agreementSaved);
-        assert.match(meta.leadTexts[1], /הנה מודעה לדוגמה/);
-        assert.match(meta.leadTexts[1], /שום דבר לא עלה לאוויר/);
-        assert.deepEqual(meta.media, [{ id: 'wa-media-1', caption: copy.sampleImageCaption }]);
-        assert.match(meta.text, /לחבר את חשבון הפרסום שלך ב־Meta/);
+        assert.match(agreement.text, /מעל 100 ₪ ליום \(תקרה של 3000 ₪ בחודש\)/);
+        const meta = await run(copy.agreementDefaults);
+        assert.deepEqual(meta.leadTexts, [copy.agreementSaved], 'the sample ad is not repeated');
+        assert.deepEqual(meta.media, []);
+        assert.match(meta.text, /לחבר את חשבון הפרסום שלך בפייסבוק ובאינסטגרם/);
         const a = await require('../scopedAuthority').getAgreement(id);
         assert.equal(a.monthlyCeiling, 3000); assert.equal(a.maxDailyPerCampaign, 100);
         assert.equal(a.allow.activateNew, false, 'activation always waits for the owner');
