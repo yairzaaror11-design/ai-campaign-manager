@@ -56,6 +56,8 @@ async function businessNameFor(clientId) {
 // approved template (LEAD_ALERT_TEMPLATE) invites the owner back.
 async function notifyOwner(clientId, lead, { answers = [], writer, buttons: allowButtons } = {}) {
   if (!enabled() || !lead?.id) return { status: 'SKIPPED' };
+  // The owner said "לא עכשיו" to lead alerts during onboarding: the lead waits in the dashboard.
+  if (await require('./onboarding').alertsDeclined(clientId)) return { status: 'ALERTS_DECLINED' };
   try {
     const owner = (await db.query(`SELECT c.phone, w.last_inbound_at>NOW()-INTERVAL '24 hours' AS open
       FROM clients c LEFT JOIN whatsapp_contacts w ON w.phone=c.phone WHERE c.id=$1`, [clientId])).rows[0];

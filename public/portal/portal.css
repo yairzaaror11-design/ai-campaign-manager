@@ -1177,3 +1177,11 @@ article.card.lead .actions .button{white-space:nowrap}
 /* Status panel (done / running / waiting / failed / spend) and the work agreement form */
 .status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.status-box{border:1px solid var(--border);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:4px;background:var(--surface);min-width:0}.status-box strong{font-size:14px}.status-box small{overflow-wrap:anywhere}.check-row{display:flex;gap:10px;align-items:center;margin:8px 0;font-weight:400}.check-row input{width:auto;min-height:0}button.danger{background:var(--surface);border:1px solid var(--danger);color:var(--danger);box-shadow:none}
 .mono{font-family:ui-monospace,Menlo,monospace;direction:ltr;text-align:left;word-break:break-all}
+
+/* Experience: code sign-in, onboarding progress, 30-second tour, "בבדיקה" badge, undo (mobile-first, ≥44px targets) */
+.login-code{width:min(420px,100%);margin:24px auto 0;text-align:start}.login-code button{width:100%;min-height:48px;margin-top:8px}.login-code input{font-size:18px;letter-spacing:.5px}
+.xp-progress progress{height:10px;margin:8px 0 12px}.xp-steps{list-style:none;padding:0;margin:0 0 12px;display:grid;gap:6px}.xp-steps li{display:flex;gap:10px;align-items:center;min-height:44px;padding:0 12px;border:1px solid var(--border);border-radius:12px}.xp-steps li.done{color:var(--muted)}.xp-steps li.done .setup-mark{color:var(--success)}
+.xp-tour{position:fixed;inset:0;z-index:90;background:var(--overlay);display:flex;align-items:center;justify-content:center;padding:16px}.xp-tour-box{background:var(--surface);color:var(--text);border-radius:var(--radius);padding:24px;width:min(420px,100%);box-shadow:var(--shadow-raised)}.xp-tour-box .actions button{min-height:44px;flex:1}
+.testing-badge{background:var(--subtle);color:var(--warning);border-color:var(--warning);font-size:12px;font-weight:600;vertical-align:middle}
+.today-row .undo-button{min-height:44px;font-size:13px;padding:8px 14px;align-self:center;flex-shrink:0}
+@media(max-width:640px){.today-row{flex-wrap:wrap}.today-row .undo-button{width:100%}.login-code{padding:16px}}

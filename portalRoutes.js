@@ -7,6 +7,7 @@ router.get('/app/portal.js',(req,res)=>res.sendFile(path.join(__dirname,'public/
 router.get('/app/dashboard.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/dashboard.js')));
 router.get('/app/billing.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/billing.js')));
 router.get('/app/growth.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/growth.js')));
+router.get('/app/experience.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/experience.js')));
 router.get('/app/components.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/components.js')));
 router.get('/app/portal.css',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/portal.css')));
 router.post('/app/api/login',require('./rateLimit').middleware('portal-login',20),async(req,res)=>{
@@ -17,8 +18,23 @@ router.post('/app/api/login',require('./rateLimit').middleware('portal-login',20
   res.json({ok:true});
  }catch{res.status(401).json({error:'הקישור אינו תקף. אפשר לבקש קישור חדש בשיחת ה-WhatsApp.'});}
 });
+// Sign-in without a WhatsApp link: phone number -> one-time 6-digit code on WhatsApp.
+// The request answer never reveals whether the number is a customer.
+const sameOriginJson=req=>req.headers.origin===auth.origin()&&/^application\/json(?:;|$)/i.test(req.headers['content-type']||'');
+router.post('/app/api/login/code/request',require('./rateLimit').middleware('portal-login-code',10),async(req,res)=>{
+ try{if(!sameOriginJson(req))return res.sendStatus(403);res.json(await require('./loginCode').request(req.body?.phone));}
+ catch{res.json({ok:true,message:require('./onboardingCopy').loginCodeSentGeneric});}
+});
+router.post('/app/api/login/code/verify',require('./rateLimit').middleware('portal-login-code-verify',20),async(req,res)=>{
+ try{
+  if(!sameOriginJson(req))return res.sendStatus(403);
+  const result=await require('./loginCode').verify(req.body?.phone,req.body?.code);
+  res.setHeader('Set-Cookie',[`cb_session=${result.session}; Path=/app; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`,`cb_csrf=${result.csrf}; Path=/app; Secure; SameSite=Strict; Max-Age=604800`]);
+  res.json({ok:true});
+ }catch(e){const copy=require('./onboardingCopy');res.status(e.message==='LOGIN_CODE_RATE_LIMITED'?429:401).json({error:e.message==='LOGIN_CODE_RATE_LIMITED'?copy.loginCodeSlowDown:copy.loginCodeInvalid});}
+});
 router.use('/app/api',require('./rateLimit').middleware('portal-api',600),async(req,res,next)=>{
- try{req.portal=await auth.authenticate(req,{write:!['GET','HEAD'].includes(req.method)});next();}catch(e){res.status(e.message==='PORTAL_CSRF'?403:401).json({error:'צריך להיכנס דרך קישור אישי מה-WhatsApp.'});}
+ try{req.portal=await auth.authenticate(req,{write:!['GET','HEAD'].includes(req.method)});next();}catch(e){res.status(e.message==='PORTAL_CSRF'?403:401).json({error:'צריך להיכנס: בקישור אישי מה־WhatsApp, או עם מספר הטלפון וקוד.'});}
 });
 const endpoint=handler=>async(req,res)=>{try{await require('./metaConnection').context.run(String(req.portal.clientId),()=>handler(req,res));}catch(e){res.status(['LEAD_NOT_FOUND_OR_STALE','WORKSPACE_STALE','WORKSPACE_REQUEST_CONFLICT'].includes(e.message)?409:400).json({error:e.message==='LEAD_NOT_FOUND_OR_STALE'?'הפנייה עודכנה במקום אחר. רעננו ונסו שוב.':e.message==='WORKSPACE_STALE'?'הפרטים עודכנו במקביל. רעננו את המסך לפני עריכה נוספת.':e.message==='WORKSPACE_REQUEST_CONFLICT'?'הבקשה הזו כבר נשמרה עם פרטים אחרים. פתחו מחדש את הטופס.':'משהו לא עבד. בדקו את הפרטים ונסו שוב.'});}};
 router.use('/app/api/authority',require('./authorityRoutes'));
@@ -161,6 +177,13 @@ router.post('/app/api/agreement/resume',agreementEndpoint(req=>require('./scoped
 // AI cost this month: the owner sees their own business; support operators see everyone.
 router.get('/app/api/usage',endpoint(async(req,res)=>res.json(await require('./usageLedger').ownerSummary(req.portal.clientId))));
 router.get('/app/api/usage/operator',endpoint(async(req,res)=>{if(!require('./opsAlerts').operatorIds().includes(String(req.portal.clientId)))return res.sendStatus(403);res.json(await require('./usageLedger').operatorSummary());}));
+// Experience: onboarding progress "X מתוך 5", the 30-second tour, the "בבדיקה" registry, undo.
+router.get('/app/api/experience',endpoint(async(req,res)=>res.json({progress:await require('./onboarding').progress(req.portal.clientId),capabilities:await require('./capabilityStatus').list()})));
+router.post('/app/api/experience/tour-seen',endpoint(async(req,res)=>res.json(await require('./onboarding').tourSeen(req.portal.clientId))));
+router.post('/app/api/activity/:id/undo',require('./rateLimit').middleware('portal-campaign-action',20),endpoint(async(req,res)=>{
+ const r=await require('./undoActions').undo(req.portal.clientId,req.params.id,{channel:'PORTAL'});
+ res.json({ok:!!r.ok,mode:r.mode||null,actionId:r.approval?.actionId||r.actionId||null,reply:r.text});
+}));
 router.get('/app/api/activity',endpoint(async(req,res)=>res.json({items:await require('./activityLog').list(req.portal.clientId,{days:30})})));
 router.get('/app/api/approvals',endpoint(async(req,res)=>res.json({approvals:await require('./dashboardApprovals').pending(req.portal.clientId)})));
 router.post('/app/api/approvals/:id/approve',endpoint(async(req,res)=>{if(req.body?.confirm!==true)return res.sendStatus(400);res.json(await require('./dashboardApprovals').approve(req.portal.clientId,req.params.id));}));

@@ -88,6 +88,15 @@ async function deliverTaskReply(from,clientId,result){
  await safeSend(from,result.reply);
 }
 
+async function deliverOnboarding(from,clientId,text,ob){
+ for(const lead of ob.leadTexts||[])await safeSend(from,lead);
+ for(const m of ob.media||[])await require('./whatsappDelivery').enqueue(from,{type:'image',image:{id:m.id,caption:m.caption}});
+ await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:ob.historyReply||[...(ob.leadTexts||[]),ob.text].join('\n\n')}]);
+ if(ob.interactivePayload){await safeSend(from,ob.text,{interactivePayload:ob.interactivePayload});return;}
+ if(ob.decisionKey){const ui=await require('./conversationUi').prepare(clientId,ob.text,ob.decisionKey);await safeSend(from,ui.text,ui);return;}
+ await safeSend(from,ob.text);
+}
+
 async function handleMedia(from, message) {
   const kind=message.type==='image'?'תמונה':'סרטון';
   await notifyProcessing(from,`קיבלתי את ה${kind}.`);
@@ -226,12 +235,20 @@ async function routeText(from, text, prefix = '') {
   if(text.startsWith('/approve-current ')){const owner=configured()?await getOrCreateClient(from):null;if(owner&&await require('./conversationController').owns(owner.id)&&!await require('./campaignGuard').ownsApproval(owner.id,text.slice(17))&&!await require('./dailyAdvice').ownsApproval(owner.id,text.slice(17))&&!await require('./buyerAudiences').ownsApproval(owner.id,text.slice(17))&&!await require('./conversationUi').presentedApproval(owner.id,text.slice(17))){await safeSend(from,'האישור הזה אינו שייך למשימה הנוכחית. לא בוצעה פעולה. אפשר לבקש להכין את הפעולה מחדש לבדיקה.');return;}await handleApproval(from,null,text.slice(17));return;}
   if(/^\/cancel-action [A-Za-z0-9-]{6,64}$/.test(text)&&configured()){const c=await getOrCreateClient(from),id=text.slice(15);await require('./db').transaction(async tx=>{await tx("UPDATE approvals SET status='CANCELLED' WHERE client_id=$1 AND action_id=$2 AND status IN ('PENDING','SUPERSEDED')",[c.id,id]);await tx("UPDATE action_plans SET status='CANCELLED',updated_at=NOW() WHERE client_id=$1 AND id=$2 AND status='PROPOSED'",[c.id,id]);});const plan=(await require('./db').query('SELECT intent FROM action_plans WHERE client_id=$1 AND id=$2',[c.id,id])).rows[0];await safeSend(from,plan?.intent==='ACTIVATE_BUNDLE'?'בסדר, הקמפיין נשאר מושהה ולא מחייב. כשתרצה להפעיל אותו, אפשר מהדשבורד במסך הקמפיינים או לכתוב לי.':'בסדר, הפעולה בוטלה ולא בוצעה.');return;}
   if(text==='בטל את הפעולה הממתינה'){await cancelPendingApprovals(from);await safeSend(from,'הפעולה הממתינה בוטלה. מה נרצה לשנות?');return;}
+  if(configured()){
+    // Onboarding V2 (behind ONBOARDING_V2_ENABLED) and "החזר למצב הקודם" (undo, 24 hours).
+    const c=await getOrCreateClient(from);
+    const ob=await require('./onboarding').handleText(c.id,text,{eventId:require('./whatsappDelivery').messageContext.getStore()?.eventId,onSlow:()=>notifyProcessing(from,require('./onboardingCopy').reading)});
+    if(ob){await deliverOnboarding(from,c.id,text,ob);return;}
+    const undo=await require('./undoActions').handleText(c.id,text);
+    if(undo){await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:undo.text}]);if(undo.approval){const ui=await require('./conversationUi').prepareApproval(c.id,undo.approval,undo.text);await safeSend(from,ui.text,ui);}else await safeSend(from,undo.text);return;}
+  }
   if(await require('./buyerAudiences').handleText(from,text))return;
   {const advice=await require('./dailyAdvice').handleReply(from,text);if(advice?.route)text=advice.route;else if(advice)return;}
   {const speed=await require('./leadSpeed').handleReply(from,text);if(speed){await safeSend(from,speed.reply);return;}}
   {const channel=await require('./channelConversation').handleText(from,text);if(channel){await safeSend(from,channel.reply);return;}}
-  {const item=await require('./catalogConversation').handleText(from,text);if(item){if(item.task)await deliverTaskReply(from,item.clientId,item.task);else await safeSend(from,item.text,item);return;}}
-  {const lc=await require('./leadConcierge').handleOwnerText(from,text);if(lc){if(lc.buttons&&configured()){const c=await getOrCreateClient(from),ui=await require('./conversationUi').prepareChoices(c.id,lc.reply,lc.buttons,lc.decisionKey);await safeSend(from,ui.text,ui);}else await safeSend(from,lc.reply);return;}}
+  {const item=await require('./catalogConversation').handleText(from,text);if(item){if(item.task)await deliverTaskReply(from,item.clientId,item.task);else{if(!item.interactivePayload&&item.clientId)item.text=await require('./capabilityStatus').decorate('catalog',item.text,item.clientId);await safeSend(from,item.text,item);}return;}}
+  {const lc=await require('./leadConcierge').handleOwnerText(from,text);if(lc){if(lc.buttons&&configured()){const c=await getOrCreateClient(from),ui=await require('./conversationUi').prepareChoices(c.id,lc.reply,lc.buttons,lc.decisionKey);await safeSend(from,ui.text,ui);}else await safeSend(from,configured()?await require('./capabilityStatus').decorate('lead_concierge',lc.reply,(await getOrCreateClient(from)).id):lc.reply);return;}}
   {const g=await require('./growthConversation').handleText(from,text);if(g){if(g.task)await deliverTaskReply(from,g.clientId,g.task);else await safeSend(from,g.text,g.interactivePayload?g:undefined);return;}}
   if(await require('./weeklyReportOffer').handleText(from,text))return;
   {const kept=await require('./dataRetention').handleText(from,text);if(kept){await safeSend(from,kept.reply);return;}}
@@ -243,6 +260,7 @@ async function routeText(from, text, prefix = '') {
       const client=await getOrCreateClient(from);
       await require('./taskAgent').cancel(client.id);
       await require('./marketingStore').restart(client.id);
+      await require('./onboarding').reset(client.id);
     }
     await safeSend(from,process.env.UNIFIED_CONVERSATION_ENABLED==='true'?'איפסתי את המשימה וביטלתי אישורים ממתינים. חיבור Meta נשמר. מה תרצה שנכין עכשיו?':'איפסתי את פרטי השיחה והטיוטה וביטלתי אישורי פעולה ממתינים. חיבור Meta נשמר. מה העסק עושה, ובאיזה שם הוא פועל?');
     return;

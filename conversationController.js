@@ -36,14 +36,14 @@ async function handle(clientId,input,options={}){
  // "What did you do and why": the activity log.
  const activity=await require('./activityLog').handle(clientId,message)||await require('./activityLog').handleStatus(clientId,message);if(activity)return activity;
  // Ongoing organic content (three-month calendar) and photo-shoot requests.
- const organic=await require('./organicContent').handle(clientId,message);if(organic)return organic;
+ const organic=await require('./organicContent').handle(clientId,message);if(organic){if(typeof organic.reply==='string')organic.reply=await require('./capabilityStatus').decorate('organic_content',organic.reply,clientId);return organic;}
  const spendCap=await require('./spendCap').handle(clientId,message);if(spendCap)return spendCap;
  if(message.startsWith('/')&&message!=='/start')return{handled:true,reply:'אפשר לכתוב כאן במילים מה תרצה להשיג. אמשיך מאותה בקשה ואציג את התוצרים לבדיקה לפני כל פעולה.'};
  const profile=await require('./marketingStore').load(clientId);
  const connection=['connect','disconnect','renew','connection_status','select_account'].includes(analysis.intent)||profile?.connection?.status==='ACCOUNT_SELECTION_REQUIRED'&&/^\d{1,3}$/.test(message)||profile?.connection?.status==='CONNECTION_OFFERED'&&analysis.intent==='yes';
  if(connection){const result=await require('./metaConversation').handle(clientId,message,analysis,eventId);if(result.handled)return result;}
  const personal=await require('./personalConversation').handle(clientId,message,eventId);if(personal)return personal;
- if(!active&&analysis.intent==='capabilities')return{handled:true,reply:'אפשר להכין מודעה, עיצוב וטופס לידים, לבדוק נתוני קמפיינים ולהציע פעולות בחשבון המחובר. אברר רק מה שחסר לבקשה ואציג את התוצרים לבדיקה. יצירה ב־Meta והפעלה דורשות אישורים נפרדים.'};
+ if(!active&&analysis.intent==='capabilities'){const testing=await require('./capabilityStatus').testingLine().catch(()=>'');return{handled:true,reply:'אפשר להכין מודעה, עיצוב וטופס לידים, לבדוק נתוני קמפיינים ולהציע פעולות בחשבון המחובר. אברר רק מה שחסר לבקשה ואציג את התוצרים לבדיקה. יצירה ב־Meta והפעלה דורשות אישורים נפרדים.'+(testing?'\n\n'+testing:'')};}
  if(!skills.check().ok)return{handled:true,externalActionsExecuted:false,reply:'בדיקת החיבור של היכולות נכשלה. לא אבצע משימות חדשות עד לתיקון החיבור.'};
  if(!tasks.canPresentReview(active,message)&&(!tasks.needsGoalClarification(message)||dynamicRouting)&&!tasks.enabled()&&process.env.TASK_AGENT_ENABLED==='true'&&process.env.TASK_AGENT_REQUIRE_EVAL==='true'){
   try{await options.onProgress?.('המערכת מתעוררת ובודקת את החיבור למודל. אמשיך בבקשה אם הבדיקה תסתיים בזמן.');}catch{require('./logger').logger.warn('Model readiness notice unavailable');}
@@ -58,5 +58,5 @@ async function media(clientId,input,options={}){
  if(!await tasks.active(clientId))return{handled:true,reply:'הקובץ נשמר לשיחה. מה תרצה להכין איתו?'};
  return handle(clientId,input,options);
 }
-function acceptsInteractive(profile){return ['action_approval','account_selection','connection_offer','connected','task_review','guard_alert','billing_cancel','lead_contact','catalog','lead_concierge_optin','lead_concierge_hours','lead_concierge_lead','lead_viewing_outcome','work_agreement','no_ad_account','meta_continue','weekly_report'].includes(profile?.ui?.decisionKey);}
+function acceptsInteractive(profile){return ['action_approval','account_selection','connection_offer','connected','task_review','guard_alert','billing_cancel','lead_contact','catalog','lead_concierge_optin','lead_concierge_hours','lead_concierge_lead','lead_viewing_outcome','work_agreement','no_ad_account','meta_continue','weekly_report','onboarding'].includes(profile?.ui?.decisionKey);}
 module.exports={passesThrough,owns,handle,media,acceptsInteractive};

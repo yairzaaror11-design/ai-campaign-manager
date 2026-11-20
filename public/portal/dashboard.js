@@ -241,6 +241,7 @@
   const main=el('div','','lg-main'),rail=el('aside','','lg-rail');rail.setAttribute('aria-label','מה מחכה לך');main.append(brief);
   main.append(statusPanel());
   const setup=today.setup.total&&setupLeft>0?setupPanel(today.setup):null;if(setup&&!leads.leads.length)main.append(setup);
+  {const xp=window.ScorpioExperience?.progressSection?.();if(xp)main.prepend(xp);}
   const flowSec=el('section','','lg-sec'),flowHead=el('div','','lg-sec-head'),flowTitle=el('h2','מהפרסום ועד המכירה');flowHead.append(flowTitle,el('span','7 הימים האחרונים','lg-meta'));flowSec.append(flowHead,el('p','טוען…','lg-wait'));main.append(flowSec);
   const campSec=el('section','','lg-sec'),campHead=el('div','','lg-sec-head');campHead.append(el('h2','קמפיינים'),el('span','7 הימים האחרונים','lg-meta'));campSec.append(campHead,el('p','טוען…','lg-wait'));main.append(campSec);
   if(setup&&leads.leads.length)main.append(setup);
@@ -268,7 +269,10 @@
  function activityCard(){
   const c=card('מה עשיתי ולמה','30 הימים האחרונים · שום דבר לא עולה לאוויר ולא מחייב אותך בלי האישור שלך'),body=el('div');body.append(el('p','טוען…','muted'));c.append(body);
   api('activity').then(({items})=>{body.replaceChildren();if(!items.length){body.append(el('p','עוד לא בוצעו פעולות בחשבון הפרסום.','muted'));return;}
-   items.slice(0,15).forEach(x=>{const row=el('div','','today-row'),copy=el('div');copy.append(el('strong',x.what),el('small',new Date(x.at).toLocaleDateString('he-IL',{weekday:'short',day:'numeric',month:'numeric'})+' · '+x.status));if(x.why)copy.append(el('p','למה: '+x.why,'muted'));row.append(copy);body.append(row);});
+   items.slice(0,15).forEach(x=>{const row=el('div','','today-row'),copy=el('div');copy.append(el('strong',x.what),el('small',new Date(x.at).toLocaleDateString('he-IL',{weekday:'short',day:'numeric',month:'numeric'})+' · '+x.status));if(x.why)copy.append(el('p','למה: '+x.why,'muted'));row.append(copy);
+    // "החזר למצב הקודם" (24 hours): goes through the agreement / approval rules like any action.
+    if(x.undo&&x.actionId){const u=button(x.undo.label,()=>run(u,async()=>{const r=await api('activity/'+encodeURIComponent(x.actionId)+'/undo',{});tell(r.reply,!r.ok);if(r.ok)navigate(r.mode==='approval'?'approvals':current);}),'secondary undo-button');row.append(u);}
+    body.append(row);});
   }).catch(()=>{body.replaceChildren(el('p','לא הצלחנו לטעון את היומן.','muted'));});
   return c;
  }
