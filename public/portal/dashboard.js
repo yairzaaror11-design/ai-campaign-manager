@@ -397,7 +397,9 @@
  function postRow(x,reload){
   const row=el('div','','today-row organic-row'),copy=el('div');
   copy.append(el('strong',`${dayLabel(x.publish_on)} · ${ORGANIC_FORMAT[x.format]} · ${ORGANIC_MEDIA[x.media]}`),el('small',x.topic));
-  const text=el('p',x.caption,'organic-caption');copy.append(text,badge(ORGANIC_STATUS[x.status]||x.status,x.status==='DRAFT'?'warning':''));
+  const text=el('p',x.caption,'organic-caption'),live=(x.publications||[]).filter(p=>p.status==='PUBLISHED');copy.append(text,badge(live.length?'פורסם ✓':ORGANIC_STATUS[x.status]||x.status,x.status==='DRAFT'&&!live.length?'warning':''));
+  live.forEach(p=>{const name=p.network==='instagram'?'אינסטגרם':'פייסבוק';if(p.permalink){const a=el('a','לפוסט ב'+name);a.href=p.permalink;a.target='_blank';a.rel='noopener noreferrer';copy.append(a);}else copy.append(el('small','פורסם ב'+name));});
+  (x.publications||[]).filter(p=>['FAILED','UNCERTAIN'].includes(p.status)).forEach(p=>copy.append(el('small',(p.network==='instagram'?'אינסטגרם':'פייסבוק')+': '+(p.status==='UNCERTAIN'?'לא בטוח שפורסם, כדאי לבדוק בדף':'לא פורסם, נשלח אליך לוואטסאפ'),'muted')));
   const actions=el('div','','actions');
   if(x.status==='DRAFT'){const ok=button('אשר',()=>run(ok,async()=>{await api('organic/posts/'+x.id,{action:'approve'});reload();}),'primary');actions.append(ok);}
   if(['DRAFT','APPROVED'].includes(x.status)){
@@ -516,6 +518,9 @@
  async function landing(){
   const data=await api('landing'),out=[heading('עמודי מכירה','דף עם ההצעה שלכם וטופס, וכל ליד ממנו נכנס לכאן.',[button('＋ צור עמוד מכירה',()=>editLanding(),'primary')])];
   if(!data.pages.length)out.push(empty('עדיין אין עמודי מכירה','צרו עמוד ראשון מהמותג וההצעה שלכם. העמוד נשמר כטיוטה פרטית לפני פרסום.',button('צור עמוד מכירה',()=>editLanding(),'primary')));else out.push(table(['עמוד','מצב','נוצר','פעולות'],data.pages.map(p=>{const actions=el('div','','actions');actions.append(button('תצוגה מקדימה',()=>previewLanding(p)));if(p.status==='DRAFT')actions.append(button('עריכה',()=>editLanding(p)));if(p.url){const a=el('a','פתיחת הדף');a.href=p.url;a.target='_blank';a.rel='noopener noreferrer';actions.append(a);}return [p.payload?.title||p.slug.slice(0,12),badge(p.status==='PUBLISHED'?'פורסם':'טיוטה'),new Date(p.created_at).toLocaleDateString('he-IL'),actions];})));
+  try{const ch=await api('channels'),auto=ch.pages;out.push(heading('דף העסק ודפי הפריטים','דף ציבורי לעסק ולכל פריט שמשווק, עם טופס לידים',[],2));
+   if(!auto.length){const b=button('יצירת דף לעסק',()=>run(b,async()=>{const r=await api('channels/pages/business',{});tell(r.published?'✅ הדף באוויר':'הדף נוצר כטיוטה');navigate('landing');}),'primary');out.push(b);}
+   else out.push(table(['דף','מצב','לידים','פעולות'],auto.map(p=>{const actions=el('div','','actions');if(p.url){const a=el('a','פתיחת הדף');a.href=p.url;a.target='_blank';a.rel='noopener noreferrer';actions.append(a);}else{const b=button('פרסום',()=>run(b,async()=>{await api('channels/pages/'+p.id+'/publish',{});navigate('landing');}),'primary');actions.append(b);}return [p.kind==='BUSINESS'?'דף העסק':(p.item_title||'פריט'),badge(p.status==='PUBLISHED'?'פורסם':'טיוטה'),String(p.leads),actions];})));}catch{}
   out.push(heading('קידום אורגני SEO','הכנת טקסטים שמסבירים את ההצעה שלכם',[],2),empty('מאמרים לפרסום','כותבים כאן טקסטים לאתר. פרסום אוטומטי באתר יגיע בקרוב.',go('שמירת טיוטת תוכן','content')));return out;
  }
 
@@ -572,14 +577,35 @@
   const other=card('Google, WhatsApp ומודלי AI');other.append(el('h3','WhatsApp'),el('p','שיחת העסק משתמשת בחיבור הקיים. הגדרת מספרים והרשאות ספק אינה זמינה כאן.'),el('h3','Google'),el('p','Google Ads ויומן Google יגיעו בקרוב.'),el('h3','מנועי AI'),el('p','ספקי ה־AI נשמרים לפי הגדרות השרת הקיימות.'));grid.append(meta,other);
   const leadPanel=await leadSources();
   if(leadPanel)grid.append(leadPanel);
+  grid.append(await channelsCard());
   const connections=await api('integrations');
   connections.social.forEach(provider=>{const c=card(provider.name,'חיבור לרשתות החברתיות');c.append(badge(provider.connected?'מחובר':provider.selectionRequired?'נדרשת בחירת חשבון':provider.configured?'מוכן לחיבור':'לא הוגדר בשרת'));if(provider.displayName)c.append(el('p',provider.displayName));
    if(provider.configured)c.append(el('p',({facebook:'הספק יבקש גישה לדפים ולפרסום פוסטים.',instagram:'הספק יבקש גישה לדפים ולחשבון Instagram לצורך פרסום תוכן.',linkedin:'הספק יבקש פרטי פרופיל והרשאה לפרסום תוכן.',tiktok:'הספק יבקש פרטי חשבון והרשאה לפרסום וידאו.',youtube:'הספק יבקש גישה לערוץ ולהעלאת סרטונים.',x:'הספק יבקש פרטי חשבון וגישה לקריאה ולפרסום תוכן.'})[provider.id],'muted'));if(!provider.configured)c.append(el('p','החיבור הזה יגיע בקרוב.','muted'));
    else if(provider.selectionRequired){c.append(el('p','באיזה חשבון נשתמש?'));provider.accounts.forEach(a=>{const b=button(a.name,()=>run(b,async()=>{await api('social/'+provider.id+'/account',{accountId:a.id});await navigate('integrations');}));c.append(b);});}
-   else if(!provider.connected){const b=button('חיבור '+provider.name,()=>run(b,async()=>{if(!await UI.confirm('חיבור '+provider.name,'החיבור יבקש הרשאות לתוכן ולחשבון דרך הספק הרשמי. פרטי ההרשאות יוצגו אצל הספק. לא יפורסם תוכן באמצעות החיבור עצמו.','המשך לחיבור'))return;const r=await api('social/'+provider.id+'/connect',{});location.assign(r.url);}), 'primary');c.append(b);}
+   else if(!provider.connected){const b=button('חיבור '+provider.name,()=>run(b,async()=>{if(!await UI.confirm('חיבור '+provider.name,'החיבור יבקש הרשאות לתוכן ולחשבון דרך הספק הרשמי. פרטי ההרשאות יוצגו אצל הספק. פוסטים יפורסמו אוטומטית רק אם הסכם העבודה מאפשר לסוכן לפרסם לבד.','המשך לחיבור'))return;const r=await api('social/'+provider.id+'/connect',{});location.assign(r.url);}), 'primary');c.append(b);}
    if(provider.hasAuthorization){const b=button('ניתוק החיבור',()=>run(b,async()=>{if(!await UI.confirm('ניתוק '+provider.name,'הטוקן המקומי והבחירה בחשבון יוסרו. הרשאות אצל הספק ניתנות להסרה גם בהגדרות הספק.','אישור ניתוק'))return;await api('social/'+provider.id+'/disconnect',{confirm:true});await navigate('integrations');}),'secondary');c.append(b);}grid.append(c);
   });
   return [heading('חיבורים ופרסום','החשבונות שמחוברים לעסק'),grid];
+ }
+ // Channels: automatic publishing status, Meta Pixel, lead webhook and the business page.
+ async function channelsCard(){
+  const c=card('פרסום ולידים מכל מקום','פרסום אוטומטי, פיקסל ומקורות לידים');
+  let d;try{d=await api('channels');}catch{c.append(el('p','לא הצלחנו לטעון את המצב.','muted'));return c;}
+  const a=d.autopublish,LBL={facebook:'פייסבוק',instagram:'אינסטגרם'},WHY={NO_AGREEMENT:'אין הסכם עבודה',PAUSED:'הפעולות האוטומטיות עצורות',NOT_ALLOWED:'הסכם העבודה לא מאפשר לפרסם לבד'};
+  c.append(el('h3','פרסום אוטומטי של פוסטים'));
+  if(!a.enabled)c.append(el('p','עוד לא פעיל בשרת. בינתיים כל פוסט מגיע אליך לוואטסאפ, מוכן לפרסום.','muted'));
+  else{c.append(el('p',a.agreementAllows?'הסכם העבודה מאפשר לסוכן לפרסם לבד ✓':'הסוכן לא מפרסם לבד: '+(WHY[a.agreementWhy]||'צריך אישור בהסכם העבודה')+'.'));
+   for(const [n,v] of Object.entries(a.networks))c.append(el('p',LBL[n]+': '+(v.connected?(v.missing?.length?'חסרות הרשאות: '+v.missing.join(', '):'מחובר'+(v.account?' ('+v.account+')':'')):'לא מחובר')));
+   const check=button('בדיקת הרשאות',()=>run(check,async()=>{const r=await api('channels/autopublish/check',{});const lines=Object.entries(r.networks).map(([n,v])=>LBL[n]+': '+(!v.connected?'לא מחובר':v.missing?.length?'חסר: '+v.missing.join(', '):v.reason?'לא נבדק כרגע':'מוכן לפרסום ✓'));tell(lines.join(' · '));}),'secondary');c.append(check);}
+  c.append(el('h3','Meta Pixel בדפי העסק'));
+  const form=el('form','','inline-form'),input=el('input');input.id='pixel-id';input.inputMode='numeric';input.maxLength=20;input.value=d.pixelId||'';input.setAttribute('dir','ltr');const label=el('label','מזהה פיקסל (מספר מתוך מנהל האירועים)');label.htmlFor='pixel-id';
+  const save=button('שמירה','', 'primary');save.type='submit';form.append(label,input,save);form.addEventListener('submit',e=>{e.preventDefault();run(save,async()=>{await api('channels/pixel',{pixelId:input.value.trim()||null});tell(input.value.trim()?'✅ הפיקסל נשמר. הוא נטען בדפים רק אחרי שהמבקר מאשר מדידה.':'הפיקסל הוסר.');});});c.append(form);
+  c.append(el('p',d.conversionsApi.metaConnected?'לידים מהדפים ועסקאות שנסגרו נשלחים גם ל־Meta מהשרת (Conversions API), רק כשהמבקר אישר מדידה.':'כדי שלידים ועסקאות יישלחו גם מהשרת (Conversions API) צריך חיבור Meta פעיל.','muted'));
+  c.append(el('h3','קישור לקבלת לידים מהאתר או מ־Zapier'));
+  if(d.webhook)c.append(el('p',d.webhook.url,'mono'));
+  const rot=button(d.webhook?'יצירת מפתח חדש':'יצירת קישור',()=>run(rot,async()=>{if(d.webhook&&!await UI.confirm('מפתח חדש','המפתח הקודם יפסיק לעבוד מיד. צריך לעדכן אותו באתר או ב־Zapier.','יצירת מפתח'))return;const r=await api('channels/webhook',{});const box=dialog('קישור הלידים שלך');box.append(el('p','שולחים POST עם name, phone, email (וגם utm_campaign, utm_content או item אם יש).'),el('p','כתובת: '+r.url,'mono'),el('p','מפתח (מופיע רק עכשיו, שמרו אותו): '+r.secret,'mono'),el('p','את המפתח שולחים בכותרת Authorization: Bearer <המפתח>.','muted'));box.showModal();}),'secondary');c.append(rot);
+  c.append(el('h3','לידים מהודעות באינסטגרם ומסנג׳ר'),el('p',d.dmLeads.enabled?'פעיל.':'מוכן אבל עוד לא פעיל: צריך אישור של Meta להרשאות הודעות.','muted'));
+  return c;
  }
  async function finance(id){
   const [products,expenses]=await Promise.all([api('workspace/products'),api('workspace/expenses')]),out=[heading(titles[id],id==='profitability'?'תרומה ישירה לפי מחירים ועלויות שהוזנו':'הכנסות והוצאות שדווחו במערכת; אין כאן חיבור בנקאי',[button('רישום הוצאה',()=>editRecord('expenses'),'primary')])];
