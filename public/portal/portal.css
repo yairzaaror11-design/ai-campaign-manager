@@ -1115,3 +1115,4 @@ article.card.lead .lead-tools button{min-height:40px;border-radius:12px;font-siz
  .header-page-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
 }
 article.card.lead .actions .button{white-space:nowrap}
+@media (min-width:701px){article.card.lead .lead-tools{flex-direction:row;align-items:center}article.card.lead .lead-tools button{width:auto;margin:0}}
