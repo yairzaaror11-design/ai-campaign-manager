@@ -1117,3 +1117,38 @@ article.card.lead .lead-tools button{min-height:40px;border-radius:12px;font-siz
 article.card.lead .actions .button{white-space:nowrap}
 @media (min-width:701px){article.card.lead .lead-tools{flex-direction:row;align-items:center}article.card.lead .lead-tools button{width:auto;margin:0}}
 @media (max-width:700px){article.card.lead>select{max-width:none;width:auto;padding-inline:12px 28px;font-size:12.5px}article.card.lead h3{padding-inline-end:150px}}
+
+/* Phone navigation: one bottom bar for the 5 places, one row of tabs for the screens inside each place.
+   No side menu, no grid button, no repeated titles. */
+@media (max-width:960px){
+ body.shell-ready .app-header .menu-toggle,
+ body.shell-ready .app-header .business-switch,
+ body.shell-ready .app-header .header-page-copy,
+ body.shell-ready .app-header #theme-toggle{display:none!important}
+ body.shell-ready .app-header .header-business{flex:1;min-width:0}
+ body.shell-ready .app-header .header-business .brand{display:inline-flex!important}
+ body.shell-ready .header-tools>.profile-avatar,body.shell-ready .header-tools>.mobile-search{display:inline-grid!important}
+ body.shell-ready .sidebar,body.shell-ready .sidebar-backdrop{display:none!important}
+ body.shell-ready .page-heading .eyebrow{display:none}
+ html,body{overflow-x:clip}
+ .mobile-subnav{display:flex!important;gap:8px;overflow-x:auto;scrollbar-width:none;margin:0 0 14px;padding:2px 0 6px;scroll-snap-type:x proximity}
+ .help a,.help button,main .card a{min-height:44px;display:inline-flex;align-items:center}
+ .mobile-subnav::-webkit-scrollbar{display:none}
+ .mobile-subnav:has(> :only-child){display:none!important}
+ button.subnav-tab{flex:none;min-height:40px;padding:8px 16px;border-radius:999px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:14px;font-weight:600;white-space:nowrap;scroll-snap-align:center;width:auto}
+ button.subnav-tab[aria-current=page]{background:var(--brand-grad,var(--primary));border-color:transparent;color:#fff}
+}
+
+/* Phone tables: each row becomes a card, each cell shows its column name. No sideways scrolling. */
+@media (max-width:640px){
+ .table-scroll{overflow:visible}
+ .table-scroll table,.table-scroll tbody,.table-scroll tr,.table-scroll td{display:block;width:100%}
+ .table-scroll thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+ .table-scroll tr{border:1px solid var(--border);border-radius:14px;padding:10px 14px;margin-bottom:10px;background:var(--surface)}
+ .table-scroll td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 0;border:0;text-align:start;min-height:0}
+ .table-scroll td::before{content:attr(data-label);color:var(--muted);font-size:13px;flex:none}
+ .table-scroll td:first-child{font-weight:700;font-size:15px}
+ .table-scroll td:first-child::before{display:none}
+ .table-scroll td[data-label=""]::before{display:none}
+ .table-scroll td>.actions,.table-scroll td .actions{flex-wrap:wrap;justify-content:flex-end}
+}
