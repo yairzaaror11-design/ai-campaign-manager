@@ -71,7 +71,7 @@ async function ingest(pageId, value, expectedGeneration) {
   });
   if (saved.revoked) throw Error('CONNECTION_REVOKED');
   // A newly saved lead (not a duplicate) alerts the owner immediately.
-  if (saved.id) await require('./leadAlert').notifyOwner(clientId, saved, { answers });
+  if (saved.id) await require('./leadConcierge').onNewLead(clientId, saved, { answers, formId: value.form_id });
 }
 
 async function enqueue(body) {
