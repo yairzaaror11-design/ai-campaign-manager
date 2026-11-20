@@ -51,7 +51,7 @@ window.ScorpioUI=(()=>{
  function tabs(entries,selected,onSelect){const nav=el('nav','','tabs');nav.setAttribute('aria-label','תצוגות');entries.forEach(([id,label])=>{const b=button(label,()=>onSelect(id),'tab');b.setAttribute('aria-pressed',String(id===selected));nav.append(b);});return nav;}
  function table(headers,rows){
   const wrap=el('div','','table-scroll'),t=el('table'),head=el('thead'),tr=el('tr'),body=el('tbody');let descending=false,sortColumn=-1;
-  const draw=data=>{body.replaceChildren();data.forEach(row=>{const r=el('tr');row.forEach(value=>{const td=el('td');td.append(value instanceof Node?value:el('span',String(value??'—')));r.append(td);});body.append(r);});};
+  const draw=data=>{body.replaceChildren();data.forEach(row=>{const r=el('tr');row.forEach((value,i)=>{const td=el('td');td.dataset.label=headers[i]||'';td.append(value instanceof Node?value:el('span',String(value??'—')));r.append(td);});body.append(r);});};
   headers.forEach((label,index)=>{const th=el('th');th.scope='col';if(index===headers.length-1)th.textContent=label;else{const b=button(label+' ↕',()=>{descending=sortColumn===index?!descending:false;sortColumn=index;head.querySelectorAll('th').forEach(h=>h.removeAttribute('aria-sort'));th.setAttribute('aria-sort',descending?'descending':'ascending');const value=x=>x instanceof Node?x.textContent:String(x??'');draw([...rows].sort((a,b)=>(descending?-1:1)*value(a[index]).localeCompare(value(b[index]),'he',{numeric:true})));},'table-sort');b.setAttribute('aria-label','מיון לפי '+label);th.append(b);}tr.append(th);});head.append(tr);t.append(head,body);draw(rows);wrap.append(t);wrap.tabIndex=0;wrap.setAttribute('role','region');wrap.setAttribute('aria-label',headers.join(' · '));return wrap;
  }
 
