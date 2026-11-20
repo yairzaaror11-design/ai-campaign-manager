@@ -24,7 +24,7 @@ function getPool() {
 
     pool.on('error', (error) => {
       ready = false;
-      logger.error('Database pool error', { error: error.message });
+      logger.error('Database pool error', { code: typeof error.code === 'string' && /^[A-Z0-9_]{2,12}$/.test(error.code) ? error.code : 'POOL_ERROR' });
     });
   }
 
@@ -48,7 +48,7 @@ async function transaction(work) {
     return result;
   } catch (error) {
     try { await client.query('ROLLBACK'); } catch (rollbackError) {
-      logger.error('Database rollback failed', { error: rollbackError.message });
+      logger.error('Database rollback failed', { code: typeof rollbackError.code === 'string' && /^[A-Z0-9_]{2,12}$/.test(rollbackError.code) ? rollbackError.code : 'ROLLBACK_ERROR' });
     }
     throw error;
   } finally { client.release(); }
@@ -61,7 +61,11 @@ async function initializeDatabase() {
     return false;
   }
 
-  await require('./migrate').migrate(transaction);
+  // Deployments using a least-privilege runtime role must run migrations separately.
+  // Preserve existing startup behavior unless explicitly disabled after a migration job succeeds.
+  if (process.env.RUN_MIGRATIONS_ON_STARTUP !== 'false') {
+    await require('./migrate').migrate(transaction);
+  }
   await query('SELECT 1');
   ready = true;
   logger.info('Database initialized');

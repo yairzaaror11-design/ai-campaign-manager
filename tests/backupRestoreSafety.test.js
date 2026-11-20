@@ -26,3 +26,11 @@ test('rehearsal cannot start without explicit confirmation',()=>{
     target:'postgresql://operator:secret@127.0.0.1/campaign_bachat_restore_ci',
     archive:'/tmp/restore.dump'}),/EXPLICIT_REHEARSAL_CONFIRMATION_REQUIRED/);
 });
+
+test('restore refuses the same database via loopback host aliases and default port',()=>{
+ const a='postgresql://operator:secret@localhost:5432/campaign_bachat_restore_ci';
+ const b='postgresql://operator:secret@127.0.0.1/campaign_bachat_restore_ci';
+ assert.throws(()=>verifyInputs({source:a,target:b,archive:'/tmp/rehearsal.dump'}),/SOURCE_EQUALS_TARGET/);
+ assert.throws(()=>verifyInputs({source:b,target:a,archive:'/tmp/rehearsal.dump'}),/SOURCE_EQUALS_TARGET/);
+ assert.doesNotThrow(()=>verifyInputs({source:a,target:'postgresql://operator:secret@127.0.0.1:5433/campaign_bachat_restore_ci',archive:'/tmp/rehearsal.dump'}));
+});
