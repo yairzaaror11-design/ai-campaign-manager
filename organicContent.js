@@ -295,7 +295,8 @@ async function deliver(post, phone) {
       await delivery.enqueue(phone, { type: 'image', image: { id: asset.whatsapp_media_id, caption: 'התמונה לפוסט של היום' } });
     } catch { note = 'לא הספקתי להכין תמונה הפעם. אפשר לפרסם עם תמונה אמיתית מהעסק.'; }
   }
-  if (post.media === 'PHOTO') note = '📸 מצרפים תמונה מיום הצילום (או כל תמונה טובה מהעסק) ומפרסמים.';
+  if (post.media === 'PHOTO' && post.property_id) note = await require('./properties').deliverPhotos(post.client_id, post.property_id, phone);
+  else if (post.media === 'PHOTO') note = '📸 מצרפים תמונה מיום הצילום (או כל תמונה טובה מהעסק) ומפרסמים.';
   const how = post.format === 'STORY' ? 'מעתיקים ומעלים לסטורי באינסטגרם ובפייסבוק.' : 'מעתיקים ומפרסמים באינסטגרם ובפייסבוק.';
   await require('./whatsapp').safeSend(phone, `📅 ה${FORMAT_LABEL[post.format]} של היום מוכן לפרסום!\n\n${post.caption}\n\n👆 ${how}${note ? '\n' + note : ''}`);
 }
