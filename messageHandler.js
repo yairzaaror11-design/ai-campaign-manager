@@ -169,12 +169,14 @@ async function handleTenantMessage(message, contact) {
 
   if (!isAuthorized(from)) {
     logger.warn('Unauthorized sender rejected');
-
+    // Never silence: save the sender to the pilot waitlist and say so (at most once a day).
+    await require('./inboundNotices').waitlist(message,contact,'NOT_IN_PILOT');
     return;
   }
 
   const botClient=await getOrCreateClient(from,contact?.profile?.name||null);
-  if(require('./taskAgent').enabled()||await require('./conversationController').owns(botClient.id)){const support=require('./humanSupport'),body=message.type==='text'?String(message.text?.body||'').trim():'';if(!['/meta-delete-data-confirm','/notifications-off'].includes(body)){if(support.humanRequested(body)){await support.request(botClient.id,{reason:body,channel:'WHATSAPP',eventId:message.id});await require('./whatsappDelivery').messageContext.run({...require('./whatsappDelivery').messageContext.getStore(),humanSupportNotice:true},()=>safeSend(from,'הבקשה נשמרה למענה אנושי והבוט הושהה. עדיין לא הוגדר זמן מענה. לחזרה כתבו ״המשך עם הבוט״.'));return;}const paused=await support.current(botClient.id);if(paused?.bot_paused){if(support.resumeRequested(body)){await support.resume(botClient.id,paused.id,paused.version);await safeSend(from,'המענה האוטומטי חודש. אפשר להמשיך במשימה.');}else await support.append(botClient.id,paused.id,{body:body||'התקבל קובץ בזמן ההשהיה',eventId:message.id});return;}}}
+  // Human handover works on every route (billing also points owners to "נציג").
+  {const support=require('./humanSupport'),body=message.type==='text'?String(message.text?.body||'').trim():'';if(!['/meta-delete-data-confirm','/notifications-off'].includes(body)){if(support.humanRequested(body)){await support.request(botClient.id,{reason:body,channel:'WHATSAPP',eventId:message.id});await require('./whatsappDelivery').messageContext.run({...require('./whatsappDelivery').messageContext.getStore(),humanSupportNotice:true},()=>safeSend(from,`קיבלתי ✓ העברתי את הבקשה לצוות. ${support.RESPONSE_TIME}.\nעד אז הסוכן מושהה כדי לא להפריע לשיחה. כדי לחזור לסוכן לפני כן, כתוב ״המשך עם הבוט״.`));return;}const paused=await support.current(botClient.id);if(paused?.bot_paused){if(support.resumeRequested(body)){await support.resume(botClient.id,paused.id,paused.version);await safeSend(from,'המענה האוטומטי חודש. אפשר להמשיך במשימה.');}else await support.append(botClient.id,paused.id,{body:body||'התקבל קובץ בזמן ההשהיה',eventId:message.id});return;}}}
 
   if (['image', 'video'].includes(message.type)) {
     await handleMedia(from, message);
@@ -416,14 +418,14 @@ async function handleIncomingMessage(message, contact) {
   if (!isAuthorized(message.from)) return handleTenantMessage(message, contact);
   if(process.env.PUBLIC_ONBOARDING_ENABLED==='true'){
     const known=await require('./db').query('SELECT id FROM clients WHERE phone=$1',[require('./auth').normalizePhone(message.from)]);
-    if(!known.rows.length&&!await require('./rateLimit').take('public-new-clients',50,86400))return;
+    if(!known.rows.length&&!await require('./rateLimit').take('public-new-clients',50,86400))return require('./inboundNotices').waitlist(message,contact,'DAILY_CAP');
   }
   const client = await getOrCreateClient(message.from,contact?.profile?.name);
   const delivery=require('./whatsappDelivery');
   await delivery.recordInbound(message);
-  if(!await require('./rateLimit').take('chat:'+client.id,20)) return;
+  if(!await require('./rateLimit').take('chat:'+client.id,20)) return require('./inboundNotices').slowDown(client.id,client.phone,message.id);
   return delivery.messageContext.run({eventId:message.id,sequence:0},()=>
-    require('./metaConnection').context.run(String(client.id),()=>handleTenantMessage(message, contact)));
+    require('./metaConnection').context.run(String(client.id),()=>require('./processingNotice').withProgressNotice(message.from,message.id,()=>handleTenantMessage(message, contact))));
 }
 module.exports = { handleIncomingMessage };
 

@@ -8,7 +8,7 @@ async function send(clientId,{message,screen,requestId}){
  const controller=require('./conversationController'),tasks=require('./taskAgent'),support=require('./humanSupport'),eventId='portal:'+requestId;
  let result;
  if(support.humanRequested(message)){
-  await support.request(clientId,{reason:message,channel:'PORTAL',eventId});result={handled:true,reply:'הבקשה נשמרה למענה אנושי והסוכן הושהה. לחזרה אפשר לכתוב ״המשך עם הבוט״.',externalActionsExecuted:false};
+  await support.request(clientId,{reason:message,channel:'PORTAL',eventId});result={handled:true,reply:`הבקשה נשמרה למענה אנושי ✓ ${support.RESPONSE_TIME}. עד אז הסוכן מושהה. כדי לחזור לסוכן לפני כן, כתוב ״המשך עם הבוט״.`,externalActionsExecuted:false};
  }else if((await support.current(clientId))?.bot_paused){
   const current=await support.current(clientId);
   if(support.resumeRequested(message)){await support.resume(clientId,current.id,current.version);result={handled:true,reply:'המענה האוטומטי חודש. מה תרצה שנמשיך להכין?',externalActionsExecuted:false};}
