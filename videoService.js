@@ -57,6 +57,7 @@ async function request(clientId, recipient, req, { eventId, referenceMediaId } =
   if (!eventId) throw Error('VIDEO_CONTEXT_REQUIRED');
   if (!req || typeof req.prompt !== 'string' || req.prompt.length < 3 || req.prompt.length > 2000) throw Error('INVALID_VIDEO_BRIEF');
   if (await usedThisMonth(clientId) >= monthlyLimit()) return { status: 'MONTHLY_LIMIT', limit: monthlyLimit() };
+  if (!await require('./aiCostCap').videoAllowed(clientId)) return { status: 'COST_CAP' };
   if (!await require('./rateLimit').take('videos:' + clientId, 2, 3600)) return { status: 'RATE_LIMIT' };
   const id = crypto.createHash('sha256').update('video:' + clientId + ':' + eventId).digest('hex');
   const prompt = providerPrompt(req.prompt, await businessContext(clientId));

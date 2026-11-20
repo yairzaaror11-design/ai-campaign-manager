@@ -3,7 +3,7 @@ const crypto=require('node:crypto'),store=require('./marketingStore');
 const FOOTER='אפשר גם לכתוב או לשלוח הודעה קולית';
 function context(p){return JSON.stringify([p.planId,p.journey?.stage,p.journey?.pendingField,p.journey?.revision,p.journey?.inputMode,p.journey?.detour,p.connection?.status,p.connection?.account?.id,p.connection?.accountPage,p.connection?.accountQuery,JSON.stringify((p.connection?.accounts||[]).map(a=>a.id)),p.connection?.pendingQuestion,p.mediaContext?.assetId,p.mediaBudgetQuestion?.amount,p.businessImport?.foundAt,p.businessEntry?.awaitingConfirmation,p.socialContent?.id,p.socialContent?.revision,p.socialContent?.focus,p.offerReview?.hash,p.offerReview?.expiresAt,JSON.stringify(p.contentBrief||null),JSON.stringify(p.socialInput||null),p.journey?.requestedOutput,p.journey?.socialFeedbackPending,JSON.stringify(p.crmIntake||null),JSON.stringify(p.crmFollowup||null),p.crmFocus?.id,p.crmFocus?.version,JSON.stringify(p.crmMenu||[])]);}
 const choice=(title,text,description)=>({title,text,...(description?{description}:{})});
-const DECISIONS=["offer_use","social_intent","advantage","journey_route","social_review","management_connect","crm_leads","crm_status","business_entry","business_import","plan_review","media_variant", "budget_period", "media_action", "has_ad_account", "connected", "connection_offer", "account_selection", "businessGoal", "dailyBudget", "leadDestination", "offerMediaSeparate", "strategy_review", "creative_review", "welcome", "task_review", "guard_alert", "organic_setup", "organic_review", "billing_cancel"];
+const DECISIONS=["offer_use","social_intent","advantage","journey_route","social_review","management_connect","crm_leads","crm_status","business_entry","business_import","plan_review","media_variant", "budget_period", "media_action", "has_ad_account", "no_ad_account", "meta_continue", "weekly_report", "connected", "connection_offer", "account_selection", "businessGoal", "dailyBudget", "leadDestination", "offerMediaSeparate", "strategy_review", "creative_review", "welcome", "task_review", "guard_alert", "organic_setup", "organic_review", "billing_cancel"];
 function choices(p,decisionKey){
  if(decisionKey==null)return [];
  if(!DECISIONS.includes(decisionKey))throw Error('INVALID_DECISION_KEY');
@@ -30,10 +30,18 @@ function choices(p,decisionKey){
  p.mediaContext.type==='image'?choice('גרסאות לתמונה','תיצור לי 3 תמונות מהתמונה ששלחתי'):choice('טקסט לסרטון','נוסח לסרטון ששלחתי')];
  if(decisionKey==='has_ad_account'&&connection?.pendingQuestion==='hasAdAccount')return [choice('יש לי חשבון','כן'),choice('זו הפעם הראשונה','לא')];
  if(decisionKey==='connected'&&connection?.status==='CONNECTED')return[choice('קמפיין חדש','אני רוצה קמפיין'),choice('בדיקת ביצועים','תוצאות השבוע')];
+ if(decisionKey==='no_ad_account'){
+  const items=[choice('סיימתי',require('./metaConversation').RECHECK_TEXT)];
+  if(connection?.status==='ACCOUNT_SELECTION_REQUIRED')items.push(choice('חיבור מחדש','שלח לי קישור חדש לחיבור Meta'));
+  else if(j.pendingAction==='prepare_local_draft')items.push(choice('נכין טיוטה בינתיים','כן'));
+  return items;
+ }
+ if(decisionKey==='meta_continue'&&connection?.status==='CONNECTED')return[choice('המשך ליצירת הקמפיין','המשך ליצירת הקמפיין'),choice('לא עכשיו','לא עכשיו')];
  if(decisionKey==='connection_offer'&&connection?.status==='CONNECTION_OFFERED')return[choice('שלחו קישור','כן'),choice('לא עכשיו','לא')];
  if(decisionKey==='account_selection'&&connection?.status==='ACCOUNT_SELECTION_REQUIRED'){
   const page=require('./accountMenu').page(connection);
-  const items=page.items.map((a,i)=>choice(`${page.offset+i+1}. ${String(a.name).slice(0,16)}`,`/meta-select ${a.id}`,a.id));
+  // Names cut to fit a button stay distinguishable: full name + last digits in the row description, never the raw id.
+  const items=page.items.map((a,i)=>choice(`${page.offset+i+1}. ${require('./accountMenu').shortName(a.name,16)}`,`/meta-select ${a.id}`,require('./accountMenu').describe(a,connection.accounts)));
   if(page.index>0)items.push(choice('הקודם',`/meta-page ${page.index-1}`));
   if(page.hasNext)items.push(choice('חשבונות נוספים',`/meta-page ${page.index+1}`));
   return items;
@@ -96,15 +104,34 @@ async function prepareApproval(clientId,approval,summary){
  const nonce=crypto.randomBytes(12).toString('hex');
  const creating=approval.actionPlan.intent==='CREATE_BUNDLE';
  const activating=approval.actionPlan.intent==='ACTIVATE_BUNDLE';
- const items=[{title:creating?'אישור יצירה מושהית':activating?'אישור הפעלה':'אישור השינוי',kind:'action_approval',actionId:approval.actionId,text:'אישור פעולה'},choice('ביטול','בטל את הפעולה הממתינה')];
- await store.update(clientId,null,p=>{p.ui={nonce,decisionKey:'action_approval',context:context(p),choices:items,expiresAt:new Date(approval.expiresAt).getTime()};return{handled:false,changed:true};});
- return{text:summary,leadingText:summary,interactivePayload:payload(creating?'לאשר יצירה במצב מושהה לפי הסיכום? אין הפעלה בשלב זה.':activating?'לאשר הפעלה לפי הסיכום? ההפעלה עשויה להתחיל הוצאה מתקציב הפרסום.':'לאשר את השינוי המדויק שבסיכום?',items,nonce)};
+ // F8: activation is an explicit question; "לא עכשיו" keeps the campaign paused.
+ const items=[{title:creating?'אישור יצירה מושהית':activating?'להפעיל עכשיו':'אישור השינוי',kind:'action_approval',actionId:approval.actionId,text:'אישור פעולה'},activating?choice('לא עכשיו','/cancel-action '+approval.actionId):choice('ביטול','בטל את הפעולה הממתינה')];
+ await store.update(clientId,null,p=>{p.ui={nonce,decisionKey:'action_approval',context:context(p),choices:items,expiresAt:new Date(approval.expiresAt).getTime()};
+  // Every approval card stays answerable after another card arrives or after it expires (then it is re-offered).
+  p.approvalButtons=[...(p.approvalButtons||[]).filter(b=>b.actionId!==approval.actionId),{nonce,actionId:approval.actionId,at:Date.now()}].slice(-8);
+  return{handled:false,changed:true};});
+ return{text:summary,leadingText:summary,interactivePayload:payload(creating?'לאשר יצירה במצב מושהה לפי הסיכום? אין הפעלה בשלב זה.':activating?'הקמפיין מוכן ומושהה. להפעיל עכשיו? ההפעלה מתחילה הוצאה מתקציב הפרסום, לפי שורת העלות שבסיכום.':'לאשר את השינוי המדויק שבסיכום?',items,nonce)};
 }
+// A tap on an approval button that is no longer the current menu (expired, or a newer card was sent).
+async function consumeEarlierApproval(clientId,message){
+ const type=message?.interactive?.type,id=type==='button_reply'?message.interactive.button_reply?.id:type==='list_reply'?message.interactive.list_reply?.id:null;
+ if(typeof id!=='string'||!/^cb:[a-f0-9]{24}:[01]$/.test(id))return null;
+ const [,nonce,index]=id.split(':');let selected=null;
+ await store.update(clientId,null,p=>{
+  const ui=p.ui;if(ui&&ui.nonce===nonce&&ui.context===context(p)&&ui.expiresAt>=Date.now())return{handled:false};// the current card: normal path
+  const b=(p.approvalButtons||[]).find(x=>x.nonce===nonce&&Date.now()-x.at<7*86400000);if(!b)return{handled:false};
+  if(index==='0'){const ctx=require('./whatsappDelivery').messageContext.getStore();if(!ctx)return{handled:false};ctx.approvedActionId=b.actionId;selected='/approve-current '+b.actionId;}
+  else selected='/cancel-action '+b.actionId;
+  // Kept (the approval engine refuses any replay); presentedApproval() still recognises it downstream.
+  if(ui?.nonce===nonce)delete p.ui;return{handled:false,changed:true};
+ });return selected;
+}
+async function presentedApproval(clientId,actionId){const p=await store.load(clientId);return !!p?.approvalButtons?.some(b=>b.actionId===String(actionId));}
 async function prepareChoices(clientId,body,items,decisionKey){
  const nonce=crypto.randomBytes(12).toString('hex');
  await store.update(clientId,null,p=>{p.ui={nonce,decisionKey,context:context(p),choices:items,expiresAt:Date.now()+24*60*60*1000};return{handled:false,changed:true};});
  return{text:body,interactivePayload:payload(body,items,nonce)};
 }
 const prepareTaskReview=(clientId,body,items)=>prepareChoices(clientId,body,items,'task_review');
-module.exports={choices,payload,prepare,prepareApproval,prepareTaskReview,prepareChoices,consume,context,refresh};
+module.exports={choices,payload,prepare,prepareApproval,prepareTaskReview,prepareChoices,consume,consumeEarlierApproval,presentedApproval,context,refresh};
 

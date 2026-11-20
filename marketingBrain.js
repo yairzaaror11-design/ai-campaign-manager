@@ -27,7 +27,7 @@ function analyze(snapshot,{targetCpl=null,reviewSpendLimit=null}={}){
  return{version:1,source:'meta_reported',account:snapshot.account,preset:snapshot.preset,createdAt:new Date().toISOString(),totals,campaigns,observations,recommendations,limitations:['אירועי Meta אינם בהכרח לקוחות ייחודיים או עסקאות מאומתות','דיווח וייחוס עשויים להתעדכן באיחור','אין לערבב מטבעות, טווחי זמן או חלונות ייחוס שונים','המלצה אינה הרשאה לפעולה'],externalActionsExecuted:false};
 }
 function format(result){
- const t=result.totals,lines=[`הוצאה מדווחת: ${t.spend==null?'נתון חסר':t.spend.toFixed(2)+' '+result.account.currency}`,`פניות שדווחו ב-Meta: ${t.leads??'נתון חסר'}`,`רכישות שדווחו ב-Meta: ${t.purchases??'נתון חסר'}`];
+ const t=result.totals,lines=[`הוצאה מדווחת: ${t.spend==null?'נתון חסר':t.spend.toFixed(2)+' '+({ILS:'₪',USD:'$',EUR:'€'}[result.account?.currency]||result.account?.currency||'')}`,`פניות שדווחו ב-Meta: ${t.leads??'נתון חסר'}`,`רכישות שדווחו ב-Meta: ${t.purchases??'נתון חסר'}`];
  const suggestion=result.recommendations[0];if(suggestion)lines.push(suggestion.text);else lines.push('כדי להציע שינוי עסקי מדויק צריך להשוות את הנתונים ליעד ולרווחיות של העסק.');
  lines.push('אלה נתוני הפלטפורמה בטווח שנבחר; ייתכנו עיכובי דיווח.');return lines.join('\n');
 }

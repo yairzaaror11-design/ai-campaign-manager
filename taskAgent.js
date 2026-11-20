@@ -438,7 +438,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     let a;
     // Creating the approval sends nothing to Meta; a refusal here is not an uncertain write.
     try{a=await require('./approvalEngine').createApprovalForClient(clientId,plan);}
-    catch(error){step.status='PENDING';if(error.message==='SPEND_CAP_EXCEEDED')task.customReply=error.reply+'\nאחרי שתעדכן, כתוב ״המשך במשימה״.';throw error;}
+    catch(error){step.status='PENDING';if(error.reply)task.customReply=error.reply+'\nאחרי שתעדכן, כתוב ״המשך במשימה״.';throw error;}
     step.result={approval:{actionId:a.actionId,planHash:require('./approvalPolicy').planHash(a.actionPlan),plan:a.actionPlan,codeCiphertext:meta.encrypt(a.code,clientId),expiresAt:a.expiresAt}};step.status='WAITING_APPROVAL';task.status='WAITING_APPROVAL';
     if(require('./scopedAuthority').enabled()){
      await checkpoint(task,lease);

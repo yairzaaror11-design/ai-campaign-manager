@@ -37,13 +37,13 @@ test('guided Meta connection states, verified permissions and tenant boundaries'
    assert.equal((await h.db.query('SELECT COUNT(*)::int AS n FROM meta_login_secrets')).rows[0].n,before);
    const v=await guided.verify(a.id);assert.equal(v.canRead,true);assert.equal(v.canManage,false);assert.deepEqual(v.permissions,['ads_read']);
   });
-  await t.test('missing ads_read is explicit and no false connected result is returned',async()=>{permissions=[];const v=await guided.verify(a.id);assert.equal(v.status,'MISSING_PERMISSIONS');assert.match(guided.statusReply(v),/ads_read/);assert.equal(v.canRead,false);permissions=['ads_read'];});
+  await t.test('missing ads_read is explicit and no false connected result is returned',async()=>{permissions=[];const v=await guided.verify(a.id);assert.equal(v.status,'MISSING_PERMISSIONS');assert.match(guided.statusReply(v),/לא אושרה גישה לנתוני הפרסום/);assert.doesNotMatch(guided.statusReply(v),/ads_read/);assert.equal(v.canRead,false);permissions=['ads_read'];});
   await t.test('server-recorded expiration requires reconnection',async()=>{await h.db.query("UPDATE meta_connections SET expires_at=NOW()-INTERVAL '1 minute' WHERE client_id=$1",[a.id]);assert.equal((await guided.verify(a.id)).status,'TOKEN_EXPIRED');await connect();});
   await t.test('revoked token and temporary provider failures are sanitized',async()=>{
    failure={response:{data:{error:{code:190,message:'NEVER_EXPOSE_SECRET'}}}};assert.equal((await guided.verify(a.id)).status,'TOKEN_EXPIRED');
    failure=Error('secret-token-and-provider-body');const v=await guided.verify(a.id);assert.equal(v.status,'CONNECTION_FAILED');assert.equal(JSON.stringify(v).includes('secret-token'),false);failure=null;
   });
-  await t.test('no active ad account is distinguished from a completed connection',async()=>{const before=accounts;accounts=[];const v=await guided.verify(a.id);assert.equal(v.status,'ACCOUNT_SELECTION_REQUIRED');assert.match(guided.statusReply(v),/לא נמצא/);accounts=before;});
+  await t.test('no active ad account is distinguished from a completed connection',async()=>{const before=accounts;accounts=[];const v=await guided.verify(a.id);assert.equal(v.status,'ACCOUNT_SELECTION_REQUIRED');assert.match(guided.statusReply(v),/עוד אין לעסק חשבון מודעות פעיל/);assert.match(guided.statusReply(v),/business\.facebook\.com/);assert.doesNotMatch(guided.statusReply(v),/act_/);accounts=before;});
   await t.test('knowledge is bounded, versioned, database-backed and has no token fields',async()=>{
    const topics=await require('../metaKnowledge').retrieve({query:'הרשאות',limit:2});assert.ok(topics.length&&topics.length<=2);assert.ok(topics.every(x=>x.source&&x.version===1));
    assert.equal((await h.db.query('SELECT COUNT(*)::int AS n FROM meta_ads_knowledge')).rows[0].n,15);

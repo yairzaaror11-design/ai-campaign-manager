@@ -7,7 +7,7 @@ router.use((req,res,next)=>{
   res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'});
   next();
 });
-const wrap = fn => async(req,res)=>{try { await fn(req,res); } catch(error) { if(req.method==='GET')require('./metaConnectPage').send(res.status(400),{state:'error',...(error.message==='ADS_MANAGEMENT_REQUIRED'?{title:'Meta לא העניקה הרשאת ניהול',description:'חזרו לשיחה עם SCORPIO לבדיקת ההרשאות. פרטי העסק והתוכנית נשמרו; אין צורך להתחיל מחדש.'}:{})});else res.status(400).json({error:'Meta connection failed. Request a new link in your authorized chat.'}); }};
+const wrap = fn => async(req,res)=>{try { await fn(req,res); } catch(error) { if(req.method==='GET')require('./metaConnectPage').send(res.status(400),{state:'error',...(error.message==='ADS_MANAGEMENT_REQUIRED'?{title:'Meta לא העניקה הרשאת ניהול',description:'חזור לשיחה בוואטסאפ ונבדוק יחד את ההרשאות. פרטי העסק והתוכנית שמורים, אין צורך להתחיל מחדש.'}:{})});else res.status(400).json({error:'Meta connection failed. Request a new link in your authorized chat.'}); }};
 router.get('/connect',(req,res)=>require('./metaConnectPage').send(res,{management:req.query.mode==='manage'}));
 router.post('/start',require('./rateLimit').middleware('meta-start',10),wrap(async(req,res)=>{
   if (req.headers.origin!==meta.config().origin) throw Error('INVALID_ORIGIN');
@@ -21,9 +21,11 @@ router.get('/callback',require('./rateLimit').middleware('meta-callback',30),wra
   const clientId=await meta.callback(req.query.state,cookie,req.query.code);
   if(require('./marketingConversation').enabled()){
     await require('./metaConversation').recordStatus(clientId,'OAUTH_CALLBACK_RECEIVED');
-    const verified=await require('./metaConversation').verify(clientId);
-    const connected=verified.status==='CONNECTED';
-    require('./metaConnectPage').send(res,{state:'done',title:connected?'החשבון אומת וחובר':'ההרשאה התקבלה',description:connected?'אפשר לחזור ל־WhatsApp ולהמשיך עם החשבון שחיברתם.':'חזרו ל־WhatsApp ובחרו את חשבון הפרסום הרצוי. הקמפיין ימתין לאישור שלכם בשיחה.'});
+    // The conversation continues in WhatsApp by itself: the agent writes first (account
+    // buttons, the saved draft, or a guide when there is no ad account yet).
+    const next=await require('./metaConversation').notifyConnected(clientId,await require('./metaConversation').verify(clientId));
+    const connected=next.verified.status==='CONNECTED';
+    require('./metaConnectPage').send(res,{state:'done',title:connected?'החשבון חובר ✓':'ההרשאה התקבלה ✓',description:next.sent?'שלחתי לך הודעה בוואטסאפ. חזור לשיחה כדי להמשיך מאיפה שעצרנו.':'חזור לשיחה בוואטסאפ וכתוב ״המשך״ כדי להמשיך מאיפה שעצרנו.'});
   }else require('./metaConnectPage').send(res,{state:'done'});
 }));
 module.exports = router;

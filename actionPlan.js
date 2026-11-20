@@ -45,7 +45,7 @@ function createActionPlan({
   };
 }
 
-const INTENT_HE={CREATE_CAMPAIGN:'יצירת קמפיין',CREATE_LEAD_FORM:'יצירת טופס פניות',CREATE_ADSET:'יצירת קהל ותקציב',CREATE_AD:'יצירת מודעה',CREATE_CREATIVE:'יצירת עיצוב מודעה',UPLOAD_IMAGE:'העלאת התמונה לחשבון הפרסום',CREATE_BUNDLE:'יצירת הקמפיין המלא (מושהה)',ACTIVATE_BUNDLE:'הפעלת הקמפיין',CHANGE_BUDGET:'שינוי תקציב',DUPLICATE_CAMPAIGN:'שכפול קמפיין (מושהה)',PAUSE_CAMPAIGN:'השהיית קמפיין',RESUME_CAMPAIGN:'חידוש קמפיין',EDIT_CAMPAIGN:'עריכת קמפיין',SYNC_BUYER_AUDIENCE:'קהל הלקוחות הקיימים ב־Meta',CREATE_LOOKALIKE:'קהל דומה 1% ללקוחות שלך'};
+const INTENT_HE={CREATE_CAMPAIGN:'יצירת קמפיין',CREATE_LEAD_FORM:'יצירת טופס פניות',CREATE_ADSET:'יצירת קהל ותקציב',CREATE_AD:'יצירת מודעה',CREATE_CREATIVE:'יצירת עיצוב מודעה',UPLOAD_IMAGE:'העלאת התמונה לחשבון הפרסום',CREATE_BUNDLE:'יצירת הקמפיין המלא (מושהה)',ACTIVATE_BUNDLE:'הפעלת הקמפיין',CHANGE_BUDGET:'שינוי תקציב',DUPLICATE_CAMPAIGN:'שכפול קמפיין (מושהה)',PAUSE_CAMPAIGN:'השהיית קמפיין',RESUME_CAMPAIGN:'חידוש קמפיין',EDIT_CAMPAIGN:'עריכת קמפיין',SYNC_BUYER_AUDIENCE:'קהל הלקוחות הקיימים ב־Meta',CREATE_LOOKALIKE:'קהל של אנשים שדומים ללקוחות שלך'};
 const OBJECTIVE_HE={OUTCOME_LEADS:'פניות (לידים)',OUTCOME_SALES:'מכירות',OUTCOME_TRAFFIC:'כניסות לאתר',OUTCOME_ENGAGEMENT:'מעורבות',OUTCOME_AWARENESS:'חשיפה',OUTCOME_APP_PROMOTION:'קידום אפליקציה'};
 const SYMBOL={ILS:'₪',USD:'$',EUR:'€'};
 function money(amount,currency){return amount===undefined||amount===null||amount===''?null:String(amount)+' '+(SYMBOL[currency]||currency||'');}
@@ -83,7 +83,7 @@ function formatActionPlan(plan) {
   lines.push('*'+(INTENT_HE[plan.intent]||'פעולה בחשבון הפרסום')+' — נדרש אישור מפורש*');
   if(plan.summary)lines.push(plan.summary);
   lines.push('');
-  add('🏢','חשבון',t.accountName||t.accountId||'לא נבחר');
+  add('🏢','חשבון',t.accountName||(t.accountId?'חשבון שמספרו מסתיים ב־'+String(t.accountId).replace(/\D/g,'').slice(-4):'לא נבחר'));
   add('📣','קמפיין',t.campaignName||p.name);
   add('🎯','מטרה',OBJECTIVE_HE[p.objective||plan.review?.objective]||p.objective||plan.review?.objective);
   add('✏️','כותרת',p.headline);

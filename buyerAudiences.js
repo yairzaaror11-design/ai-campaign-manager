@@ -13,7 +13,7 @@ const AUDIENCE_NAME = 'SCORPIO — לקוחות קיימים';
 const LOOKALIKE_NAME = 'SCORPIO — דומים ללקוחות (1%)';
 const INTENTS = ['SYNC_BUYER_AUDIENCE', 'CREATE_LOOKALIKE'];
 const RULES = { lookalikeMin: 100, offerEveryDays: 7, batch: 10000, maxBuyers: 500000, snapshotDays: 2 };
-const LOOKALIKE_LINE = 'קהל דומה (Lookalike) 1% = Meta מוצאת בישראל את האחוז האנשים שהכי דומים ללקוחות שכבר קנו ממך, כדי שהמודעות יגיעו למי שיש לו סיכוי גבוה לקנות.';
+const LOOKALIKE_LINE = 'קהל דומים = Meta מוצאת בישראל את האנשים שהכי דומים ללקוחות שכבר קנו ממך, כדי שהמודעות יגיעו למי שיש לו סיכוי גבוה לקנות.';
 const PRIVACY_LINE = '🔒 ל־Meta נשלחים רק מספרי טלפון מוצפנים (SHA-256). לא שמות ולא מספרים גלויים.';
 
 // Meta: digits only, country code first, no leading zeros. Local Israeli numbers get 972.
@@ -102,7 +102,7 @@ async function prepareLookalike(clientId, { approve } = {}) {
   const size = await matched(c, now.audienceId);
   if (!(size >= RULES.lookalikeMin)) return { reason: 'TOO_SMALL', size };
   const { createActionPlan } = require('./actionPlan');
-  const plan = createActionPlan({ intent: 'CREATE_LOOKALIKE', summary: 'יצירת קהל דומה 1% בישראל, על בסיס הלקוחות שכבר קנו ממך', target: { accountId: c.meta_ad_account_id }, parameters: { name: LOOKALIKE_NAME, originAudienceId: now.audienceId } });
+  const plan = createActionPlan({ intent: 'CREATE_LOOKALIKE', summary: 'יצירת קהל של אנשים שדומים ללקוחות שכבר קנו ממך, בישראל', target: { accountId: c.meta_ad_account_id }, parameters: { name: LOOKALIKE_NAME, originAudienceId: now.audienceId } });
   return { approval: await (approve || require('./approvalEngine').createApprovalForClient)(clientId, plan) };
 }
 
@@ -152,9 +152,9 @@ async function status(clientId) {
   if (!hashes.length) lines.push('\nכדי להתחיל, סמן ב־CRM פניות שנסגרו כ"נסגרה עסקה".');
   else if (!now.audienceId) items.push(choice('ליצור קהל לקוחות', '/buyers-sync'));
   else if (changed) { lines.push('\nיש לקוחות חדשים מאז העדכון האחרון.'); items.push(choice('לרענן את הקהל', '/buyers-sync')); }
-  if (now.audienceId && !now.lookalikeId && size >= RULES.lookalikeMin) { lines.push('\n' + LOOKALIKE_LINE); items.push(choice('ליצור קהל דומה 1%', '/buyers-lookalike')); }
+  if (now.audienceId && !now.lookalikeId && size >= RULES.lookalikeMin) { lines.push('\n' + LOOKALIKE_LINE); items.push(choice('ליצור קהל דומים', '/buyers-lookalike')); }
   else if (now.audienceId && !now.lookalikeId && size !== null) lines.push('\nקהל דומה (Lookalike) יהיה זמין כש־Meta תזהה לפחות ' + RULES.lookalikeMin + ' לקוחות.');
-  else if (now.lookalikeId) lines.push('✅ קהל דומה 1% כבר קיים בחשבון.');
+  else if (now.lookalikeId) lines.push('✅ קהל הדומים ללקוחות שלך כבר קיים בחשבון.');
   if (items.length) items.push(choice('לא עכשיו', '/buyers-later'));
   return { text: lines.join('\n'), items };
 }
@@ -173,7 +173,7 @@ const reasonText = {
   NO_BUYERS: 'עוד אין לקוחות שסומנו "נסגרה עסקה" עם מספר טלפון ב־CRM. כשיהיו, נוכל ליצור את הקהל.',
   UP_TO_DATE: 'הקהל ב־Meta כבר מעודכן עם כל הלקוחות שלך ✅',
   NO_AUDIENCE: 'קודם ניצור את קהל הלקוחות הקיימים, ורק אחרי זה קהל דומה.',
-  LOOKALIKE_EXISTS: 'קהל דומה 1% כבר קיים בחשבון ✅',
+  LOOKALIKE_EXISTS: 'קהל הדומים ללקוחות שלך כבר קיים בחשבון ✅',
   TOO_SMALL: 'Meta צריכה לזהות לפחות ' + RULES.lookalikeMin + ' לקוחות כדי לבנות קהל דומה. נחזור לזה כשהרשימה תגדל.'
 };
 
@@ -196,7 +196,7 @@ async function handleText(from, text, { approve } = {}) {
   } catch (error) {
     const code = /^[A-Z_]+$/.test(error?.message || '') ? error.message : 'BUYER_AUDIENCE_PREPARE_FAILED';
     logger.warn('Buyer audience approval not prepared', { error: code });
-    if (error?.message === 'SPEND_CAP_EXCEEDED' && error.reply) await say(error.reply);
+    if (error?.reply) await say(error.reply);
     else await say(code === 'META_CONNECTION_REQUIRED' ? 'כדי ליצור קהל צריך חיבור פעיל לחשבון הפרסום. כתוב "חיבור למטא".' : 'לא הצלחתי להכין את הקהל מול Meta כרגע. לא נשלח שום דבר. אפשר לנסות שוב בעוד כמה דקות.');
   }
   return true;

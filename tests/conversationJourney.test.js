@@ -31,7 +31,7 @@ test('clarification preserves pending field and the following answer resolves ex
 test('an explicit summary includes budget and offer without overwriting the pending audience answer',()=>{
  const p=complete();facts.write(p,'offer','14 יום של ניהול קמפיין במתנה');journey.init(p);p.journey.stage='DISCOVERY';p.journey.pendingField='audience';
  const before=JSON.stringify(p.answers);const r=transition(p,'מה הבנת?');
- assert.match(r.reply,/100 ILS ליום/);assert.match(r.reply,/14 יום/);assert.equal(JSON.stringify(p.answers),before);assert.equal(p.journey.pendingField,'audience');
+ assert.match(r.reply,/100 ₪ ליום/);assert.match(r.reply,/14 יום/);assert.equal(JSON.stringify(p.answers),before);assert.equal(p.journey.pendingField,'audience');
  transition(p,'לכל בעל עסק שרוצה להגדיל את ההכנסות');assert.equal(facts.value(p,'audience'),'בעלי עסקים שרוצים להגדיל הכנסות');
 });
 test('sales remains the business goal when a conversation acquisition path is recommended',()=>{
@@ -112,7 +112,7 @@ test('a return greeting preserves the completed review stage and all context sur
  const p=complete();transition(p,'תכין תוכנית קמפיין');const budget=facts.value(p,'dailyBudget');
  const restored=JSON.parse(JSON.stringify(p));transition(restored,'היי');
  assert.equal(restored.journey.stage,'PLAN_REVIEW');assert.deepEqual(facts.value(restored,'dailyBudget'),budget);
- assert.match(facts.summary(restored),/יאיר דיגיטל/);assert.match(facts.summary(restored),/100 ILS/);
+ assert.match(facts.summary(restored),/יאיר דיגיטל/);assert.match(facts.summary(restored),/100 ₪/);
 });
 test('a provider cannot claim a daily budget using only monthly evidence or paraphrase a fact',()=>{
  assert.throws(()=>analysis.validateAnalysis({intent:'build',updates:[{field:'dailyBudget',value:{amount:100,currency:'ILS',period:'day'},evidence:'3000 שקל בחודש'}]},'3000 שקל בחודש'),/UNGROUNDED/);

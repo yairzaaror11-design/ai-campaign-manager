@@ -2,8 +2,8 @@
 // One-tap sign-in to the dashboard from WhatsApp, optionally straight to a screen.
 // The link is personal, single-use and valid for 10 minutes; the address is never
 // written to AI history.
-const SCREENS = { 'לידים': 'leads', 'פניות': 'leads', 'ביצועים': 'performance', 'דוח': 'performance', 'תוצאות': 'performance', 'קמפיין': 'campaign', 'מותג': 'brand', 'תוכן': 'content', 'מכירות': 'sales', 'אישורים': 'approvals' };
-const PATTERN = /^(?:פתח(?:י)?\s+(?:לי\s+)?(?:את\s+)?)?(?:ה)?(?:דשבורד|תצוגה מקדימה|החשבון שלי|ניהול לידים)(?:\s+(?:של\s+)?(?:ה)?(לידים|פניות|ביצועים|דוח|תוצאות|קמפיין|מותג|תוכן|מכירות|אישורים))?$/;
+const SCREENS = { 'לידים': 'leads', 'פניות': 'leads', 'ביצועים': 'performance', 'דוח': 'performance', 'תוצאות': 'performance', 'קמפיין': 'campaign', 'מותג': 'brand', 'תוכן': 'content', 'מכירות': 'sales', 'אישורים': 'approvals', 'נכסים': 'catalog', 'מוצרים': 'catalog', 'שירותים': 'catalog', 'קטלוג': 'catalog' };
+const PATTERN = /^(?:פתח(?:י)?\s+(?:לי\s+)?(?:את\s+)?)?(?:ה)?(?:דשבורד|תצוגה מקדימה|החשבון שלי|ניהול לידים)(?:\s+(?:של\s+)?(?:ה)?(לידים|פניות|ביצועים|דוח|תוצאות|קמפיין|מותג|תוכן|מכירות|אישורים|נכסים|מוצרים|שירותים|קטלוג))?$/;
 const ALLOWED = new Set(Object.values(SCREENS));
 
 function request(text) {

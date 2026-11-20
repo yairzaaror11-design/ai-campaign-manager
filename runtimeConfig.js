@@ -4,6 +4,9 @@ function validateRuntime() {
  if(process.env.UNIFIED_PORTAL_AGENT_ENABLED!==undefined&&!['true','false'].includes(process.env.UNIFIED_PORTAL_AGENT_ENABLED))throw Error('INVALID_BOOLEAN_UNIFIED_PORTAL_AGENT_ENABLED');
  for(const flag of ['DYNAMIC_CONVERSATION_ENABLED','UNIFIED_CONVERSATION_ENABLED','TASK_AGENT_ENABLED','TASK_AGENT_REQUIRE_EVAL','TASK_AGENT_PILOT_ONLY','TASK_AGENT_EVALUATE_ON_START','READ_ONLY','META_WRITES_ENABLED','WHATSAPP_SEND_ENABLED','WHATSAPP_WORKER_IN_WEB','REQUIRE_WORKER_HEARTBEAT','GRAPHICS_ENABLED','BUSINESS_LINK_ONBOARDING_ENABLED','PUBLIC_ONBOARDING_ENABLED','BILLING_ENABLED','VIDEO_ENABLED']) if(process.env[flag]!==undefined&&!['true','false'].includes(process.env[flag])) throw Error('INVALID_BOOLEAN_'+flag);
  require('./maintenance').retentionDays();
+ require('./dataRetention').auditRetentionDays();
+ if(process.env.RUN_BACKGROUND_JOBS_IN!==undefined&&!['web','worker'].includes(process.env.RUN_BACKGROUND_JOBS_IN))throw Error('INVALID_RUN_BACKGROUND_JOBS_IN');
+ if(process.env.AI_COST_CAP_USD_PER_CLIENT&&process.env.AI_COST_CAP_USD_PER_CLIENT!=='off'&&require('./aiCostCap').capUsd()===null)throw Error('INVALID_AI_COST_CAP_USD_PER_CLIENT');
  if(process.env.NODE_ENV!=='production') return;
  for(const key of ['DATABASE_URL','META_TOKEN_ENCRYPTION_KEY','APPROVAL_HMAC_KEY','DELETION_HMAC_KEY','META_APP_ID','META_APP_SECRET','META_LOGIN_CONFIG_ID','APP_PUBLIC_URL','WHATSAPP_VERIFY_TOKEN','WHATSAPP_ACCESS_TOKEN','WHATSAPP_PHONE_NUMBER_ID','AUTHORIZED_PHONE_NUMBERS']) if(!process.env[key]) throw Error('MISSING_CONFIGURATION_'+key);
  if(process.env.PUBLIC_ONBOARDING_ENABLED==='true')for(const key of ['PRIVACY_OPERATOR_NAME','PRIVACY_CONTACT_EMAIL','PRIVACY_HOSTING_PROVIDER','PRIVACY_BACKUP_RETENTION'])if(!process.env[key])throw Error('PUBLIC_ONBOARDING_PRIVACY_REQUIRED');

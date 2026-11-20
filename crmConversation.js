@@ -5,7 +5,7 @@ async function handle(clientId,text){
  const p=await store.load(clientId);
  if(/^(?:סיכום פניות|סיכום מכירות|איך הפניות מתקדמות)$/.test(text)){
   const s=await crm.summary(clientId);
-  const amount=s.revenue.map(x=>`${Number(x.amount)/100} ${x.currency}`).join(', ');
+  const amount=s.revenue.map(x=>`${Number(x.amount)/100} ${({ILS:'₪',USD:'$',EUR:'€'}[x.currency]||x.currency)}`).join(', ');
   return{handled:true,reply:'הפניות במערכת:\n'+Object.entries(LABELS).map(([key,label])=>`${label}: ${s.counts[key]||0}`).join('\n')+(amount?'\nהכנסות מעסקאות שסומנו כנסגרו: '+amount:'')+'\nאלה נתוני המעקב שהוזנו למערכת; הם אינם ייחוס מאומת לקמפיין.'};
  }
  if(/^(?:הוסף פנייה|הוספת פנייה|פנייה חדשה)$/.test(text))return store.update(clientId,null,profile=>{profile.crmIntake={stage:'NAME'};return{handled:true,reply:'מה שם הפונה? אפשר לכתוב ״בטל הוספה״ בכל שלב.'};});

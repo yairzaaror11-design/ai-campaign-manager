@@ -154,7 +154,8 @@ async function evaluate({decide=require('./taskPlanner').decide,route=require('.
 }
 function run(options){
  if(inFlight)return inFlight;
- inFlight=evaluateWithCache(options).catch(()=>{state.status='FAILED';return status();}).finally(()=>{inFlight=null;});
+ // Synthetic model checks are system work, never billed to a customer.
+ inFlight=require('./usageLedger').system('model_acceptance',()=>evaluateWithCache(options)).catch(()=>{state.status='FAILED';return status();}).finally(()=>{inFlight=null;});
  return inFlight;
 }
 function start(){if(process.env.TASK_AGENT_EVALUATE_ON_START==='true')void run();}

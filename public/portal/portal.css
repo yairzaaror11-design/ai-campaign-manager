@@ -1152,3 +1152,27 @@ article.card.lead .actions .button{white-space:nowrap}
  .table-scroll td[data-label=""]::before{display:none}
  .table-scroll td>.actions,.table-scroll td .actions{flex-wrap:wrap;justify-content:flex-end}
 }
+
+/* Catalog (מה אני מוכר): mobile-first cards, no sideways scroll, 44px targets. */
+.catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:16px;margin-top:16px}
+.card.catalog-card{padding:0;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.catalog-photo{aspect-ratio:4/3;background:var(--subtle);display:grid;place-items:center}
+.catalog-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.catalog-body{padding:16px;display:grid;gap:8px;min-width:0}
+.catalog-body h3{margin:0;font-size:16px;overflow-wrap:anywhere}
+.catalog-price{margin:0;font-weight:700;font-size:16px}
+.catalog-tags{display:flex;flex-wrap:wrap;gap:6px}
+.catalog-tags .badge{white-space:normal}
+.catalog-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.catalog-actions button,.catalog-form button,.catalog-thumbs button{min-height:44px}
+.catalog-form input,.catalog-form select{min-height:44px}
+.catalog-thumbs{display:flex;flex-wrap:wrap;gap:8px}
+.catalog-thumbs figure{margin:0;display:grid;gap:4px;width:96px}
+.catalog-thumbs img{width:96px;height:72px;object-fit:cover;border-radius:8px;display:block}
+.catalog-check{display:flex;gap:10px;align-items:flex-start;min-height:44px;cursor:pointer}
+.catalog-check input{width:22px;height:22px;min-height:0;flex:none;margin-top:2px}
+.reply-text{white-space:pre-line;overflow-wrap:anywhere}
+@media(max-width:600px){.catalog-actions button{flex:1 1 calc(50% - 8px)}}
+
+/* Status panel (done / running / waiting / failed / spend) and the work agreement form */
+.status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.status-box{border:1px solid var(--border);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:4px;background:var(--surface);min-width:0}.status-box strong{font-size:14px}.status-box small{overflow-wrap:anywhere}.check-row{display:flex;gap:10px;align-items:center;margin:8px 0;font-weight:400}.check-row input{width:auto;min-height:0}button.danger{background:var(--surface);border:1px solid var(--danger);color:var(--danger);box-shadow:none}

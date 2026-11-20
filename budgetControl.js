@@ -48,7 +48,7 @@ async function propose(clientId, plan) {
     const approval = await require('./approvalEngine').createApprovalForClient(clientId, plan);
     return { ok: true, actionId: approval.actionId, summary: formatActionPlan(approval.actionPlan), expiresAt: approval.expiresAt };
   } catch (error) {
-    if (error.message === 'SPEND_CAP_EXCEEDED') return { ok: false, reply: error.reply };
+    if (error.reply) return { ok: false, reply: error.reply };
     throw error;
   }
 }

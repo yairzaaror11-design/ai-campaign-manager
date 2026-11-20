@@ -2,7 +2,7 @@
 const router=require('express').Router(),path=require('node:path'),db=require('./db'),auth=require('./portalStore');
 router.use('/app',(req,res,next)=>{res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"});next();});
 router.get('/app',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/index.html')));
-router.get('/app/:screen',(req,res,next)=>{if(![...require('./portalAgent').SCREENS,'pages','performance','approvals'].includes(req.params.screen))return next();res.sendFile(path.join(__dirname,'public/portal/index.html'));});
+router.get('/app/:screen',(req,res,next)=>{if(![...require('./portalAgent').SCREENS,'pages','performance','approvals','catalog','agreement'].includes(req.params.screen))return next();res.sendFile(path.join(__dirname,'public/portal/index.html'));});
 router.get('/app/portal.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/portal.js')));
 router.get('/app/dashboard.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/dashboard.js')));
 router.get('/app/billing.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/billing.js')));
@@ -21,12 +21,13 @@ router.use('/app/api',require('./rateLimit').middleware('portal-api',600),async(
 });
 const endpoint=handler=>async(req,res)=>{try{await require('./metaConnection').context.run(String(req.portal.clientId),()=>handler(req,res));}catch(e){res.status(['LEAD_NOT_FOUND_OR_STALE','WORKSPACE_STALE','WORKSPACE_REQUEST_CONFLICT'].includes(e.message)?409:400).json({error:e.message==='LEAD_NOT_FOUND_OR_STALE'?'הפנייה עודכנה במקום אחר. רעננו ונסו שוב.':e.message==='WORKSPACE_STALE'?'הפרטים עודכנו במקביל. רעננו את המסך לפני עריכה נוספת.':e.message==='WORKSPACE_REQUEST_CONFLICT'?'הבקשה הזו כבר נשמרה עם פרטים אחרים. פתחו מחדש את הטופס.':'משהו לא עבד. בדקו את הפרטים ונסו שוב.'});}};
 router.use('/app/api/authority',require('./authorityRoutes'));
+router.use('/app/api/catalog',require('./catalogRoutes'));
 router.get('/app/api/dashboard',endpoint(async(req,res)=>{
  const id=req.portal.clientId,p=await require('./marketingStore').load(id);
  const account=(await db.query('SELECT display_name,email,consent_version FROM customer_accounts WHERE client_id=$1',[id])).rows[0]||null;
  const subscription=(await db.query('SELECT plan_code,status,period_end FROM customer_subscriptions WHERE client_id=$1',[id])).rows[0]||{plan_code:'PILOT',status:'PILOT'};
  const graphics=(await db.query('SELECT COUNT(*)::int AS count FROM graphic_jobs WHERE client_id=$1 AND created_at>NOW()-INTERVAL \'1 day\'',[id])).rows[0]?.count||0;
- res.json({productName:'SCORPIO AI',profileVersion:p?.version||0,account,subscription:{...subscription,checkoutAvailable:require('./billingService').configured(),notice:require('./billingPlans').AD_BUDGET_NOTE},billing:await require('./subscriptionService').summary(id),business:p?require('./conversationFacts').all(p):{},brand:p?.brand||null,websiteChecks:p?.websiteChecks||null,draft:p?.journey?.draft||null,stage:p?.journey?.stage||'DISCOVERY',connection:p?.connection?{status:p.connection.status,account:p.connection.account,lastCheckAt:p.connection.lastCheckAt}:null,crm:await require('./crmService').summary(id),usage:{graphicsAttemptsLast24Hours:graphics},capabilities:{metaWrites:process.env.READ_ONLY==='false'&&process.env.META_WRITES_ENABLED==='true',googleAds:false,videoGeneration:false,billing:require('./billingService').configured()}});
+ res.json({productName:'SCORPIO AI',profileVersion:p?.version||0,account,subscription:{...subscription,checkoutAvailable:require('./billingService').configured(),notice:require('./billingPlans').AD_BUDGET_NOTE},billing:await require('./subscriptionService').summary(id),business:p?require('./conversationFacts').all(p):{},brand:p?.brand||null,websiteChecks:p?.websiteChecks||null,draft:p?.journey?.draft||null,stage:p?.journey?.stage||'DISCOVERY',connection:p?.connection?{status:p.connection.status,account:p.connection.account,lastCheckAt:p.connection.lastCheckAt}:null,crm:await require('./crmService').summary(id),usage:{graphicsAttemptsLast24Hours:graphics},catalog:await require('./verticalProfiles').summary(id).catch(()=>null),capabilities:{metaWrites:process.env.READ_ONLY==='false'&&process.env.META_WRITES_ENABLED==='true',googleAds:false,videoGeneration:false,billing:require('./billingService').configured()}});
 }));
 router.post('/app/api/register',endpoint(async(req,res)=>res.json(await auth.register(req.portal.clientId,req.body))));
 router.post('/app/api/logout',endpoint(async(req,res)=>{
@@ -46,6 +47,10 @@ router.post('/app/api/leads',endpoint(async(req,res)=>{
  const account=(await db.query('SELECT client_id FROM customer_accounts WHERE client_id=$1',[req.portal.clientId])).rows[0];if(!account)return res.status(403).json({error:'יש להשלים את פתיחת החשבון לפני הוספת פניות.'});
  res.json(await require('./crmService').create(req.portal.clientId,{...req.body,source:'manual'}));
 }));
+router.get('/app/api/lead-concierge',endpoint(async(req,res)=>res.json(await require('./leadConcierge').overview(req.portal.clientId))));
+router.put('/app/api/lead-concierge/settings',endpoint(async(req,res)=>{const lc=require('./leadConcierge'),b=req.body||{};if(b.enabled===true&&!lc.enabled())return res.status(409).json({error:'המענה האוטומטי ללידים עוד לא זמין בחשבון.'});const s=await lc.saveSettings(req.portal.clientId,{enabled:b.enabled,availability:b.availability,vertical:b.vertical});res.json({enabled:s.enabled,availability:s.availability,availabilityText:lc.availabilityText(s.availability)});}));
+router.get('/app/api/leads/:id/concierge',endpoint(async(req,res)=>res.json(await require('./leadConcierge').transcript(req.portal.clientId,req.params.id))));
+router.post('/app/api/leads/:id/takeover',endpoint(async(req,res)=>res.json(await require('./leadConcierge').takeover(req.portal.clientId,req.params.id))));
 router.patch('/app/api/leads/:id',endpoint(async(req,res)=>res.json(await require('./crmService').update(req.portal.clientId,req.params.id,req.body))));
 router.post('/app/api/business/inspect',endpoint(async(req,res)=>{
  if(!await require('./rateLimit').take('business-inspect:'+req.portal.clientId,6,3600))return res.status(429).json({error:'אפשר לבדוק קישור נוסף בהמשך.'});
@@ -140,6 +145,19 @@ router.post('/app/api/organic/approve-all',endpoint(async(req,res)=>res.json({ap
 router.post('/app/api/organic/status',endpoint(async(req,res)=>res.json(await require('./organicContent').setStatus(req.portal.clientId,req.body?.status))));
 router.post('/app/api/organic/posts/:id',endpoint(async(req,res)=>res.json(await require('./organicContent').updatePost(req.portal.clientId,req.params.id,{action:req.body?.action,caption:req.body?.caption}))));
 router.post('/app/api/organic/photo-shoot',endpoint(async(req,res)=>res.json(await require('./organicContent').requestShoot(req.portal.clientId,String(req.body?.details||'')))));
+// Work agreement (הסכם עבודה) and the five-part status (done / running / waiting / failed / spend).
+router.get('/app/api/status',endpoint(async(req,res)=>res.json(await require('./activityLog').status(req.portal.clientId))));
+const agreementEndpoint=work=>async(req,res)=>{
+ try{await require('./scopedAuthority').withPortalOwner(req.portal,async()=>res.json(await work(req)));}
+ catch(e){const known={AGREEMENT_LIMITS_REQUIRED:'צריך תקרה חודשית ותקציב יומי מקסימלי, שניהם גדולים מאפס.',AGREEMENT_DAILY_ABOVE_MONTHLY:'התקציב היומי לקמפיין לא יכול להיות גדול מהתקרה החודשית.',AGREEMENT_NOT_FOUND:'עוד אין הסכם עבודה. קודם שומרים אחד.',AUTHORITY_OWNER_REQUIRED:'רק בעל העסק יכול לשנות את הסכם העבודה.'};res.status(e.message==='AUTHORITY_OWNER_REQUIRED'?403:400).json({error:known[e.message]||'בדקו את הפרטים ונסו שוב.'});}
+};
+router.get('/app/api/agreement',endpoint(async(req,res)=>{const w=require('./workAgreement');res.json({agreement:await require('./scopedAuthority').getAgreement(req.portal.clientId),labels:w.ALLOW_HE,alwaysAsk:w.ALWAYS_ASK_HE,presets:w.PRESETS});}));
+router.post('/app/api/agreement',agreementEndpoint(req=>require('./scopedAuthority').setAgreement(req.portal.clientId,req.body)));
+router.post('/app/api/agreement/pause',agreementEndpoint(req=>require('./scopedAuthority').pauseAll(req.portal.clientId)));
+router.post('/app/api/agreement/resume',agreementEndpoint(req=>require('./scopedAuthority').resumeAll(req.portal.clientId)));
+// AI cost this month: the owner sees their own business; support operators see everyone.
+router.get('/app/api/usage',endpoint(async(req,res)=>res.json(await require('./usageLedger').ownerSummary(req.portal.clientId))));
+router.get('/app/api/usage/operator',endpoint(async(req,res)=>{if(!require('./opsAlerts').operatorIds().includes(String(req.portal.clientId)))return res.sendStatus(403);res.json(await require('./usageLedger').operatorSummary());}));
 router.get('/app/api/activity',endpoint(async(req,res)=>res.json({items:await require('./activityLog').list(req.portal.clientId,{days:30})})));
 router.get('/app/api/approvals',endpoint(async(req,res)=>res.json({approvals:await require('./dashboardApprovals').pending(req.portal.clientId)})));
 router.post('/app/api/approvals/:id/approve',endpoint(async(req,res)=>{if(req.body?.confirm!==true)return res.sendStatus(400);res.json(await require('./dashboardApprovals').approve(req.portal.clientId,req.params.id));}));

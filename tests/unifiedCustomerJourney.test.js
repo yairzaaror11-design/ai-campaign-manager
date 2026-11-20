@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const store=require('../marketingStore'),facts=require('../conversationFacts'),journey=require('../campaignJourney'),social=require('../socialContent');
 function ready(){const p=store.emptyProfile();journey.init(p);for(const [k,v]of Object.entries({businessName:'פרחי דנה',businessType:'חנות פרחים',product:'זרי פרחים',businessGoal:'פניות',audience:'מחפשי מתנות',geography:'חיפה',advantage:'עיצוב אישי',dailyBudget:{amount:100,currency:'ILS',period:'day'},leadDestination:'WhatsApp'}))facts.write(p,k,v);return p;}
 test('paid journey renders actual ads and plan without strategy and creative checkpoints',()=>{
- const p=ready(),r=journey.transition(p,'אני רוצה קמפיין');assert.equal(p.journey.stage,'PLAN_REVIEW');assert.match(r.reply,/מודעה 1/);assert.match(r.reply,/מודעה 2/);assert.match(r.reply,/100 ILS/);assert.equal(p.journey.planApproved,false);assert.equal(p.journey.draft.status,'LOCAL_DRAFT');
+ const p=ready(),r=journey.transition(p,'אני רוצה קמפיין');assert.equal(p.journey.stage,'PLAN_REVIEW');assert.match(r.reply,/מודעה 1/);assert.match(r.reply,/מודעה 2/);assert.match(r.reply,/100 ₪/);assert.equal(p.journey.planApproved,false);assert.equal(p.journey.draft.status,'LOCAL_DRAFT');
 });
 test('social draft needs no media budget or Meta connection, and cannot claim publication',()=>{
  const p=store.emptyProfile();let r=journey.transition(p,'תוכן לסושיאל');assert.equal(p.journey.pendingField,'businessType');
@@ -42,7 +42,7 @@ test('CRM conversation tracks real lead outcome, revenue and lost reason for the
   await chat.handle(a.id,'הוסף פנייה');await chat.handle(a.id,'לקוח בדיקה');await chat.handle(a.id,'0501234567');
   assert.equal((await crm.list(a.id)).length,1);assert.equal((await crm.list(b.id)).length,0);
   await chat.handle(a.id,'הפניות שלי');await chat.handle(a.id,'פתח פנייה 1');const won=await chat.handle(a.id,'סמן שנסגרה עסקה');assert.match(won.reply,/סכום העסקה/);
-  await chat.handle(a.id,'1250.50 ₪');assert.equal((await crm.list(a.id))[0].revenue_minor,125050);assert.match((await chat.handle(a.id,'סיכום פניות')).reply,/1250.5 ILS/);
+  await chat.handle(a.id,'1250.50 ₪');assert.equal((await crm.list(a.id))[0].revenue_minor,125050);assert.match((await chat.handle(a.id,'סיכום פניות')).reply,/1250.5 ₪/);
   await chat.handle(a.id,'הפניות שלי');await chat.handle(a.id,'פתח פנייה 1');await chat.handle(a.id,'סמן שהפנייה לא הבשילה');
   assert.equal(await chat.handle(a.id,'אני רוצה קמפיין'),null);await chat.handle(a.id,'המחיר לא התאים');assert.match((await crm.list(a.id))[0].note,/המחיר לא התאים/);
   assert.equal((await crm.summary(a.id)).revenue.length,0);assert.equal((await h.db.query('SELECT COUNT(*)::int AS n FROM approvals')).rows[0].n,0);

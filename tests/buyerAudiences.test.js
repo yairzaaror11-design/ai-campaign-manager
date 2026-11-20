@@ -31,7 +31,7 @@ test('audience plans are strictly validated and the approval card says what happ
   const look = createActionPlan({ intent: 'CREATE_LOOKALIKE', summary: 'l', target: { accountId: 'act_6001' }, parameters: { name: buyers.LOOKALIKE_NAME, originAudienceId: '777' } });
   strictPlan(look);
   assert.throws(() => strictPlan({ ...look, parameters: { ...look.parameters, originAudienceId: 'abc' } }), /INVALID_LOOKALIKE/);
-  assert.match(formatActionPlan(look), /Lookalike/);
+  assert.match(formatActionPlan(look), /קהל דומים/);assert.doesNotMatch(formatActionPlan(look), /Lookalike|קהל דומה 1%|act_/);
   // The audience intents stay out of the AI planners' intent list.
   assert.ok(!require('../actionPlan').WRITE_INTENTS.has('SYNC_BUYER_AUDIENCE'));
   const write = require('../metaWrite');
@@ -153,7 +153,7 @@ test('buyers audience: approval-gated create, hashed upload only, exclusion, loo
     size = 150;
     await clearUi(id);
     await inbound(id, () => buyers.handleText(PHONE, 'קהל לקוחות'));
-    await seen(id, /ליצור קהל דומה 1%/);
+    await seen(id, /ליצור קהל דומים/);
     const look = await inbound(id, () => buyers.prepareLookalike(id));
     assert.equal((await approveAndRun(id, look.approval)).ok, true);
     const created = posts.filter((p) => p.url.endsWith('/customaudiences')).at(-1).data;
