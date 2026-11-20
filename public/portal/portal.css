@@ -893,3 +893,13 @@ body .floating-actions>button{justify-content:center;align-items:center}
 @media (max-width:760px){.billing-plans{grid-template-columns:1fr}}
 
 .budget-body h3{margin-top:0}.budget-current{font-weight:600}.budget-why{background:var(--primary-soft);border-radius:12px;padding:10px 14px;font-size:14px}.budget-chips{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}.budget-chips button{min-width:72px}.budget-preview{font-weight:600;margin:12px 0 4px}.budget-review pre{white-space:pre-wrap}.budget-dialog{width:min(520px,calc(100vw - 32px))}
+
+/* Five places: the bottom line on "היום" */
+.lg-bottom{display:flex;flex-direction:column;gap:2px;padding:16px 18px;margin-bottom:12px;border:1px solid var(--border);border-radius:10px;background:var(--surface)}
+.lg-bottom.up{border-color:color-mix(in srgb,var(--gain) 40%,var(--border));background:color-mix(in srgb,var(--gain) 7%,var(--surface))}
+.lg-bottom.down{border-color:color-mix(in srgb,#C2410C 40%,var(--border))}
+.lg-bottom-k{font-size:14px;color:var(--muted)}
+.lg-bottom-v{font-size:clamp(28px,3vw,40px);font-weight:750;letter-spacing:-.02em;line-height:1.15;font-variant-numeric:tabular-nums lining-nums}
+.lg-bottom.up .lg-bottom-v{color:var(--gain)}.lg-bottom.down .lg-bottom-v{color:#C2410C}
+.lg-bottom-v.small{font-size:20px}
+.lg-bottom-note{font-size:13px;color:var(--muted)}

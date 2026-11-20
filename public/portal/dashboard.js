@@ -1,10 +1,11 @@
 'use strict';
 (()=>{
  const UI=window.ScorpioUI,{el,button,card,badge,empty,field,tabs,table,dialog,progress}=UI;
- const groups={home:{label:'בית',items:[['home','סקירת העסק']]},marketing:{label:'שיווק',items:[['brand','זהות מותג'],['products','מוצרים'],['creative','סטודיו קריאייטיב'],['content','תוכן לסושיאל'],['campaign','קמפיינים ממומנים'],['landing','עמודי מכירה'],['research','תכנון ומחקר שיווקי'],['integrations','חיבורים']]},sales:{label:'מכירות',items:[['sales','מרכז מכירות'],['pipeline','לוח עסקאות'],['leads','כל הלידים'],['customers','לקוחות'],['tasks','משימות'],['scripts','תסריטי מכירה'],['automations','אוטומציות'],['whatsapp','WhatsApp עסקי'],['bot','בוט חכם']]},finance:{label:'פיננסים',items:[['finance','לוח בקרה'],['profitability','מוצרים ורווחיות'],['expenses','הוצאות'],['forecasts','יעדים ותחזיות'],['advisor','יועץ פיננסי AI']]},calendar:{label:'יומן ותורים',items:[['calendar','לוח שנה'],['bookings','ניהול תורים'],['services','שירותים'],['team','צוות וזמינות'],['calendar-settings','הגדרות היומן']]}};
+ const groups={home:{label:'היום',items:[['home','היום'],['approvals','מחכה לאישור'],['agent','העוזר שלך']]},customers:{label:'לקוחות',items:[['leads','כל הלידים'],['pipeline','לוח עסקאות'],['customers','לקוחות'],['tasks','משימות'],['sales','סיכום מכירות']]},ads:{label:'פרסום',items:[['campaign','קמפיינים'],['performance','תוצאות'],['landing','עמודי מכירה'],['research','תכנון ומחקר']]},content:{label:'תוכן',items:[['content','לוח תוכן'],['creative','סטודיו קריאייטיב']]},business:{label:'העסק שלי',items:[['brand','זהות מותג'],['products','מוצרים ושירותים'],['finance','כסף ורווחיות'],['profitability','רווחיות לפי מוצר'],['expenses','הוצאות'],['integrations','חיבורים'],['billing','מנוי וחיוב'],['users','משתמשים והרשאות'],['account','הגדרות'],['help','עזרה ותמיכה']]}};
  // Screens without a working backend stay out of navigation until they are built.
- const HIDDEN=new Set(['scripts','automations','whatsapp','bot','forecasts','advisor']);for(const g of Object.values(groups))g.items=g.items.filter(([id])=>!HIDDEN.has(id));delete groups.calendar;
- const departmentMeta={home:{icon:'home',description:'כל העסק במבט אחד'},marketing:{icon:'campaign',description:'מותג, תוכן וצמיחה'},sales:{icon:'leads',description:'לידים, לקוחות ועסקאות'},finance:{icon:'performance',description:'הוצאות, יעדים ורווחיות'},calendar:{icon:'content',description:'תכנון זמן ושירותים'}};
+ const HIDDEN=new Set(['scripts','automations','whatsapp','bot','forecasts','advisor']);for(const g of Object.values(groups))g.items=g.items.filter(([id])=>!HIDDEN.has(id));
+ const departmentMeta={home:{icon:'home',description:'מה קורה בעסק ומה מחכה לך'},customers:{icon:'leads',description:'לידים, עסקאות ולקוחות'},ads:{icon:'campaign',description:'מה רץ, כמה עלה ומה הביא'},content:{icon:'content',description:'פוסטים, גרפיקות וסרטונים'},business:{icon:'account',description:'מותג, מוצרים, כסף והגדרות'}};
+ const departmentColor={home:'home',customers:'sales',ads:'marketing',content:'calendar',business:'finance'};
  const dirtyForms=new Set();let leavePending=false,sheetState=null;
  function hasUnsaved(){for(const f of dirtyForms)if(!f.isConnected)dirtyForms.delete(f);return dirtyForms.size>0;}
  async function allowLeave(){if(!hasUnsaved())return true;if(leavePending)return false;leavePending=true;const ok=await UI.confirm('שינויים שלא נשמרו','יש מידע שהזנת ולא נשמר. להישאר ולשמור, או לעזוב את המסך?','עזיבה ללא שמירה');leavePending=false;if(ok)dirtyForms.clear();return ok;}
@@ -19,7 +20,7 @@
   d.addEventListener('close',()=>{document.querySelector('[data-mobile-nav=more]')?.setAttribute('aria-expanded','false');document.body.classList.remove('sheet-open');if(history.state?.scorpioSheet)history.back();},{once:true});d.showModal();
  }
  const system=[['agent','העוזר שלך'],['users','משתמשים והרשאות'],['billing','מנויים וחיובים'],['help','מרכז עזרה ותמיכה'],['account','הגדרות']];
- const titles={...Object.fromEntries([...Object.values(groups).flatMap(g=>g.items),...system]),onboarding:'היכרות עם העסק',pages:'כל הדפים',performance:'ביצועים',support:'תמיכה',approvals:'אישורים ממתינים'};
+ const titles={...Object.fromEntries([...Object.values(groups).flatMap(g=>g.items),...system]),onboarding:'היכרות עם העסק',pages:'כל הדפים',support:'תמיכה',...Object.fromEntries(Object.values(groups).flatMap(g=>g.items))};
  let current='home',department='home',generation=0,ready=false,drawer=null,chatMessages=[],guide=null,brandTab='kit',settingsTab='display',contentMonth=new Date(),contentMode='calendar',researchTab='personas',showCampaignTools=false,sidebarIdentity,departmentNavigation;
  const dynamic=el('section','','page-content'),sidebar=el('aside','','sidebar'),backdrop=el('div','','sidebar-backdrop');
  dynamic.id='dashboard-screen';dynamic.setAttribute('aria-label','תוכן המסך');
@@ -50,7 +51,7 @@
   $('workspace').prepend(dynamic);main.classList.add('dashboard-background');document.body.classList.add('shell-ready');
   const floating=el('div','','floating-actions');floating.id='floating-actions';const a=button('',()=>openAgent(),'primary');a.append(UI.icon('agent'));a.setAttribute('aria-label','פתיחת העוזר');a.title='העוזר שלך';const h=button('',()=>navigate('help'),'secondary');h.append(UI.icon('help'));h.setAttribute('aria-label','מרכז עזרה');h.title='מרכז עזרה';const t=button('◉',startTour,'secondary');t.setAttribute('aria-label','הפעלת מדריך');t.title='הפעלת מדריך';a.classList.add('desktop-floating');t.classList.add('desktop-floating');h.classList.add('desktop-floating');floating.append(a,t,h);
   const mobileNav=el('nav','','mobile-bottom-nav');mobileNav.setAttribute('aria-label','ניווט תחתון');
-  [['home','בית','home',()=>navigate('home')],['marketing','שיווק','campaign',()=>navigate('brand')],['sales','מכירות','leads',()=>navigate('sales')],['finance','פיננסים','performance',()=>navigate('finance')],['more','עוד','menu',openMore]].forEach(([id,label,icon,action])=>{const b=button('',action,'mobile-bottom-item');b.dataset.mobileNav=id;b.setAttribute('aria-label',label);if(id==='more'){b.setAttribute('aria-expanded','false');b.setAttribute('aria-controls','navigation-sheet');}const symbol=el('span','','mobile-bottom-icon');symbol.append(UI.icon(icon));b.append(symbol,el('span',label));mobileNav.append(b);});floating.append(mobileNav);document.body.append(floating);
+  [['home','היום','home',()=>navigate('home')],['customers','לקוחות','leads',()=>navigate('leads')],['ads','פרסום','campaign',()=>navigate('campaign')],['content','תוכן','content',()=>navigate('content')],['business','העסק שלי','account',()=>navigate('brand')]].forEach(([id,label,icon,action])=>{const b=button('',action,'mobile-bottom-item');b.dataset.mobileNav=id;b.setAttribute('aria-label',label);if(id==='more'){b.setAttribute('aria-expanded','false');b.setAttribute('aria-controls','navigation-sheet');}const symbol=el('span','','mobile-bottom-icon');symbol.append(UI.icon(icon));b.append(symbol,el('span',label));mobileNav.append(b);});floating.append(mobileNav);document.body.append(floating);
   document.addEventListener('input',e=>{const f=e.target.closest('form');if(f&&main.contains(f)&&!f.classList.contains('home-agent-form'))dirtyForms.add(f);});
   window.addEventListener('beforeunload',e=>{if(hasUnsaved()){e.preventDefault();e.returnValue='';}});
   document.addEventListener('keydown',e=>{if(e.key==='Tab'&&sidebar.classList.contains('open')){const all=[...sidebar.querySelectorAll('button:not(:disabled),a[href]')].filter(n=>n.getClientRects().length);const first=all[0],last=all.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first?.focus();}}if(e.key==='Escape'){closeSidebar();closeTour();}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openCommands();}});
@@ -58,7 +59,7 @@
   const observer=new MutationObserver(()=>{const hidden=$('workspace').hidden;sidebar.hidden=hidden;floating.hidden=hidden;headerCopy.hidden=hidden;searchWrap.hidden=hidden;tools.hidden=hidden;identity.hidden=hidden;departmentNavigation.hidden=hidden;if(hidden){document.body.classList.remove('shell-ready');drawer?.close();}else document.body.classList.add('shell-ready');});observer.observe($('workspace'),{attributes:true,attributeFilter:['hidden']});
  }
  function renderSidebar(){
-  document.body.dataset.department=department;
+  document.body.dataset.department=departmentColor[department]||department;
   sidebar.replaceChildren(sidebarIdentity);const meta=departmentMeta[department];const departmentHeading=el('div','','department-heading'),symbol=el('span','','department-symbol'),copy=el('div');symbol.append(UI.icon(meta.icon));copy.append(el('strong',groups[department].label),el('small',meta.description));departmentHeading.append(symbol,copy);sidebar.append(departmentHeading);const departmentSelect=el('select','','tablet-departments');departmentSelect.setAttribute('aria-label','מעבר מחלקה');Object.entries(groups).forEach(([id,g])=>{const option=el('option',g.label);option.value=id;departmentSelect.append(option);});departmentSelect.value=department;departmentSelect.addEventListener('change',async()=>{await navigate(groups[departmentSelect.value].items[0][0]);departmentSelect.value=department;});sidebar.append(departmentSelect);
   const mobileSection=el('div','','mobile-section-heading');mobileSection.append(el('span',groups[department].label));const sectionButton=button('דפי המחלקה',()=>{$('sidebar-toggle').click();},'secondary');mobileSection.append(sectionButton);$('department-context')?.remove();mobileSection.id='department-context';mobileSection.hidden=current==='onboarding';main.prepend(mobileSection);
   const nav=el('nav');nav.setAttribute('aria-label','ניווט ראשי');
@@ -67,10 +68,10 @@
   primaryItems.forEach(([id,label])=>nav.append(navButton(id,label)));
   if(advancedItems.length){const advanced=el('details','','advanced-navigation');advanced.open=advancedItems.some(([id])=>id===current);advanced.append(el('summary','כלים נוספים · '+advancedItems.length));advancedItems.forEach(([id,label])=>advanced.append(navButton(id,label)));nav.append(advanced);}
 
-  if(department==='home')[['agent','העוזר שלך'],['performance','ביצועים'],['approvals','אישורים ממתינים']].forEach(([id,label])=>nav.append(navButton(id,label)));
+  
   sidebar.append(nav);
-  const bottom=el('div','','sidebar-bottom');[['pages','כל הדפים'],['users','ניהול משתמשים והרשאות'],['account','הגדרות'],['help','מרכז עזרה']].forEach(([id,label])=>bottom.append(navButton(id,label)));const profile=button('',()=>{settingsTab='account';navigate('account');},'sidebar-profile');profile.append(UI.icon('profile'),el('span',state.account?.display_name||'פרופיל משתמש','nav-label'));profile.setAttribute('aria-label','פרופיל משתמש');bottom.append(profile,logout);sidebar.append(bottom);
-  document.querySelectorAll('[data-mobile-nav]').forEach(b=>{const active=b.dataset.mobileNav==='home'?current==='home':b.dataset.mobileNav==='more'?department==='finance'||!Object.values(groups).some(g=>g.items.some(([id])=>id===current)):b.dataset.mobileNav===department&&department!=='home'&&Object.values(groups).some(g=>g.items.some(([id])=>id===current));b.setAttribute('aria-current',active?'page':'false');});
+  const bottom=el('div','','sidebar-bottom');[['pages','כל הדפים']].forEach(([id,label])=>bottom.append(navButton(id,label)));const profile=button('',()=>{settingsTab='account';navigate('account');},'sidebar-profile');profile.append(UI.icon('profile'),el('span',state.account?.display_name||'פרופיל משתמש','nav-label'));profile.setAttribute('aria-label','פרופיל משתמש');bottom.append(profile,logout);sidebar.append(bottom);
+  document.querySelectorAll('[data-mobile-nav]').forEach(b=>{const active=b.dataset.mobileNav===department;b.setAttribute('aria-current',active?'page':'false');});
   departmentNavigation.querySelectorAll('[data-department]').forEach(b=>b.setAttribute('aria-current',String(b.dataset.department===department)));
   departmentNavigation.dispatchEvent(new Event('departmentchange'));
   $('business-switch').replaceChildren(UI.icon('pages'),el('span',(state.business.businessName||'העסק שלי')+' ⌄','business-name'));$('header-account').textContent=state.account?.display_name||'סביבת העבודה';
@@ -104,7 +105,7 @@
     if(st.winner)act.append(button('🏆 שכפל קמפיין מנצח',()=>budgetDialog(x,'duplicate',st),'secondary budget-winner'));}
    return [x.name,badge(STATUS[x.status]||x.status,x.status==='ACTIVE'?'':'warning'),shekel(st.spend),st.leads,st.leads?shekel(st.spend/st.leads):'—',st.won,shekel(st.revenue),act];});
   if(!rows.length)return;
-  c.append(table(['קמפיין','מצב','סכום שהוצא','לידים','עלות לליד','מכירות','הכנסות','פעולות'],rows));
+  c.append(table(['קמפיין','מצב','עלות פרסום','לידים','עלות לליד','מכירות','הכנסות','פעולות'],rows));
   c.append(el('p','שינוי תקציב או שכפול קמפיין מנצח: מכינים כאן, רואים כמה זה יעלה, ושום דבר לא משתנה ב־Meta עד שתאשר.','muted'));
   const actions=el('div','','actions');actions.append(button('לבקש מהעוזר שיפור לקמפיין',()=>openAgent(true),'secondary'),go('ביצועים מלאים','performance'));c.append(actions);
   const emptyState=dynamic.querySelector('.empty-state');if(emptyState)emptyState.replaceWith(c);else dynamic.children[0]?.after(c);
@@ -147,7 +148,7 @@
  }
  const pageDescriptions={brand:'ערכת המותג, זהות ותוכן ופרטי העסק',products:'קטלוג מוצרים ושירותים עם קהלים ומחירים',creative:'מרכז התוכן ותצוגות מקדימות',content:'לוח חודשי, טיוטות ועריכת פוסטים',campaign:'טיוטת קמפיין, מודעות, חיבור Meta ודוחות',landing:'עמודי מכירה, תצוגה מקדימה ואיסוף לידים',research:'פרופילי לקוחות ותכנון מחקר',integrations:'Meta, רשתות חברתיות ומצב חיבורים'};
  function marketingDirectory(){const section=el('section','','page-directory');section.append(el('h2','כל דפי מחלקת השיווק'));const grid=el('div','','page-directory-grid');groups.marketing.items.forEach(([id,label],index)=>{const c=card();c.classList.add('interactive-card');c.append(el('span',String(index+1).padStart(2,'0'),'directory-number'),el('h3',label),el('p',pageDescriptions[id],'muted'),go('פתיחת '+label,id));grid.append(c);});section.append(grid);return section;}
- function pageDirectory(){const out=[heading('כל הדפים','כל מסכי SCORPIO AI — כניסה ישירה מכל מקום')];Object.entries(groups).forEach(([key,g])=>{if(key==='home')return;const section=el('section','','page-directory');section.append(el('h2','מחלקת '+g.label));const grid=el('div','','page-directory-grid');g.items.forEach(([id,label])=>{const c=card();c.classList.add('interactive-card');c.append(el('h3',label));if(pageDescriptions[id])c.append(el('p',pageDescriptions[id],'muted'));else if(['scripts','automations','whatsapp','bot','forecasts','advisor','calendar','bookings','services','team','calendar-settings'].includes(id))c.append(badge('יכולת בתהליך מימוש','warning'));c.append(go('פתיחת '+label,id));grid.append(c);});section.append(grid);out.push(section);});const sys=el('div','','page-directory-grid');system.forEach(([id,label])=>{const c=card(label);c.classList.add('interactive-card');c.append(go('פתיחת '+label,id));sys.append(c);});out.push(el('h2','מערכת וחשבון'),sys);return out;}
+ function pageDirectory(){const out=[heading('כל הדפים','כל מסכי SCORPIO AI — כניסה ישירה מכל מקום')];Object.entries(groups).forEach(([key,g])=>{if(key==='home')return;const section=el('section','','page-directory');section.append(el('h2',g.label));const grid=el('div','','page-directory-grid');g.items.forEach(([id,label])=>{const c=card();c.classList.add('interactive-card');c.append(el('h3',label));if(pageDescriptions[id])c.append(el('p',pageDescriptions[id],'muted'));else if(['scripts','automations','whatsapp','bot','forecasts','advisor','calendar','bookings','services','team','calendar-settings'].includes(id))c.append(badge('יכולת בתהליך מימוש','warning'));c.append(go('פתיחת '+label,id));grid.append(c);});section.append(grid);out.push(section);});const sys=el('div','','page-directory-grid');system.forEach(([id,label])=>{const c=card(label);c.classList.add('interactive-card');c.append(go('פתיחת '+label,id));sys.append(c);});out.push(el('h2','מערכת וחשבון'),sys);return out;}
  const shekel=v=>v===null||v===undefined?'—':'₪'+Math.round(v).toLocaleString('he-IL'),percent=v=>v===null||v===undefined?'—':Math.round(v*100)+'%';
  // Ad spend -> leads -> meetings -> sales -> revenue, from Meta and the CRM together.
  function performanceCard(){
@@ -169,7 +170,7 @@
  function greeting(){const h=Number(new Date().toLocaleString('en-US',{timeZone:'Asia/Jerusalem',hour:'numeric',hour12:false}))%24;return h>=5&&h<12?'בוקר טוב':h>=12&&h<17?'צהריים טובים':h>=17&&h<22?'ערב טוב':'לילה טוב';}
  function ago(ts){const m=Math.max(0,Math.round((Date.now()-new Date(ts).getTime())/60000));if(m<1)return 'עכשיו';if(m<60)return 'לפני '+m+' דק׳';const h=Math.round(m/60);if(h<24)return h===1?'לפני שעה':'לפני '+h+' שעות';const d=Math.round(h/24);return d===1?'אתמול':'לפני '+d+' ימים';}
  function decisionCard(a){
-  const lines=String(a.summary||'').split('\n').map(x=>x.trim()).filter(Boolean),c=el('article','','hx-decision'+(a.startsSpending?' hx-spend':''));
+  const lines=String(a.summary||'').split('\n').map(x=>x.replace(/[*_]/g,'').trim()).filter(x=>x&&!/(חשבון|מס׳ אישור|מס' אישור)\s*:/.test(x)&&!/\bact_\w+/.test(x)),c=el('article','','hx-decision'+(a.startsSpending?' hx-spend':''));
   c.append(el('h3',lines[0]||'פעולה לאישור'));if(lines.length>1)c.append(el('p',lines.slice(1).join('\n'),'hx-why'));
   c.append(el('small','בתוקף עד '+new Date(a.expiresAt).toLocaleString('he-IL',{timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit',day:'numeric',month:'numeric'}),'hx-expiry'));
   const result=el('p','','approval-result');result.setAttribute('role','status');
@@ -203,13 +204,19 @@
   const f=report.funnel,m=report.metrics,wrap=el('div','','lg-flow');const pct=v=>v===null||v===undefined?'':Math.round(v*100)+'%';
   const step=(label,value,{note='',ratio=null,cls='',action=null}={})=>{const d=el('div','','lg-step '+cls);d.append(el('span',label,'lg-k'),el('strong',String(value),'lg-v'));if(note)d.append(el('span',note,'lg-note'));if(action)d.append(action);if(ratio!==null){const bar=el('span','','lg-bar'),fill=el('i');fill.style.width=Math.max(0,Math.min(100,Math.round(ratio*100)))+'%';bar.append(fill);d.append(bar);}return d;};
   const connect=button('חיבור Meta',()=>navigate('integrations'),'lg-link');
-  wrap.append(report.spend===null?step('הוצאה','לא מחובר',{cls:'lg-off',action:connect}):step('הוצאה',shekel(report.spend),{note:m.costPerLead===null?'':shekel(m.costPerLead)+' לליד'}),
+  wrap.append(report.spend===null?step('עלות פרסום','לא מחובר',{cls:'lg-off',action:connect}):step('עלות פרסום',shekel(report.spend),{note:m.costPerLead===null?'':shekel(m.costPerLead)+' לליד'}),
    step('לידים',f.leads,{cls:'lg-leads-step'}),
    step('קיבלו מענה',f.contacted,{ratio:f.leads?f.contacted/f.leads:0,note:f.leads?pct(m.contactRate)+' מהלידים':''}),
    step('נסגרו',f.won,{ratio:f.leads?f.won/f.leads:0,note:f.contacted?Math.round(f.won/f.contacted*100)+'% מהם':''}),
    step('הכנסה',shekel(f.revenue||0),{cls:'lg-rev'+(f.revenue?'':' lg-zero'),ratio:f.revenue?1:0}));
   return wrap;
  }
+ // The one number an owner asks first: what is left after paying for ads.
+ function bottomLine(report){const f=report.funnel,rev=f.revenue||0,box=el('div','','lg-bottom');
+  if(rev&&report.spend!==null){const left=rev-report.spend;box.classList.add(left>=0?'up':'down');box.append(el('span',left>=0?'השבוע נשאר לך אחרי הפרסום':'השבוע הפרסום עלה יותר ממה שנכנס','lg-bottom-k'),el('strong',shekel(Math.abs(left)),'lg-bottom-v'),el('small',`${f.won} מכירות · ${shekel(rev)} הכנסות · ${shekel(report.spend)} פרסום`,'lg-bottom-note'));}
+  else if(rev){box.append(el('span','הכנסות השבוע','lg-bottom-k'),el('strong',shekel(rev),'lg-bottom-v'),el('small',`${f.won} מכירות · חברו את Meta כדי לראות כמה נשאר אחרי הפרסום`,'lg-bottom-note'));}
+  else{box.classList.add('calm');box.append(el('span','השורה התחתונה','lg-bottom-k'),el('strong','עוד אין מכירות השבוע','lg-bottom-v small'),el('small','כשליד קונה, סמנו "נסגר" עם סכום, ותראו כאן כמה נשאר לכם בכיס.','lg-bottom-note'));}
+  return box;}
  function flowVerdict(report){const f=report.funnel,m=report.metrics,p=el('p','','lg-verdict');
   if(m.revenuePerShekel!==null){p.append('כל שקל על פרסום החזיר ',el('b','₪'+m.revenuePerShekel.toFixed(1)),'. עלות ללקוח שסגר: ',el('b',shekel(m.costPerCustomer)),'.');}
   else if(f.won&&f.revenue){p.append('ממוצע לעסקה ',el('b',shekel(f.revenue/f.won)),'. ',report.spend===null?'אחרי חיבור Meta יופיעו כאן עלות ללקוח והחזר לכל שקל.':'');}
@@ -219,10 +226,11 @@
  function campaignTable(report){
   const rows=(report.metaCampaigns&&report.metaCampaigns.length?report.metaCampaigns:report.campaigns||[]).slice(0,6);
   if(!rows.length){const d=el('div','','lg-calm');d.append(el('b','עוד אין קמפיינים עם נתונים השבוע'),el('span','כשקמפיין ירוץ, תראה כאן כמה הוא עלה, כמה לידים הביא וכמה מהם נסגרו.'));const b=button('צור לי קמפיין',()=>openAgent(true),'secondary');d.append(b);return d;}
-  const scroll=el('div','','lg-table'),t=el('table'),head=el('tr');[['קמפיין',''],['הוצאה','n'],['לידים','n'],['נסגרו','n'],['הכנסה','n']].forEach(([l,c])=>{const th=el('th',l);if(c)th.className='n';th.scope='col';head.append(th);});const thead=el('thead');thead.append(head);const tb=el('tbody');
+  const scroll=el('div','','lg-table'),t=el('table'),head=el('tr');[['קמפיין',''],['עלות פרסום','n'],['לידים','n'],['נסגרו','n'],['הכנסה','n']].forEach(([l,c])=>{const th=el('th',l);if(c)th.className='n';th.scope='col';head.append(th);});const thead=el('thead');thead.append(head);const tb=el('tbody');
   rows.forEach(x=>{const tr=el('tr');tr.append(el('td',x.name),el('td',x.spend===undefined||x.spend===null?'—':shekel(x.spend),'n'),el('td',String(x.leads||0),'n'),el('td',String(x.won||0),'n'),el('td',x.revenue?shekel(x.revenue):'—','n'));tb.append(tr);});t.append(thead,tb);scroll.append(t);return scroll;
  }
  function railHead(title,action){const h=el('div','','lg-rail-head');h.append(el('h2',title));if(action)h.append(action);return h;}
+ const TODO_VERB={leads:'לענות',approvals:'לאשר',campaign:'לקמפיינים',pipeline:'לעסקאות',integrations:'לחבר',brand:'להשלים',products:'להוסיף',onboarding:'להשלים',billing:'למנוי',content:'לתוכן',agent:'לעוזר',tasks:'למשימות'};
  async function home(){
   const [tasks,leads,newMeta,approvals,today]=await Promise.all([api('workspace/tasks'),api('leads'),api('leads/new-meta'),api('approvals').catch(()=>({approvals:[]})),api('today').catch(()=>({items:[],setup:{done:0,total:0,steps:[]}}))]),open=tasks.items.filter(x=>x.payload.status==='OPEN'),pending=approvals.approvals||[];
   updateBell(today.items.length);
@@ -236,7 +244,7 @@
   const campSec=el('section','','lg-sec'),campHead=el('div','','lg-sec-head');campHead.append(el('h2','קמפיינים'),el('span','7 הימים האחרונים','lg-meta'));campSec.append(campHead,el('p','טוען…','lg-wait'));main.append(campSec);
   if(setup&&leads.leads.length)main.append(setup);
   api('business-report?period=last_7d').then(r=>{const f=r.funnel;brief.subLine.textContent=(f.won?`השבוע נסגרו ${f.won} עסקאות ב־${shekel(f.revenue||0)}.`:f.leads?`השבוע נכנסו ${f.leads} לידים.`:'השבוע עוד לא נכנסו לידים.')+(r.spend===null?' כדי לדעת כמה הפרסום עלה, צריך לחבר את חשבון Meta.':` הוצאה על פרסום: ${shekel(r.spend)}.`);
-   const strip=flowStrip(r);flowSec.replaceChildren(flowHead,strip,flowVerdict(r));campSec.replaceChildren(campHead,campaignTable(r));
+   const strip=flowStrip(r);flowSec.replaceChildren(flowHead,bottomLine(r),strip,flowVerdict(r));campSec.replaceChildren(campHead,campaignTable(r));
    trendReady.then(t=>{const cell=strip.querySelector('.lg-leads-step');if(!t||!cell)return;const series=t.series.map(x=>x.leads);if(!series.some(Boolean))return;cell.append(sparkline(series,'לידים ביום ב־14 הימים האחרונים'),el('span','לידים ביום, 14 ימים','lg-note lg-spark-note'));});
   }).catch(()=>{brief.subLine.textContent='לא הצלחנו לטעון את נתוני השבוע.';flowSec.replaceChildren(flowHead,el('p','לא הצלחנו לטעון את נתוני השבוע. נסו לרענן.','lg-wait'));campSec.remove();});
   const trendReady=api('trend?days=14').catch(()=>null);
@@ -244,7 +252,7 @@
   const appr=el('section','','lg-rail-sec');appr.append(railHead('מחכה לאישור שלך',pending.length>3?button('כל האישורים',()=>navigate('approvals'),'lg-link'):null));
   pending.slice(0,3).forEach(a=>appr.append(decisionCard(a)));
   if(!pending.length){const d=el('div','','lg-calm');d.append(el('b','אין פעולות שמחכות לאישור'),el('span','כשאכין שינוי בקמפיין, הוא יופיע כאן ובוואטסאפ, ולא יבוצע בלי אישור.'));appr.append(d);}
-  today.items.forEach(item=>{const row=el('div','','lg-todo urgency-'+item.urgency),copy=el('div');copy.append(el('strong',item.text));if(item.detail)copy.append(el('small',item.detail));row.append(copy,button('לטפל',()=>navigate(item.screen),item.urgency>=3?'primary':'secondary'));appr.append(row);});
+  today.items.forEach(item=>{const row=el('div','','lg-todo urgency-'+item.urgency),copy=el('div');copy.append(el('strong',item.text));if(item.detail)copy.append(el('small',item.detail));row.append(copy,button(TODO_VERB[item.screen]||'לפתוח',()=>navigate(item.screen),item.urgency>=3?'primary':'secondary'));appr.append(row);});
   const recent=el('section','','lg-rail-sec');recent.append(railHead('לידים אחרונים',leads.leads.length?button(`כל ${leads.leads.length} הלידים`,()=>navigate('leads'),'lg-link'):null));const list=el('div','','lg-leads');
   if(newMeta.count){const meta=button(`${newMeta.count} לידים חדשים מ־Meta`,()=>run(meta,async()=>{const d=dialog('לידים חדשים מ־Meta'),box=el('div');const show=async before=>{const page=await api('leads/new-meta'+(before?'?before='+encodeURIComponent(before):''));for(const lead of page.leads)box.append(leadCard(lead));if(page.next){const more=button('עוד לידים',()=>run(more,async()=>{await show(page.next);more.remove();}));box.append(more);}};await show();d.append(box);d.showModal();}),'lg-banner');list.append(meta);}
   if(leads.leads.length)leads.leads.slice(0,5).forEach(l=>list.append(leadRow(l)));else list.append(empty('עוד אין לידים','לידים חדשים יופיעו כאן.',go('פתיחת הלידים','leads')));recent.append(list);
@@ -252,8 +260,7 @@
   if(open.length)open.slice(0,4).forEach(x=>{const row=el('div','','lg-task');row.append(el('span',x.payload.title),el('small',x.payload.date||'ללא תאריך'));tasksSec.append(row);});else tasksSec.append(el('p','אין משימות פתוחות.','lg-meta'));
   rail.append(appr,recent,tasksSec);
   const layout=el('div','','lg-layout');layout.append(main,rail);
-  const directory=el('details','','home-page-directory');directory.append(el('summary','כל דפי השיווק והכלים של העסק'),marketingDirectory());
-  return [layout,directory];
+  return [layout];
  }
  function updateBell(count){const bell=document.querySelector('[aria-label^="התראות"]');if(!bell)return;bell.querySelector('.bell-count')?.remove();if(count){const dot=el('span',String(count),'bell-count');bell.append(dot);bell.setAttribute('aria-label','התראות ועדכונים · '+count);}}
  // "What I did and why": every action prepared or done, with its reason.
