@@ -36,7 +36,12 @@ async function sendOne(client, key, { build = require('./businessReport').busine
     status = await require('./metaConnection').context.run(String(client.id), () =>
       require('./whatsappDelivery').messageContext.run({ eventId: 'weekly-report:' + key + ':' + client.id, sequence: 0 }, async () => {
         const delivery = require('./whatsappDelivery');
-        if (client.open) { await delivery.enqueue(client.phone, delivery.textPayload(await build(client.id, 'last_7d'))); return 'SENT'; }
+        if (client.open) {
+          let text = await build(client.id, 'last_7d');
+          // The five things the owner always sees: done, running, waiting, failed, actual spend.
+          if (build === require('./businessReport').businessReport) try { const log = require('./activityLog'); text += '\n\n' + log.formatStatus(await log.status(client.id)); } catch { /* the report still goes out */ }
+          await delivery.enqueue(client.phone, delivery.textPayload(text.slice(0, 3800))); return 'SENT';
+        }
         if (template && client.opted_in) { await delivery.enqueueTemplate(client.phone, template, process.env.WEEKLY_REPORT_TEMPLATE_LANGUAGE || 'he'); return 'TEMPLATE_SENT'; }
         return 'SKIPPED';
       }));

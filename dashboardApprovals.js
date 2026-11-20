@@ -9,8 +9,9 @@ async function pending(clientId) {
   const rows = (await db.query(`SELECT a.action_id, a.expires_at, p.payload FROM approvals a JOIN action_plans p ON p.id=a.action_id AND p.client_id=a.client_id
     WHERE a.client_id=$1 AND a.status='PENDING' AND a.expires_at>NOW() AND p.status='PROPOSED' ORDER BY a.created_at DESC LIMIT 10`, [clientId])).rows;
   const { formatActionPlan } = require('./actionPlan');
-  return rows.map((r) => ({ actionId: r.action_id, intent: r.payload.intent, task: !!r.payload.taskId, summary: formatActionPlan(r.payload), expiresAt: r.expires_at,
-    startsSpending: ['ACTIVATE_BUNDLE', 'RESUME_CAMPAIGN'].includes(r.payload.intent) }));
+  const agreement = require('./workAgreement');
+  return rows.map((r) => ({ actionId: r.action_id, intent: r.payload.intent, task: !!r.payload.taskId, summary: (r.payload.intent === 'ACTIVATE_BUNDLE' ? agreement.ACTIVATION_QUESTION + '\n\n' : '') + formatActionPlan(r.payload), expiresAt: r.expires_at,
+    startsSpending: ['ACTIVATE_BUNDLE', 'RESUME_CAMPAIGN'].includes(r.payload.intent), actionClass: agreement.actionClass(r.payload) }));
 }
 
 async function approve(clientId, actionId) {
@@ -24,8 +25,23 @@ async function approve(clientId, actionId) {
     return { ok: true, reply: r?.reply || 'האישור נקלט.' };
   }
   const consumed = await require('./approvalEngine').consumeActionForClient(clientId, actionId);
-  if (!consumed.ok) return { ok: false, reply: REASONS[consumed.reason] || 'לא ניתן לאשר את הפעולה.' };
-  const result = await require('./actionExecutor').executeApprovedForClient(clientId, consumed.approval.actionPlan);
+  if (!consumed.ok) {
+    // F3: an expired (or replaced) approval is re-offered with fresh numbers instead of an error.
+    if (consumed.reofferable) {
+      try {
+        const fresh = await require('./workAgreement').reoffer(clientId, actionId);
+        if (fresh) return { ok: false, reoffered: true, actionId: fresh.actionId, reply: 'תוקף האישור פג, אז בדקתי שוב את המספרים. אותה פעולה, מעודכנת, מחכה לאישור שלך כאן.' };
+      } catch (error) { if (error.reply) return { ok: false, reply: error.reply }; }
+    }
+    return { ok: false, reply: REASONS[consumed.reason] || 'לא ניתן לאשר את הפעולה.' };
+  }
+  const plan = consumed.approval.actionPlan;
+  const result = await require('./actionExecutor').executeApprovedForClient(clientId, plan);
+  if (result.ok && plan.intent === 'CREATE_BUNDLE') {
+    // F8: the same "הקמפיין מוכן ומושהה. להפעיל עכשיו?" as on WhatsApp.
+    const next = await require('./workAgreement').offerActivation(clientId, plan, result.writeResult);
+    return { ok: true, activationActionId: next.approval?.actionId || null, reply: next.approval ? require('./workAgreement').ACTIVATION_QUESTION + ' השאלה מחכה לך כאן במסך האישורים, עם העלות.' : next.text };
+  }
   return { ok: !!result.ok, reply: result.ok ? 'הפעולה בוצעה ואומתה מול Meta.' : result.message || 'הפעולה לא בוצעה.' };
 }
 
@@ -55,7 +71,7 @@ async function prepareCampaignAction(clientId, campaignId, kind) {
   const intent = kind === 'PAUSE' ? 'PAUSE_CAMPAIGN' : 'RESUME_CAMPAIGN';
   // A copy made by "שכפל קמפיין מנצח" is paused at every level: activating it turns on
   // exactly the copied ad sets and ads, the same way a new campaign is activated.
-  const copy = kind === 'RESUME' ? (await db.query(`SELECT execution_result->'objects' AS o FROM action_plans WHERE client_id=$1 AND intent='DUPLICATE_CAMPAIGN' AND status='VERIFIED'
+  const copy = kind === 'RESUME' ? (await db.query(`SELECT execution_result->'objects' AS o FROM action_plans WHERE client_id=$1 AND intent IN ('DUPLICATE_CAMPAIGN','CREATE_BUNDLE') AND status='VERIFIED'
     AND execution_result->'objects'->>'campaignId'=$2 ORDER BY updated_at DESC LIMIT 1`, [clientId, String(campaignId)])).rows[0]?.o : null;
   let approval;
   try {
@@ -65,7 +81,7 @@ async function prepareCampaignAction(clientId, campaignId, kind) {
       : createActionPlan({ intent,
       summary: (kind === 'PAUSE' ? 'כיבוי הקמפיין ' : 'הפעלה מחדש של הקמפיין ') + '"' + String(campaign.name || campaignId).slice(0, 80) + '"',
       target: { accountId: c.meta_ad_account_id, campaignId: String(campaignId) } }));
-  } catch (error) { if (error.message === 'SPEND_CAP_EXCEEDED') return { ok: false, reply: error.reply }; throw error; }
+  } catch (error) { if (error.reply) return { ok: false, reply: error.reply }; throw error; }
   return { ok: true, actionId: approval.actionId };
 }
 

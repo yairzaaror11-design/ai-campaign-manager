@@ -91,10 +91,13 @@ async function send(client, finding, accountId) {
     let actionId = null;
     if (finding.pause) {
       const { createActionPlan, formatActionPlan } = require('./actionPlan');
-      const approval = await require('./approvalEngine').createApprovalForClient(client.id, createActionPlan({ intent: 'PAUSE_CAMPAIGN', summary: finding.pauseSummary || `השהיית הקמפיין "${finding.campaignName}" שמוציא כסף בלי פניות`, target: { accountId, campaignId: finding.campaignId } }));
-      actionId = approval.actionId;
+      // Work agreement: if the owner allowed "לעצור קמפיין שמפסיד כסף", the agent pauses and reports; otherwise it asks.
+      const outcome = await require('./workAgreement').proposeOrAct(client.id, createActionPlan({ intent: 'PAUSE_CAMPAIGN', summary: finding.pauseSummary || `השהיית הקמפיין "${finding.campaignName}" שמוציא כסף בלי פניות`, target: { accountId, campaignId: finding.campaignId } }), { reason: String(finding.text || '').split('\n')[0].slice(0, 300) });
+      actionId = outcome.autonomous ? outcome.actionId : outcome.approval.actionId;
       await db.query('INSERT INTO campaign_guard_alerts(client_id,campaign_id,kind,action_id) VALUES($1,$2,$3,$4)', [client.id, String(finding.campaignId), finding.kind, actionId]);
-      const ui = await require('./conversationUi').prepareApproval(client.id, approval, finding.text + '\n\n' + formatActionPlan(approval.actionPlan));
+      if (outcome.autonomous) { await require('./whatsapp').safeSend(client.phone, finding.text + '\n\n' + outcome.text); return outcome.ok ? 'PAUSED_BY_AGREEMENT' : 'AGREEMENT_ACTION_FAILED'; }
+      const approval = outcome.approval;
+      const ui = await require('./conversationUi').prepareApproval(client.id, approval, finding.text + '\n\n' + formatActionPlan(approval.actionPlan) + (outcome.askWhy ? '\n' + outcome.askWhy : ''));
       await require('./whatsapp').safeSend(client.phone, ui.text, ui);
       return 'PROPOSED_PAUSE';
     }
