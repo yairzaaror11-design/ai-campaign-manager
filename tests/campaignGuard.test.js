@@ -43,13 +43,13 @@ test('runs once a day per owner, sends one message, and never repeats an alert w
     await db.query("INSERT INTO whatsapp_contacts(phone,last_inbound_at) VALUES('972500000301',NOW())");
     await db.query("INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,app_id,expires_at) VALUES($1,'10301',$2,$3,NOW()+INTERVAL '1 hour')", [id, meta.encrypt('t', id), process.env.META_APP_ID]);
     const data = { account, accountId: 'act_77', campaigns: [{ id: '9', name: 'בדיקה', effective_status: 'DISAPPROVED' }] };
-    const first = await guard.runDue({ now: NOW, loader: async () => data });
+    const first = await guard.runDue({ now: NOW, loader: async (cid) => (String(cid) === String(id) ? data : null) });
     assert.ok(first.results.includes('ALERTED'));
-    const again = await guard.runDue({ now: NOW, loader: async () => data });
+    const again = await guard.runDue({ now: NOW, loader: async (cid) => (String(cid) === String(id) ? data : null) });
     assert.ok(!again.results.includes('ALERTED'), 'already reviewed today');
     await db.query('DELETE FROM campaign_guard_runs WHERE client_id=$1', [id]);
     await require('../marketingStore').update(id, null, (p) => { delete p.ui; return { handled: false, changed: true }; });
-    const next = await guard.runDue({ now: NOW, loader: async () => data });
+    const next = await guard.runDue({ now: NOW, loader: async (cid) => (String(cid) === String(id) ? data : null) });
     assert.ok(next.results.includes('QUIET'), 'same alert is not repeated within 3 days');
     const sent = (await db.query('SELECT payload FROM whatsapp_outbox WHERE client_id=$1', [id])).rows.map((r) => JSON.stringify(r.payload));
     assert.equal(sent.length, 1); assert.match(sent[0], /נדחה/);
