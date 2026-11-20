@@ -1,7 +1,7 @@
 'use strict';
 (()=>{
  const UI=window.ScorpioUI,{el,button,card,badge,empty,field,tabs,table,dialog,progress}=UI;
- const groups={home:{label:'היום',items:[['home','היום'],['approvals','מחכה לאישור'],['agent','הסוכן שלך']]},customers:{label:'לקוחות',items:[['leads','כל הלידים'],['pipeline','לוח עסקאות'],['customers','לקוחות'],['tasks','משימות'],['sales','סיכום מכירות']]},ads:{label:'פרסום',items:[['catalog','מה אני מוכר'],['campaign','קמפיינים'],['performance','תוצאות'],['landing','עמודי מכירה'],['research','תכנון ומחקר']]},content:{label:'תוכן',items:[['content','לוח תוכן'],['creative','סטודיו קריאייטיב']]},business:{label:'העסק שלי',items:[['brand','זהות מותג'],['products','מוצרים ושירותים'],['finance','כסף ורווחיות'],['profitability','רווחיות לפי מוצר'],['expenses','הוצאות'],['integrations','חיבורים'],['billing','מנוי וחיוב'],['users','משתמשים והרשאות'],['account','הגדרות'],['help','עזרה ותמיכה']]}};
+ const groups={home:{label:'היום',items:[['home','היום'],['approvals','מחכה לאישור'],['agent','הסוכן שלך']]},customers:{label:'לקוחות',items:[['leads','כל הלידים'],['pipeline','לוח עסקאות'],['customers','לקוחות'],['tasks','משימות'],['sales','סיכום מכירות']]},ads:{label:'פרסום',items:[['catalog','מה אני מוכר'],['campaign','קמפיינים'],['performance','תוצאות'],['landing','עמודי מכירה'],['research','תכנון ומחקר']]},content:{label:'תוכן',items:[['content','לוח תוכן'],['creative','סטודיו קריאייטיב']]},business:{label:'העסק שלי',items:[['agreement','הסכם עבודה'],['brand','זהות מותג'],['products','מוצרים ושירותים'],['finance','כסף ורווחיות'],['profitability','רווחיות לפי מוצר'],['expenses','הוצאות'],['integrations','חיבורים'],['billing','מנוי וחיוב'],['users','משתמשים והרשאות'],['account','הגדרות'],['help','עזרה ותמיכה']]}};
  // Screens without a working backend stay out of navigation until they are built.
  const HIDDEN=new Set(['scripts','automations','whatsapp','bot','forecasts','advisor']);for(const g of Object.values(groups))g.items=g.items.filter(([id])=>!HIDDEN.has(id));
  const departmentMeta={home:{icon:'home',description:'מה קורה בעסק ומה מחכה לך'},customers:{icon:'leads',description:'לידים, עסקאות ולקוחות'},ads:{icon:'campaign',description:'מה רץ, כמה עלה ומה הביא'},content:{icon:'content',description:'פוסטים, גרפיקות וסרטונים'},business:{icon:'account',description:'מותג, מוצרים, כסף והגדרות'}};
@@ -141,7 +141,7 @@
    const acts=el('div','','actions');acts.append(ok,no);review.append(acts,result);body.append(review);ok.focus();});});
  }
  async function renderScreen(id){
-  if(id==='catalog')return catalogScreen();if(id==='performance')return [heading('ביצועי קמפיינים','מהכסף שהוצא ועד המכירות'),performanceCard()];if(id==='pages')return pageDirectory();if(id==='approvals')return approvalsScreen();if(id==='onboarding')return onboarding();if(id==='home')return home();if(id==='brand')return brand();if(['products','tasks','expenses'].includes(id))return records(id);if(id==='content')return content();if(['sales','pipeline','customers'].includes(id))return sales(id);if(id==='creative')return creative();if(id==='landing')return landing();if(id==='integrations')return integrations();if(['finance','profitability'].includes(id))return finance(id);if(id==='help')return help();if(id==='account')return settings();if(id==='research')return research();if(id==='users')return users();if(id==='agent')return [heading('הסוכן שלך','ממשיכים מהפרטים שכבר נשמרו'),empty('מה נרצה לקדם עכשיו?','הסוכן מכיר את העסק שלך. שום דבר לא עולה לאוויר ולא מחייב אותך בלי האישור שלך.',button('פתיחת שיחה',()=>openAgent(true),'primary'))];
+  if(id==='catalog')return catalogScreen();if(id==='performance')return [heading('ביצועי קמפיינים','מהכסף שהוצא ועד המכירות'),performanceCard()];if(id==='pages')return pageDirectory();if(id==='approvals')return approvalsScreen();if(id==='agreement')return agreementScreen();if(id==='onboarding')return onboarding();if(id==='home')return home();if(id==='brand')return brand();if(['products','tasks','expenses'].includes(id))return records(id);if(id==='content')return content();if(['sales','pipeline','customers'].includes(id))return sales(id);if(id==='creative')return creative();if(id==='landing')return landing();if(id==='integrations')return integrations();if(['finance','profitability'].includes(id))return finance(id);if(id==='help')return help();if(id==='account')return settings();if(id==='research')return research();if(id==='users')return users();if(id==='agent')return [heading('הסוכן שלך','ממשיכים מהפרטים שכבר נשמרו'),empty('מה נרצה לקדם עכשיו?','הסוכן מכיר את העסק שלך. שום דבר לא עולה לאוויר ולא מחייב אותך בלי האישור שלך.',button('פתיחת שיחה',()=>openAgent(true),'primary'))];
   const descriptions={scripts:'הסוכן הקיים יכול לסייע באפיון מסר ומכירה בשיחת WhatsApp. ספריית תסריטים עם עריכה ושמירה טרם מומשה.',automations:'תורי ההודעות והפעולות המאושרות הקיימים נשמרים. בניית כללי אוטומציה בדשבורד טרם מומשה.',whatsapp:'הסוכן ושיחת העסק פועלים דרך חיבור WhatsApp הקיים. תיבת שיחות לצוות ושליחה מהדשבורד טרם מומשו.',bot:'מנוע השיחה הקיים ממשיך לנהל את תהליך השיווק. עורך בוטים ופרסום בוט מותאם טרם מומשו.',forecasts:'כדי לבנות תחזית נדרשים יעדים, טווחי זמן ומודל הנחות. אפשר לתעד מוצרים והוצאות; מודול התחזיות טרם מומש.',advisor:'אפיון רווחיות קיים במנוע השיחה. ייעוץ המבוסס על דוח הכנסות והוצאות מאוחד טרם מומש.',calendar:'אין עדיין מודול זמינות ותורים מחובר. תאריך במשימה אינו הזמנה ביומן.',bookings:'יצירת תור תדרוש שירות, צוות, אזור זמן ובדיקת זמינות במסד. מנגנון זה טרם מומש.',services:'קטלוג מוצרים ושירותים לשיווק זמין. משך שירות, זמני המתנה וזמינות להזמנה עדיין אינם מחוברים.',team:'ניהול צוות, שעות עבודה והרשאות תורים טרם מומש.', 'calendar-settings':'חיבור Google Calendar ואזור זמן ליומן עדיין אינם מוגדרים.',support:'כל המדריכים כאן. צריך עזרה? כתבו לסוכן בוואטסאפ.'};
   if(['calendar','bookings'].includes(id))return [heading(titles[id],'תורים וזמינות טרם חוברו',[button('תזכורת למעקב',()=>editRecord('tasks'),'primary')]),card('מה אפשר לעשות עכשיו?','אפשר לשמור משימת מעקב עם תאריך ולנהל את המשך הטיפול. זו תזכורת בלבד — היא אינה מזמינה פגישה ואינה בודקת זמינות.'),go('פתיחת המשימות','tasks')];
   return [heading(titles[id],'סטטוס היכולת'),empty('היכולת הזו עדיין אינה מחוברת',descriptions[id]||'מסך זה דורש השלמת חיבור.',go('למשימות והמשך העבודה','tasks'))];
@@ -174,7 +174,7 @@
   c.append(el('h3',lines[0]||'פעולה לאישור'));if(lines.length>1)c.append(el('p',lines.slice(1).join('\n'),'hx-why'));
   c.append(el('small','בתוקף עד '+new Date(a.expiresAt).toLocaleString('he-IL',{timeZone:'Asia/Jerusalem',hour:'2-digit',minute:'2-digit',day:'numeric',month:'numeric'}),'hx-expiry'));
   const result=el('p','','approval-result');result.setAttribute('role','status');
-  const ok=button(a.startsSpending?'מאשר, להפעיל':'לאשר',()=>run(ok,async()=>{if(a.startsSpending&&!await UI.confirm('הפעלת פרסום','האישור מפעיל פרסום ומתחיל לחייב מהתקציב. להמשיך?','מאשר להפעיל'))return;const r=await api('approvals/'+encodeURIComponent(a.actionId)+'/approve',{confirm:true});result.textContent=r.reply;ok.remove();no.remove();tell(r.reply,!r.ok);}),'primary');
+  const ok=button(a.startsSpending?'מאשר, להפעיל':'לאשר',()=>run(ok,async()=>{if(a.startsSpending&&!await UI.confirm('הפעלת פרסום','האישור מפעיל פרסום ומתחיל לחייב מהתקציב. להמשיך?','מאשר להפעיל'))return;const r=await api('approvals/'+encodeURIComponent(a.actionId)+'/approve',{confirm:true});result.textContent=r.reply;ok.remove();no.remove();tell(r.reply,!r.ok&&!r.reoffered);if(r.reoffered||r.activationActionId)setTimeout(()=>navigate('approvals'),1200);}),'primary');
   const no=button(a.task?'ביטול המשימה':'לא לבצע',()=>run(no,async()=>{const r=await api('approvals/'+encodeURIComponent(a.actionId)+'/reject',{});result.textContent=r.reply;ok.remove();no.remove();}),'secondary');
   const acts=el('div','','hx-acts');acts.append(ok,no);c.append(acts,result);return c;
  }
@@ -239,6 +239,7 @@
   const chips=[['להכין קמפיין',()=>openAgent(true)],['מי מחכה לתשובה?',()=>navigate('leads')],['תראה לי את התוצאות',()=>navigate('performance')]];
   const brief=agentBrief(headline,'טוען את נתוני השבוע…',chips);
   const main=el('div','','lg-main'),rail=el('aside','','lg-rail');rail.setAttribute('aria-label','מה מחכה לך');main.append(brief);
+  main.append(statusPanel());
   const setup=today.setup.total&&setupLeft>0?setupPanel(today.setup):null;if(setup&&!leads.leads.length)main.append(setup);
   const flowSec=el('section','','lg-sec'),flowHead=el('div','','lg-sec-head'),flowTitle=el('h2','מהפרסום ועד המכירה');flowHead.append(flowTitle,el('span','7 הימים האחרונים','lg-meta'));flowSec.append(flowHead,el('p','טוען…','lg-wait'));main.append(flowSec);
   const campSec=el('section','','lg-sec'),campHead=el('div','','lg-sec-head');campHead.append(el('h2','קמפיינים'),el('span','7 הימים האחרונים','lg-meta'));campSec.append(campHead,el('p','טוען…','lg-wait'));main.append(campSec);
@@ -270,6 +271,47 @@
    items.slice(0,15).forEach(x=>{const row=el('div','','today-row'),copy=el('div');copy.append(el('strong',x.what),el('small',new Date(x.at).toLocaleDateString('he-IL',{weekday:'short',day:'numeric',month:'numeric'})+' · '+x.status));if(x.why)copy.append(el('p','למה: '+x.why,'muted'));row.append(copy);body.append(row);});
   }).catch(()=>{body.replaceChildren(el('p','לא הצלחנו לטעון את היומן.','muted'));});
   return c;
+ }
+ // The five things the owner always sees: done, running now, waiting, failed, actual spend.
+ function statusPanel(){
+  const sec=el('section','','lg-sec status-panel'),head=el('div','','lg-sec-head');head.append(el('h2','תמונת מצב'),el('span','7 הימים האחרונים','lg-meta'));sec.append(head,el('p','טוען…','lg-wait'));sec.setAttribute('aria-live','polite');
+  api('status').then(s=>{
+   const money=v=>'₪'+Math.round(v).toLocaleString('he-IL'),grid=el('div','','status-grid');
+   const box=(icon,title,items,emptyText,screen)=>{const b=el('div','','status-box');b.append(el('strong',icon+' '+title+(items.length?' ('+items.length+')':'')));if(!items.length)b.append(el('small',emptyText,'muted'));items.slice(0,3).forEach(x=>b.append(el('small','• '+x.what+(x.autonomous?' · לבד, לפי ההסכם':''))));if(screen&&items.length)b.append(button('לפרטים',()=>navigate(screen),'lg-link'));grid.append(b);};
+   box('✅','מה עשיתי',s.done,'עוד לא בוצעו פעולות.','approvals');
+   box('⏳','מה רץ עכשיו',s.running,'שום דבר לא בביצוע.','campaign');
+   box('✋','מחכה לאישור שלך',s.waiting,'שום דבר.','approvals');
+   box('⚠️','מה נכשל או נעצר',s.failed,'כלום, הכול עבר תקין.','approvals');
+   const spend=el('div','','status-box');spend.append(el('strong','💸 הוצאה בפועל'));spend.append(el('small',s.spend?'היום '+money(s.spend.today)+' · החודש '+money(s.spend.month)+(s.spend.monthlyCeiling?' מתוך '+money(s.spend.monthlyCeiling):''):'לא זמין כרגע: חשבון Meta לא מחובר או לא ענה.'));grid.append(spend);
+   sec.replaceChildren(head,grid);
+   if(s.agreement?.paused){const n=el('p','⏸ הפעולות האוטומטיות עצורות. הסוכן שואל אותך על כל פעולה.','notice');n.append(button('להסכם העבודה',()=>navigate('agreement'),'lg-link'));sec.append(n);}
+  }).catch(()=>sec.replaceChildren(head,el('p','לא הצלחנו לטעון את תמונת המצב.','lg-wait')));
+  return sec;
+ }
+ // Work agreement: set once what the agent does alone, and what always waits for the owner.
+ async function agreementScreen(){
+  const data=await api('agreement'),a=data.agreement,out=[heading('הסכם עבודה','פעם אחת קובעים מה הסוכן עושה לבד, ומה תמיד מחכה לאישור שלך')];
+  if(a){
+   const s=card(a.paused?'⏸ הפעולות האוטומטיות עצורות':'✅ ההסכם פעיל',a.paused?'הסוכן שואל אותך על כל פעולה עד שתחדש':'הסוכן פועל לבד רק בתוך מה שכתוב כאן, ומדווח ב"מה עשיתי ולמה"');
+   s.append(el('p','תקרת הוצאה חודשית: ₪'+Math.round(a.monthlyCeiling).toLocaleString('he-IL')+' · תקציב יומי מקסימלי לקמפיין: ₪'+Math.round(a.maxDailyPerCampaign).toLocaleString('he-IL')));
+   const yes=Object.entries(data.labels).filter(([k])=>a.allow[k]).map(([,v])=>v);s.append(el('p','עושה לבד: '+(yes.length?yes.join(' · '):'כלום, שואל על הכול'),'muted'));
+   const result=el('p','','approval-result');result.setAttribute('role','status');
+   const toggle=button(a.paused?'לחדש את הפעולות האוטומטיות':'עצור את כל הפעולות האוטומטיות',()=>run(toggle,async()=>{await api('agreement/'+(a.paused?'resume':'pause'),{});tell(a.paused?'הפעולות האוטומטיות חזרו לפעול לפי ההסכם.':'עצרתי את כל הפעולות האוטומטיות. מעכשיו הסוכן שואל על כל פעולה.');navigate('agreement');}),a.paused?'primary':'danger');
+   const actions=el('div','','actions');actions.append(toggle);s.append(actions,result);out.push(s);
+  }
+  const c=card(a?'עדכון ההסכם':'הגדרת ההסכם','שינוי ההסכם חל מיד, וכל פעולה שאושרה לפי ההסכם הקודם ועוד לא בוצעה נחסמת'),form=el('form'),error=el('p','','form-error');error.setAttribute('role','alert');
+  const grid=el('div','','form-grid');
+  field(grid,'תקרת הוצאה חודשית על פרסום (₪)','monthlyCeiling',{type:'number',required:true,value:a?.monthlyCeiling??'',help:'כל הקמפיינים יחד. הסוכן לא יחרוג ממנה בלי אישור שלך.'});
+  field(grid,'תקציב יומי מקסימלי לקמפיין (₪)','maxDailyPerCampaign',{type:'number',required:true,value:a?.maxDailyPerCampaign??''});
+  form.append(grid,el('h3','מה הסוכן עושה לבד ומדווח לך'));
+  const boxes={};Object.entries(data.labels).forEach(([k,label])=>{const l=el('label','','check-row'),i=document.createElement('input');i.type='checkbox';i.checked=a?!!a.allow[k]:!!data.presets.protect[k];boxes[k]=i;l.append(i,el('span',label));form.append(l);});
+  form.append(el('h3','תמיד ישאל אותך קודם'));data.alwaysAsk.forEach(x=>form.append(el('p','✋ '+x,'muted')));
+  field(form,'סגנון ודגשים לתוכן','styleNotes',{type:'textarea',maxLength:1000,value:a?.styleNotes||'',help:'למשל: רציני, בלי אימוג׳ים, פונים בגוף שני'});
+  field(form,'נושאים אסורים (מופרדים בפסיקים)','forbiddenTopics',{maxLength:1000,value:(a?.forbiddenTopics||[]).join(', ')});
+  const save=button(a?'שמירת ההסכם המעודכן':'שמירת הסכם העבודה',null,'primary');save.type='submit';form.append(error,save);
+  form.addEventListener('submit',e=>{e.preventDefault();run(save,async()=>{error.textContent='';try{const f=Object.fromEntries(new FormData(form));await api('agreement',{monthlyCeiling:Number(f.monthlyCeiling),maxDailyPerCampaign:Number(f.maxDailyPerCampaign),allow:Object.fromEntries(Object.entries(boxes).map(([k,i])=>[k,i.checked])),styleNotes:f.styleNotes||'',forbiddenTopics:String(f.forbiddenTopics||'').split(',').map(x=>x.trim()).filter(Boolean)});dirtyForms.delete(form);tell('הסכם העבודה נשמר.');navigate('agreement');}catch(err){error.textContent=err.message;}});});
+  c.append(form);out.push(c);
+  return out;
  }
  // Pending approvals: the same ones sent on WhatsApp, approved through the same path.
  async function approvalsScreen(){

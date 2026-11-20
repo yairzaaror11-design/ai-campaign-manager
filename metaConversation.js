@@ -77,7 +77,7 @@ function statusResult(v){return{handled:true,reply:statusReply(v),decisionKey:st
 function statusReply(v){
  if(v.status==='CONNECTED')return`החשבון ״${v.account.name}״ אומת וחובר. ${v.canManage?'כל שינוי ידרוש אישור נפרד.':'אפשר לקרוא נתונים; שינוי קמפיינים אינו זמין כרגע.'} אפשר לבדוק קמפיינים קיימים או להכין טיוטה חדשה.`;
  if(v.status==='ACCOUNT_SELECTION_REQUIRED')return v.accounts.length?require('./accountMenu').reply({accounts:v.accounts}):'ההרשאה נקלטה, אך לא נמצא חשבון מודעות פעיל שאפשר לבחור. אפשר לבדוק גישה במנהל המודעות או להכין טיוטה מקומית.';
- if(v.status==='MISSING_PERMISSIONS')return v.missing?.includes('ads_read')?'חסרה הרשאת ads_read לקריאת נתוני הפרסום. אין כרגע גישה לדוחות. אפשר לבדוק את הרשאות החיבור ב-Meta ולחבר מחדש.':'Meta חסמה את בדיקת הגישה בגלל הרשאות. אין כרגע אפשרות לקרוא דוחות; צריך לבדוק את ההרשאה לחשבון ולחיבור ב-Meta לפני ניסיון נוסף.';
+ if(v.status==='MISSING_PERMISSIONS')return v.missing?.includes('ads_read')?'בחיבור ל־Meta חסרה ההרשאה לראות את נתוני הפרסום, אז אין לי כרגע גישה לדוחות. הצעד הבא: כתוב "חבר את מטא" ובמסך של Meta אשר את כל ההרשאות.':'Meta חסמה את בדיקת הגישה בגלל הרשאות. אין כרגע אפשרות לקרוא דוחות; צריך לבדוק את ההרשאה לחשבון ולחיבור ב-Meta לפני ניסיון נוסף.';
  if(v.status==='TOKEN_EXPIRED'||v.status==='RECONNECT_REQUIRED')return'ההרשאה אינה תקפה כרגע. אפשר להכין טיוטה מקומית או לבקש קישור אישי לחיבור מחדש.';
  if(v.status==='CONNECTION_FAILED')return'לא הצלחתי לאמת את החיבור מול Meta כרגע. לא אסמן אותו כמחובר. אפשר לנסות בדיקה חדשה או להמשיך בטיוטה מקומית.';
  return'אין כרגע חשבון Meta מחובר ומאומת. אפשר לחבר אותו או להכין קודם טיוטה מקומית.';

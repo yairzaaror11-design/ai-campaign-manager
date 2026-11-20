@@ -57,7 +57,7 @@ async function approve(clientId,id,input){
   await audit(tx,clientId,saved,'APPROVED',actor);return view(saved);
  });
 }
-async function list(clientId){tenant(clientId);const r=await db.query('SELECT m.*,(SELECT COUNT(*) FROM authority_uses u WHERE u.client_id=m.client_id AND u.mandate_id=m.id) AS used FROM authority_mandates m WHERE m.client_id=$1 ORDER BY m.created_at DESC,m.id LIMIT 100',[clientId]);return{enabled:enabled(),supportedIntents:[...SUPPORTED],spendingAuthorized:false,mandates:r.rows.map(r=>view(r,r.used))};}
+async function list(clientId){tenant(clientId);const r=await db.query("SELECT m.*,(SELECT COUNT(*) FROM authority_uses u WHERE u.client_id=m.client_id AND u.mandate_id=m.id) AS used FROM authority_mandates m WHERE m.client_id=$1 AND COALESCE(m.policy->>'kind','')<>'WORK_AGREEMENT' ORDER BY m.created_at DESC,m.id LIMIT 100",[clientId]);return{enabled:enabled(),supportedIntents:[...SUPPORTED],spendingAuthorized:false,mandates:r.rows.map(r=>view(r,r.used))};}
 async function revoke(clientId,id,input){
  const actor=owner(clientId);keys(input,['revision']);if(!uuid(id)||!Number.isInteger(input.revision))throw Error('INVALID_AUTHORITY_INPUT');
  return db.transaction(async tx=>{
@@ -70,6 +70,7 @@ async function revoke(clientId,id,input){
 }
 function covers(row,plan){
  const p=row.policy;
+ if(p?.kind===AGREEMENT)return false; // a work agreement is checked by agreementDecision, never as a scoped mandate
  if(row.status!=='ACTIVE'||Date.parse(p.expiresAt)<=Date.now()||policy.planHash(p)!==row.policy_hash||!SUPPORTED.includes(plan.intent)||!p.intents.includes(plan.intent)||p.provider!=='meta'||String(p.clientId)!==String(plan.tenantId)||p.accountId!==plan.target.accountId||p.appId!==plan.metaAppId||p.connectionGeneration!==String(plan.connectionGeneration)||p.currency!==plan.review?.currency)return false;
  const campaign=plan.target.campaignId||plan.parameters.campaignId;
  if(p.campaignIds.length&&(!campaign||!p.campaignIds.includes(campaign)))return false;
@@ -112,6 +113,122 @@ async function approveIfCovered(clientId,plan){
 async function assertExecution(tx,clientId,plan){
  const use=(await tx('SELECT * FROM authority_uses WHERE action_id=$1 AND client_id=$2',[plan.id,clientId])).rows[0];if(!use)return;
  const row=(await tx('SELECT * FROM authority_mandates WHERE id=$1 AND client_id=$2',[use.mandate_id,clientId])).rows[0];
+ if(row?.policy?.kind===AGREEMENT){
+  // Pause-all or a new agreement after the authorization blocks the action before any write.
+  if(row.status!=='ACTIVE'||row.revision!==use.mandate_revision||use.plan_hash!==policy.planHash(plan)||!agreementDecision(row,plan,{skipCeiling:true}).ok)throw Error('SCOPED_AUTHORITY_REVOKED_OR_STALE');
+  return;
+ }
  if(!enabled()||!row||row.revision!==use.mandate_revision||use.plan_hash!==policy.planHash(plan)||!covers(row,plan))throw Error('SCOPED_AUTHORITY_REVOKED_OR_STALE');
 }
-module.exports={SUPPORTED,enabled,withPortalOwner,propose,approve,list,revoke,approveIfCovered,assertExecution};
+// ---- Work agreement (הסכם עבודה) ----
+// One standing mandate the owner sets once (WhatsApp or dashboard). It is an authority_mandates
+// row with policy.kind=WORK_AGREEMENT: same audit, same authority_uses ledger, same execution
+// re-check. Inside it the agent acts and reports; outside it the agent asks. It never authorizes
+// spend beyond the owner's monthly ceiling or per-campaign daily maximum.
+const AGREEMENT='WORK_AGREEMENT';
+const AGREEMENT_ALLOW=Object.freeze(['pauseLosing','lowerBudget','shiftBudget','refreshCreatives','organicPosts','answerLeads','activateNew']);
+const ALWAYS_ASK=Object.freeze(['activateNewCampaign','raiseAboveCeiling','newFinancialCommitment','delete','irreversible']);
+const CURRENCIES=['ILS','USD','EUR','GBP','CAD','AUD','JPY','KRW'];
+const unit=cur=>['JPY','KRW'].includes(cur)?1:100;
+function withWhatsAppOwner(clientId,work){
+ // The WhatsApp sender was already authenticated as this business's owner by the inbound pipeline.
+ return meta.context.run(String(clientId),()=>ownerContext.run({clientId,actorId:'whatsapp-owner:'+clientId,role:'OWNER'},work));
+}
+function agreementFields(input){
+ keys(input,['monthlyCeiling','maxDailyPerCampaign','allow','styleNotes','forbiddenTopics','currency']);
+ const amount=v=>{const n=Number(v);return Number.isFinite(n)&&n>0&&n<=10000000?Math.round(n*100)/100:null;};
+ const monthly=amount(input.monthlyCeiling),daily=amount(input.maxDailyPerCampaign),currency=input.currency||'ILS';
+ if(!monthly||!daily)throw Error('AGREEMENT_LIMITS_REQUIRED');
+ if(daily>monthly)throw Error('AGREEMENT_DAILY_ABOVE_MONTHLY');
+ if(!CURRENCIES.includes(currency))throw Error('INVALID_AGREEMENT_INPUT');
+ const a=input.allow??{};
+ if(!a||typeof a!=='object'||Array.isArray(a)||Object.keys(a).some(k=>!AGREEMENT_ALLOW.includes(k)||typeof a[k]!=='boolean'))throw Error('INVALID_AGREEMENT_INPUT');
+ const allow=Object.fromEntries(AGREEMENT_ALLOW.map(k=>[k,a[k]===true]));
+ const styleNotes=input.styleNotes==null?'':input.styleNotes;
+ if(typeof styleNotes!=='string'||styleNotes.length>1000)throw Error('INVALID_AGREEMENT_INPUT');
+ let topics=input.forbiddenTopics==null?[]:input.forbiddenTopics;
+ if(typeof topics==='string')topics=topics.split(/[,\n،]/);
+ if(!Array.isArray(topics)||topics.length>20||topics.some(t=>typeof t!=='string'||t.length>80))throw Error('INVALID_AGREEMENT_INPUT');
+ topics=[...new Set(topics.map(t=>t.trim()).filter(Boolean))];
+ return{kind:AGREEMENT,monthlyCeiling:monthly,maxDailyPerCampaign:daily,currency,allow,styleNotes:styleNotes.trim(),forbiddenTopics:topics,alwaysAsk:[...ALWAYS_ASK]};
+}
+function agreementView(row){
+ if(!row)return null;const p=row.policy;
+ return{id:row.id,status:row.status,paused:row.status==='PAUSED',revision:row.revision,setAt:row.approved_at||row.created_at,monthlyCeiling:p.monthlyCeiling,maxDailyPerCampaign:p.maxDailyPerCampaign,currency:p.currency,allow:{...p.allow},styleNotes:p.styleNotes,forbiddenTopics:[...p.forbiddenTopics],alwaysAsk:[...p.alwaysAsk]};
+}
+const LIVE="status IN ('ACTIVE','PAUSED') AND policy->>'kind'='WORK_AGREEMENT'";
+async function agreementRow(clientId,q=db.query){return(await q('SELECT * FROM authority_mandates WHERE client_id=$1 AND '+LIVE+' ORDER BY created_at DESC LIMIT 1',[clientId])).rows[0]||null;}
+async function getAgreement(clientId){return agreementView(await agreementRow(clientId));}
+async function setAgreement(clientId,input){
+ const actor=owner(clientId),fields=agreementFields(input);
+ return db.transaction(async tx=>{
+  await tx('SELECT id FROM clients WHERE id=$1 FOR UPDATE',[clientId]);
+  const prior=await tx("UPDATE authority_mandates SET status='REVOKED',revision=revision+1,revoked_at=NOW() WHERE client_id=$1 AND "+LIVE+" RETURNING *",[clientId]);
+  for(const r of prior.rows)await audit(tx,clientId,r,'REVOKED',actor);
+  const id=crypto.randomUUID(),payload={...fields,id,clientId:String(clientId),provider:'meta'};
+  const row=(await tx("INSERT INTO authority_mandates(id,client_id,policy,policy_hash,status,approved_by,approved_at) VALUES($1,$2,$3::jsonb,$4,'ACTIVE',$5,NOW()) RETURNING *",[id,clientId,JSON.stringify(payload),policy.planHash(payload),actor])).rows[0];
+  await audit(tx,clientId,row,'AGREEMENT_SET',actor);return agreementView(row);
+ });
+}
+// One tap: stop (or restart) every automatic action. Anything authorized but not yet executed is blocked.
+async function setPaused(clientId,paused){
+ const actor=owner(clientId);
+ return db.transaction(async tx=>{
+  await tx('SELECT id FROM clients WHERE id=$1 FOR UPDATE',[clientId]);
+  const row=await agreementRow(clientId,tx);if(!row)throw Error('AGREEMENT_NOT_FOUND');
+  if(row.status===(paused?'PAUSED':'ACTIVE'))return agreementView(row);
+  const saved=(await tx('UPDATE authority_mandates SET status=$3,revision=revision+1 WHERE client_id=$1 AND id=$2 RETURNING *',[clientId,row.id,paused?'PAUSED':'ACTIVE'])).rows[0];
+  await audit(tx,clientId,saved,paused?'PAUSED':'RESUMED',actor);return agreementView(saved);
+ });
+}
+const pauseAll=clientId=>setPaused(clientId,true),resumeAll=clientId=>setPaused(clientId,false);
+// Projected month spend = spent so far + (committed daily budgets + the change) × days left.
+function withinCeiling(p,ctx,addMinor){
+ if(!ctx||!Number.isFinite(ctx.monthSpend)||!Number.isFinite(ctx.committedDailyMinor)||!Number.isInteger(ctx.daysLeft)||ctx.daysLeft<1)return{ok:false,why:'SPEND_UNKNOWN'};
+ const projected=Math.round((ctx.monthSpend+(ctx.committedDailyMinor+addMinor)/unit(p.currency)*ctx.daysLeft)*100)/100;
+ return projected<=p.monthlyCeiling?{ok:true,projected}:{ok:false,why:'ABOVE_CEILING',projected};
+}
+// Pure: may the agent do this plan alone under this agreement row? {ok, why}
+function agreementDecision(row,plan,ctx){
+ ctx=ctx||{};const p=row?.policy;
+ if(!row||p?.kind!==AGREEMENT)return{ok:false,why:'NO_AGREEMENT'};
+ if(row.status!=='ACTIVE')return{ok:false,why:'PAUSED'};
+ if(policy.planHash(p)!==row.policy_hash||String(p.clientId)!==String(plan?.tenantId))return{ok:false,why:'NO_AGREEMENT'};
+ if(plan.review?.currency&&plan.review.currency!==p.currency)return{ok:false,why:'CURRENCY'};
+ const a=p.allow,maxDaily=Math.round(p.maxDailyPerCampaign*unit(p.currency)),ceiling=add=>ctx.skipCeiling?{ok:true}:withinCeiling(p,ctx,add);
+ if(plan.intent==='PAUSE_CAMPAIGN')return a.pauseLosing?{ok:true,why:'PROTECTIVE'}:{ok:false,why:'NOT_ALLOWED'};
+ if(plan.intent==='CHANGE_BUDGET'){
+  const next=plan.parameters?.dailyBudgetMinor,cur=Number(plan.review?.currentDailyBudgetMinor);
+  if(!Number.isSafeInteger(next)||!Number.isFinite(cur)||cur<=0)return{ok:false,why:'BUDGET_UNKNOWN'};
+  if(next<cur)return a.lowerBudget?{ok:true,why:'PROTECTIVE'}:{ok:false,why:'NOT_ALLOWED'};
+  if(!a.shiftBudget)return{ok:false,why:'NOT_ALLOWED'};
+  if(next>maxDaily)return{ok:false,why:'ABOVE_DAILY'};
+  return ceiling(next-cur);
+ }
+ if(['ACTIVATE_BUNDLE','RESUME_CAMPAIGN'].includes(plan.intent)){
+  if(!a.activateNew)return{ok:false,why:'ALWAYS_ASK'};
+  const daily=require('./spendCap').planDailyMinor(plan);
+  if(!daily)return{ok:false,why:'BUDGET_UNKNOWN'};
+  if(daily>maxDaily)return{ok:false,why:'ABOVE_DAILY'};
+  return ceiling(daily);
+ }
+ // New campaigns, copies, audiences, edits, anything irreversible: always ask.
+ return{ok:false,why:'ALWAYS_ASK'};
+}
+// Marks a prepared approval as authorized by the agreement (inside one locked transaction).
+async function authorizeByAgreement(clientId,plan,ctx,reason){
+ tenant(clientId);if(process.env.READ_ONLY!=='false'||process.env.META_WRITES_ENABLED!=='true'||plan.taskId)return false;policy.strictPlan(plan);
+ return db.transaction(async tx=>{
+  await tx('SELECT id FROM clients WHERE id=$1 FOR UPDATE',[clientId]);
+  const row=(await tx("SELECT * FROM authority_mandates WHERE client_id=$1 AND status='ACTIVE' AND policy->>'kind'='WORK_AGREEMENT' FOR UPDATE",[clientId])).rows[0];
+  if(!agreementDecision(row,plan,ctx).ok)return false;
+  const hash=policy.planHash(plan),action=(await tx('SELECT * FROM action_plans WHERE id=$1 AND client_id=$2 FOR UPDATE',[plan.id,clientId])).rows[0];
+  if(!action||action.status!=='PROPOSED'||action.plan_hash!==hash||policy.planHash(action.payload)!==hash)return false;
+  if((await tx('SELECT action_id FROM authority_uses WHERE action_id=$1',[plan.id])).rows.length)return false;
+  const approval=await tx("UPDATE approvals SET status='APPROVED',used_at=NOW() WHERE action_id=$1 AND client_id=$2 AND status='PENDING' AND plan_hash=$3 AND expires_at>NOW() RETURNING id",[plan.id,clientId,hash]);if(approval.rows.length!==1)return false;
+  await tx('INSERT INTO authority_uses(action_id,client_id,mandate_id,mandate_revision,plan_hash,reason) VALUES($1,$2,$3,$4,$5,$6)',[plan.id,clientId,row.id,row.revision,hash,String(reason||plan.summary||'').slice(0,500)]);
+  await tx("UPDATE action_plans SET status='APPROVED',updated_at=NOW() WHERE id=$1 AND client_id=$2",[plan.id,clientId]);
+  await audit(tx,clientId,row,'ACTION_AUTHORIZED','work-agreement');return true;
+ });
+}
+module.exports={SUPPORTED,enabled,withPortalOwner,withWhatsAppOwner,propose,approve,list,revoke,approveIfCovered,assertExecution,AGREEMENT,AGREEMENT_ALLOW,ALWAYS_ASK,agreementFields,getAgreement,setAgreement,pauseAll,resumeAll,agreementDecision,withinCeiling,authorizeByAgreement};

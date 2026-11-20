@@ -45,6 +45,14 @@ async function handleApproval(from, code,actionId=null) {
   const consumed = actionId?await require('./approvalEngine').consumeButtonApproval(from,actionId):await consumeApproval(from, code);
 
   if (!consumed.ok) {
+    // F3: a tap on an expired (or replaced) approval re-offers the same action with fresh numbers.
+    if(consumed.reofferable&&configured()){
+      const client=await getOrCreateClient(from);
+      try{
+        const fresh=await require('./metaConnection').context.run(String(client.id),()=>require('./workAgreement').reoffer(client.id,consumed.actionId));
+        if(fresh){const summary=require('./workAgreement').REOFFER_INTRO+'\n\n'+formatActionPlan(fresh.actionPlan);const ui=await require('./conversationUi').prepareApproval(client.id,fresh,summary);await safeSend(from,ui.text,ui);return;}
+      }catch(error){if(error?.reply){await safeSend(from,error.reply);return;}}
+    }
     const messages = {
       NOT_FOUND: 'לא מצאתי אישור פעיל עם הקוד הזה.',
       EXPIRED: 'קוד האישור פג. בקש להכין את הפעולה מחדש.',
@@ -56,12 +64,11 @@ async function handleApproval(from, code,actionId=null) {
 
   const result = await executeApprovedAction(from, consumed.approval.actionPlan);
   if(result.ok&&consumed.approval.actionPlan.intent==='CREATE_BUNDLE'){
-    const o=result.writeResult.objects,client=await getOrCreateClient(from);
-    try{
-    const next=await createApproval(from,require('./actionPlan').createActionPlan({intent:'ACTIVATE_BUNDLE',summary:'הפעלת הקמפיין שנוצר ואומת במצב מושהה',target:{accountId:consumed.approval.actionPlan.target.accountId,campaignId:o.campaignId},parameters:{adsetIds:o.adsetIds,adIds:o.adIds}}));
-    const summary='הקמפיין נוצר ב־Meta ואומת במצב מושהה.\n\n'+formatActionPlan(next.actionPlan);
-    const ui=await require('./conversationUi').prepareApproval(client.id,next,summary);await safeSend(from,ui.text,ui);return;
-    }catch(error){if(error?.message==='SPEND_CAP_EXCEEDED'){await safeSend(from,'הקמפיין נוצר ואומת במצב מושהה. לא הופעל פרסום.\n\n'+error.reply);return;}await safeSend(from,'הקמפיין נוצר ואומת במצב מושהה. לא הופעל פרסום. הכנת אישור ההפעלה לא הושלמה; אפשר לבקש אותו מחדש לאחר בדיקת החיבור.');return;}
+    const client=await getOrCreateClient(from);
+    // F8: an explicit "להפעיל עכשיו?" with the cost line, unless the work agreement already authorizes activation.
+    const next=await require('./metaConnection').context.run(String(client.id),()=>require('./workAgreement').offerActivation(client.id,consumed.approval.actionPlan,result.writeResult));
+    if(next.approval){const ui=await require('./conversationUi').prepareApproval(client.id,next.approval,next.text);await safeSend(from,ui.text,ui);return;}
+    await safeSend(from,next.text);return;
   }
   if(result.ok&&require('./buyerAudiences').INTENTS.includes(consumed.approval.actionPlan.intent)){await safeSend(from,require('./buyerAudiences').doneText(consumed.approval.actionPlan));return;}
   await safeSend(from,result.ok?'הפעולה בוצעה ואומתה מול Meta.':result.message||'הפעולה לא בוצעה.');
@@ -138,7 +145,7 @@ async function processNaturalLanguage(from, text, prefix = '') {
     if (plan.missing?.length) continue;
     let approval;
     try {approval = await createApproval(from, plan);}
-    catch(error){if(error?.message==='SPEND_CAP_EXCEEDED'){reply+='\n\n'+error.reply;continue;}reply+='\nההצעה לא קיבלה קוד אישור: נדרש חשבון מחובר וכל פרטי הפעולה, הקהל, המטבע והתאריכים. לא בוצע שינוי.';continue;}
+    catch(error){if(error?.reply){reply+='\n\n'+error.reply;continue;}reply+='\nההצעה לא קיבלה קוד אישור: נדרש חשבון מחובר וכל פרטי הפעולה, הקהל, המטבע והתאריכים. לא בוצע שינוי.';continue;}
     reply += `\n\n${formatActionPlan(approval.actionPlan)}${approvalInstruction(approval)}`;
     buttonApproval=approval;
   }
@@ -189,6 +196,9 @@ async function handleTenantMessage(message, contact) {
 
   if(message.type==='interactive'){
     const client=await getOrCreateClient(from);
+    // An approval button from an earlier card (expired, or another card arrived since) still works:
+    // it approves exactly that action, or re-offers it with fresh numbers if it expired.
+    {const earlier=await require('./conversationUi').consumeEarlierApproval(client.id,message);if(earlier){await routeText(from,earlier);return;}}
     if(await require('./conversationController').owns(client.id)&&!require('./conversationController').acceptsInteractive(await require('./marketingStore').load(client.id))){await safeSend(from,'התפריט הזה שייך למסלול הקודם. כתוב מה תרצה שנכין ואמשיך מהבקשה הנוכחית.');return;}
     const selected=await require('./conversationUi').consume(client.id,message);
     if(!selected){if(await require('./conversationController').owns(client.id)){await safeSend(from,'הכפתור הזה שייך להצעה קודמת. כתוב מה תרצה לעשות ואמשיך מהבקשה הנוכחית.');return;}const fresh=await require('./conversationUi').refresh(client.id);await safeSend(from,fresh.text,fresh);return;}
@@ -210,7 +220,8 @@ async function handleTenantMessage(message, contact) {
 
 async function routeText(from, text, prefix = '') {
   if(text.startsWith('/approve-current ')&&configured()&&(require('./taskAgent').enabled()||process.env.UNIFIED_CONVERSATION_ENABLED==='true')){const c=await getOrCreateClient(from),task=await require('./taskAgent').active(c.id),id=text.slice(17),pending=task?.state.steps.find(x=>x.status==='WAITING_APPROVAL'&&x.result?.approval?.actionId===id),ctx=require('./whatsappDelivery').messageContext.getStore();if(pending&&ctx?.approvedActionId===id){delete ctx.approvedActionId;const r=await require('./taskAgent').send(c.id,{message:'אשר '+require('./metaConnection').decrypt(pending.result.approval.codeCiphertext,c.id),requestId:'task-button:'+ctx.eventId,channel:'WHATSAPP'},{deferPlanning:!require('./taskAgent').enabled()});await deliverTaskReply(from,c.id,r);return;}}
-  if(text.startsWith('/approve-current ')){const owner=configured()?await getOrCreateClient(from):null;if(owner&&await require('./conversationController').owns(owner.id)&&!await require('./campaignGuard').ownsApproval(owner.id,text.slice(17))&&!await require('./dailyAdvice').ownsApproval(owner.id,text.slice(17))&&!await require('./buyerAudiences').ownsApproval(owner.id,text.slice(17))&&!await require('./catalog').ownsApproval(owner.id,text.slice(17))){await safeSend(from,'האישור הזה אינו שייך למשימה הנוכחית. לא בוצעה פעולה. אפשר לבקש להכין את הפעולה מחדש לבדיקה.');return;}await handleApproval(from,null,text.slice(17));return;}
+  if(text.startsWith('/approve-current ')){const owner=configured()?await getOrCreateClient(from):null;if(owner&&await require('./conversationController').owns(owner.id)&&!await require('./campaignGuard').ownsApproval(owner.id,text.slice(17))&&!await require('./dailyAdvice').ownsApproval(owner.id,text.slice(17))&&!await require('./buyerAudiences').ownsApproval(owner.id,text.slice(17))&&!await require('./conversationUi').presentedApproval(owner.id,text.slice(17))){await safeSend(from,'האישור הזה אינו שייך למשימה הנוכחית. לא בוצעה פעולה. אפשר לבקש להכין את הפעולה מחדש לבדיקה.');return;}await handleApproval(from,null,text.slice(17));return;}
+  if(/^\/cancel-action [A-Za-z0-9-]{6,64}$/.test(text)&&configured()){const c=await getOrCreateClient(from),id=text.slice(15);await require('./db').transaction(async tx=>{await tx("UPDATE approvals SET status='CANCELLED' WHERE client_id=$1 AND action_id=$2 AND status IN ('PENDING','SUPERSEDED')",[c.id,id]);await tx("UPDATE action_plans SET status='CANCELLED',updated_at=NOW() WHERE client_id=$1 AND id=$2 AND status='PROPOSED'",[c.id,id]);});const plan=(await require('./db').query('SELECT intent FROM action_plans WHERE client_id=$1 AND id=$2',[c.id,id])).rows[0];await safeSend(from,plan?.intent==='ACTIVATE_BUNDLE'?'בסדר, הקמפיין נשאר מושהה ולא מחייב. כשתרצה להפעיל אותו, אפשר מהדשבורד במסך הקמפיינים או לכתוב לי.':'בסדר, הפעולה בוטלה ולא בוצעה.');return;}
   if(text==='בטל את הפעולה הממתינה'){await cancelPendingApprovals(from);await safeSend(from,'הפעולה הממתינה בוטלה. מה נרצה לשנות?');return;}
   if(await require('./buyerAudiences').handleText(from,text))return;
   {const advice=await require('./dailyAdvice').handleReply(from,text);if(advice?.route)text=advice.route;else if(advice)return;}
@@ -228,6 +239,11 @@ async function routeText(from, text, prefix = '') {
     }
     await safeSend(from,process.env.UNIFIED_CONVERSATION_ENABLED==='true'?'איפסתי את המשימה וביטלתי אישורים ממתינים. חיבור Meta נשמר. מה תרצה שנכין עכשיו?':'איפסתי את פרטי השיחה והטיוטה וביטלתי אישורי פעולה ממתינים. חיבור Meta נשמר. מה העסק עושה, ובאיזה שם הוא פועל?');
     return;
+  }
+  if(configured()){
+    // Work agreement: set once with button questions, show it, or stop all automatic actions in one tap.
+    const client=await getOrCreateClient(from),agreement=await require('./workAgreement').handleText(client.id,text);
+    if(agreement){await appendMessages(from,[{role:'user',content:text},{role:'assistant',content:agreement.text||agreement.reply}]);await safeSend(from,agreement.text||agreement.reply,agreement.interactivePayload?agreement:undefined);return;}
   }
   if(configured()){
     const client=await getOrCreateClient(from);

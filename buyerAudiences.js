@@ -196,7 +196,7 @@ async function handleText(from, text, { approve } = {}) {
   } catch (error) {
     const code = /^[A-Z_]+$/.test(error?.message || '') ? error.message : 'BUYER_AUDIENCE_PREPARE_FAILED';
     logger.warn('Buyer audience approval not prepared', { error: code });
-    if (error?.message === 'SPEND_CAP_EXCEEDED' && error.reply) await say(error.reply);
+    if (error?.reply) await say(error.reply);
     else await say(code === 'META_CONNECTION_REQUIRED' ? 'כדי ליצור קהל צריך חיבור פעיל לחשבון הפרסום. כתוב "חיבור למטא".' : 'לא הצלחתי להכין את הקהל מול Meta כרגע. לא נשלח שום דבר. אפשר לנסות שוב בעוד כמה דקות.');
   }
   return true;

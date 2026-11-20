@@ -37,7 +37,7 @@ test('guided Meta connection states, verified permissions and tenant boundaries'
    assert.equal((await h.db.query('SELECT COUNT(*)::int AS n FROM meta_login_secrets')).rows[0].n,before);
    const v=await guided.verify(a.id);assert.equal(v.canRead,true);assert.equal(v.canManage,false);assert.deepEqual(v.permissions,['ads_read']);
   });
-  await t.test('missing ads_read is explicit and no false connected result is returned',async()=>{permissions=[];const v=await guided.verify(a.id);assert.equal(v.status,'MISSING_PERMISSIONS');assert.match(guided.statusReply(v),/ads_read/);assert.equal(v.canRead,false);permissions=['ads_read'];});
+  await t.test('missing ads_read is explicit and no false connected result is returned',async()=>{permissions=[];const v=await guided.verify(a.id);assert.equal(v.status,'MISSING_PERMISSIONS');assert.match(guided.statusReply(v),/חסרה ההרשאה לראות את נתוני הפרסום/);assert.doesNotMatch(guided.statusReply(v),/ads_read/);assert.equal(v.canRead,false);permissions=['ads_read'];});
   await t.test('server-recorded expiration requires reconnection',async()=>{await h.db.query("UPDATE meta_connections SET expires_at=NOW()-INTERVAL '1 minute' WHERE client_id=$1",[a.id]);assert.equal((await guided.verify(a.id)).status,'TOKEN_EXPIRED');await connect();});
   await t.test('revoked token and temporary provider failures are sanitized',async()=>{
    failure={response:{data:{error:{code:190,message:'NEVER_EXPOSE_SECRET'}}}};assert.equal((await guided.verify(a.id)).status,'TOKEN_EXPIRED');

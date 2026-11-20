@@ -2,7 +2,7 @@
 const router=require('express').Router(),path=require('node:path'),db=require('./db'),auth=require('./portalStore');
 router.use('/app',(req,res,next)=>{res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"});next();});
 router.get('/app',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/index.html')));
-router.get('/app/:screen',(req,res,next)=>{if(![...require('./portalAgent').SCREENS,'pages','performance','approvals','catalog'].includes(req.params.screen))return next();res.sendFile(path.join(__dirname,'public/portal/index.html'));});
+router.get('/app/:screen',(req,res,next)=>{if(![...require('./portalAgent').SCREENS,'pages','performance','approvals','catalog','agreement'].includes(req.params.screen))return next();res.sendFile(path.join(__dirname,'public/portal/index.html'));});
 router.get('/app/portal.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/portal.js')));
 router.get('/app/dashboard.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/dashboard.js')));
 router.get('/app/billing.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/billing.js')));
@@ -145,6 +145,16 @@ router.post('/app/api/organic/approve-all',endpoint(async(req,res)=>res.json({ap
 router.post('/app/api/organic/status',endpoint(async(req,res)=>res.json(await require('./organicContent').setStatus(req.portal.clientId,req.body?.status))));
 router.post('/app/api/organic/posts/:id',endpoint(async(req,res)=>res.json(await require('./organicContent').updatePost(req.portal.clientId,req.params.id,{action:req.body?.action,caption:req.body?.caption}))));
 router.post('/app/api/organic/photo-shoot',endpoint(async(req,res)=>res.json(await require('./organicContent').requestShoot(req.portal.clientId,String(req.body?.details||'')))));
+// Work agreement (הסכם עבודה) and the five-part status (done / running / waiting / failed / spend).
+router.get('/app/api/status',endpoint(async(req,res)=>res.json(await require('./activityLog').status(req.portal.clientId))));
+const agreementEndpoint=work=>async(req,res)=>{
+ try{await require('./scopedAuthority').withPortalOwner(req.portal,async()=>res.json(await work(req)));}
+ catch(e){const known={AGREEMENT_LIMITS_REQUIRED:'צריך תקרה חודשית ותקציב יומי מקסימלי, שניהם גדולים מאפס.',AGREEMENT_DAILY_ABOVE_MONTHLY:'התקציב היומי לקמפיין לא יכול להיות גדול מהתקרה החודשית.',AGREEMENT_NOT_FOUND:'עוד אין הסכם עבודה. קודם שומרים אחד.',AUTHORITY_OWNER_REQUIRED:'רק בעל העסק יכול לשנות את הסכם העבודה.'};res.status(e.message==='AUTHORITY_OWNER_REQUIRED'?403:400).json({error:known[e.message]||'בדקו את הפרטים ונסו שוב.'});}
+};
+router.get('/app/api/agreement',endpoint(async(req,res)=>{const w=require('./workAgreement');res.json({agreement:await require('./scopedAuthority').getAgreement(req.portal.clientId),labels:w.ALLOW_HE,alwaysAsk:w.ALWAYS_ASK_HE,presets:w.PRESETS});}));
+router.post('/app/api/agreement',agreementEndpoint(req=>require('./scopedAuthority').setAgreement(req.portal.clientId,req.body)));
+router.post('/app/api/agreement/pause',agreementEndpoint(req=>require('./scopedAuthority').pauseAll(req.portal.clientId)));
+router.post('/app/api/agreement/resume',agreementEndpoint(req=>require('./scopedAuthority').resumeAll(req.portal.clientId)));
 router.get('/app/api/activity',endpoint(async(req,res)=>res.json({items:await require('./activityLog').list(req.portal.clientId,{days:30})})));
 router.get('/app/api/approvals',endpoint(async(req,res)=>res.json({approvals:await require('./dashboardApprovals').pending(req.portal.clientId)})));
 router.post('/app/api/approvals/:id/approve',endpoint(async(req,res)=>{if(req.body?.confirm!==true)return res.sendStatus(400);res.json(await require('./dashboardApprovals').approve(req.portal.clientId,req.params.id));}));

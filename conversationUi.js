@@ -96,15 +96,34 @@ async function prepareApproval(clientId,approval,summary){
  const nonce=crypto.randomBytes(12).toString('hex');
  const creating=approval.actionPlan.intent==='CREATE_BUNDLE';
  const activating=approval.actionPlan.intent==='ACTIVATE_BUNDLE';
- const items=[{title:creating?'אישור יצירה מושהית':activating?'אישור הפעלה':'אישור השינוי',kind:'action_approval',actionId:approval.actionId,text:'אישור פעולה'},choice('ביטול','בטל את הפעולה הממתינה')];
- await store.update(clientId,null,p=>{p.ui={nonce,decisionKey:'action_approval',context:context(p),choices:items,expiresAt:new Date(approval.expiresAt).getTime()};return{handled:false,changed:true};});
- return{text:summary,leadingText:summary,interactivePayload:payload(creating?'לאשר יצירה במצב מושהה לפי הסיכום? אין הפעלה בשלב זה.':activating?'לאשר הפעלה לפי הסיכום? ההפעלה עשויה להתחיל הוצאה מתקציב הפרסום.':'לאשר את השינוי המדויק שבסיכום?',items,nonce)};
+ // F8: activation is an explicit question; "לא עכשיו" keeps the campaign paused.
+ const items=[{title:creating?'אישור יצירה מושהית':activating?'להפעיל עכשיו':'אישור השינוי',kind:'action_approval',actionId:approval.actionId,text:'אישור פעולה'},activating?choice('לא עכשיו','/cancel-action '+approval.actionId):choice('ביטול','בטל את הפעולה הממתינה')];
+ await store.update(clientId,null,p=>{p.ui={nonce,decisionKey:'action_approval',context:context(p),choices:items,expiresAt:new Date(approval.expiresAt).getTime()};
+  // Every approval card stays answerable after another card arrives or after it expires (then it is re-offered).
+  p.approvalButtons=[...(p.approvalButtons||[]).filter(b=>b.actionId!==approval.actionId),{nonce,actionId:approval.actionId,at:Date.now()}].slice(-8);
+  return{handled:false,changed:true};});
+ return{text:summary,leadingText:summary,interactivePayload:payload(creating?'לאשר יצירה במצב מושהה לפי הסיכום? אין הפעלה בשלב זה.':activating?'הקמפיין מוכן ומושהה. להפעיל עכשיו? ההפעלה מתחילה הוצאה מתקציב הפרסום, לפי שורת העלות שבסיכום.':'לאשר את השינוי המדויק שבסיכום?',items,nonce)};
 }
+// A tap on an approval button that is no longer the current menu (expired, or a newer card was sent).
+async function consumeEarlierApproval(clientId,message){
+ const type=message?.interactive?.type,id=type==='button_reply'?message.interactive.button_reply?.id:type==='list_reply'?message.interactive.list_reply?.id:null;
+ if(typeof id!=='string'||!/^cb:[a-f0-9]{24}:[01]$/.test(id))return null;
+ const [,nonce,index]=id.split(':');let selected=null;
+ await store.update(clientId,null,p=>{
+  const ui=p.ui;if(ui&&ui.nonce===nonce&&ui.context===context(p)&&ui.expiresAt>=Date.now())return{handled:false};// the current card: normal path
+  const b=(p.approvalButtons||[]).find(x=>x.nonce===nonce&&Date.now()-x.at<7*86400000);if(!b)return{handled:false};
+  if(index==='0'){const ctx=require('./whatsappDelivery').messageContext.getStore();if(!ctx)return{handled:false};ctx.approvedActionId=b.actionId;selected='/approve-current '+b.actionId;}
+  else selected='/cancel-action '+b.actionId;
+  // Kept (the approval engine refuses any replay); presentedApproval() still recognises it downstream.
+  if(ui?.nonce===nonce)delete p.ui;return{handled:false,changed:true};
+ });return selected;
+}
+async function presentedApproval(clientId,actionId){const p=await store.load(clientId);return !!p?.approvalButtons?.some(b=>b.actionId===String(actionId));}
 async function prepareChoices(clientId,body,items,decisionKey){
  const nonce=crypto.randomBytes(12).toString('hex');
  await store.update(clientId,null,p=>{p.ui={nonce,decisionKey,context:context(p),choices:items,expiresAt:Date.now()+24*60*60*1000};return{handled:false,changed:true};});
  return{text:body,interactivePayload:payload(body,items,nonce)};
 }
 const prepareTaskReview=(clientId,body,items)=>prepareChoices(clientId,body,items,'task_review');
-module.exports={choices,payload,prepare,prepareApproval,prepareTaskReview,prepareChoices,consume,context,refresh};
+module.exports={choices,payload,prepare,prepareApproval,prepareTaskReview,prepareChoices,consume,consumeEarlierApproval,presentedApproval,context,refresh};
 

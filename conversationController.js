@@ -34,7 +34,7 @@ async function handle(clientId,input,options={}){
  // Lead status updates (also the buttons of proactive check-ins) and CRM commands.
  const crm=await require('./crmConversation').handle(clientId,message);if(crm)return crm;
  // "What did you do and why": the activity log.
- const activity=await require('./activityLog').handle(clientId,message);if(activity)return activity;
+ const activity=await require('./activityLog').handle(clientId,message)||await require('./activityLog').handleStatus(clientId,message);if(activity)return activity;
  // Ongoing organic content (three-month calendar) and photo-shoot requests.
  const organic=await require('./organicContent').handle(clientId,message);if(organic)return organic;
  const spendCap=await require('./spendCap').handle(clientId,message);if(spendCap)return spendCap;
@@ -58,5 +58,5 @@ async function media(clientId,input,options={}){
  if(!await tasks.active(clientId))return{handled:true,reply:'הקובץ נשמר לשיחה. מה תרצה להכין איתו?'};
  return handle(clientId,input,options);
 }
-function acceptsInteractive(profile){return ['action_approval','account_selection','connection_offer','connected','task_review','guard_alert','billing_cancel','lead_contact','catalog','lead_concierge_optin','lead_concierge_hours','lead_concierge_lead','lead_viewing_outcome'].includes(profile?.ui?.decisionKey);}
+function acceptsInteractive(profile){return ['action_approval','account_selection','connection_offer','connected','task_review','guard_alert','billing_cancel','lead_contact','catalog','lead_concierge_optin','lead_concierge_hours','lead_concierge_lead','lead_viewing_outcome','work_agreement'].includes(profile?.ui?.decisionKey);}
 module.exports={passesThrough,owns,handle,media,acceptsInteractive};

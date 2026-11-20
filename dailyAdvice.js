@@ -242,7 +242,17 @@ async function proposeStep(client, row, index, { approve, intro = '' } = {}) {
   try {
     const { createActionPlan } = require('./actionPlan');
     const plan = createActionPlan({ intent: s.intent, summary: s.summary, target: { campaignId: String(s.campaignId) }, parameters: s.intent === 'CHANGE_BUDGET' ? { dailyBudget: String(s.dailyBudget) } : {} });
-    approval = await (approve || require('./approvalEngine').createApprovalForClient)(client.id, plan);
+    if (approve) approval = await approve(client.id, plan);
+    else {
+      // Work agreement: a step the owner allowed (lower / shift budget within the ceiling) is done and reported.
+      const outcome = await require('./workAgreement').proposeOrAct(client.id, plan, { reason: s.summary });
+      if (outcome.autonomous) {
+        await db.query('UPDATE daily_advice SET action_ids=array_append(action_ids,$2) WHERE id=$1', [row.id, String(outcome.actionId)]);
+        await require('./whatsapp').safeSend(client.phone, (intro ? intro + '\n\n' : '') + outcome.text);
+        return outcome.ok ? 'DONE_BY_AGREEMENT' : 'AGREEMENT_ACTION_FAILED';
+      }
+      approval = outcome.approval;
+    }
   } catch (error) {
     await db.query('UPDATE daily_advice SET step=$2 WHERE id=$1 AND step=$3', [row.id, row.step, index + 1]);
     throw error;
