@@ -169,6 +169,53 @@ const PROFILES = {
     summary: () => []
   }
 };
+// ---------- Funnels and deal terms (growth.js) ----------
+// A funnel is who the campaign is for and what the lead form asks. The first funnel is the default.
+// questions: lead-form CUSTOM questions [key, label]; leadIntent prefills the concierge's first answer.
+const FUNNELS = {
+  real_estate: [
+    { key: 'buyers', label: 'קונים לנכס', hook: 'נכס שמתאים לך למכירה', goal: 'לידים של קונים מתאימים', when: (i) => i?.attributes?.dealType !== 'RENT', leadIntent: 'BUY', dealKind: 'SALE',
+      questions: [['budget', 'מה טווח התקציב לרכישה?'], ['area', 'באיזה אזור אתם מחפשים?'], ['timing', 'מתי תרצו להיכנס לנכס?'], ['mortgage', 'יש לכם אישור עקרוני למשכנתא?']] },
+    { key: 'renters', label: 'שוכרים לנכס', hook: 'דירה להשכרה שמתאימה לך', goal: 'לידים של שוכרים מתאימים', when: (i) => i?.attributes?.dealType === 'RENT', leadIntent: 'RENT', dealKind: 'RENT',
+      questions: [['budget', 'מה התקציב החודשי לשכירות?'], ['area', 'באיזה אזור אתם מחפשים?'], ['timing', 'מתי תרצו להיכנס?']] },
+    { key: 'sellers', label: 'מוכרי דירות — כמה שווה הדירה שלך?', hook: 'כמה שווה הדירה שלך? הערכת שווי חינם ממתווך מקומי', goal: 'לידים של בעלי דירות שחושבים למכור', standalone: true, leadIntent: 'SELL', dealKind: 'SALE',
+      questions: [['address', 'איפה הנכס? עיר ורחוב'], ['rooms', 'כמה חדרים?'], ['timing', 'מתי אתם חושבים למכור?']] },
+    { key: 'landlords', label: 'משכירי דירות', hook: 'רוצה להשכיר את הדירה בלי כאב ראש? נמצא לך שוכר מתאים', goal: 'לידים של בעלי דירות שרוצים להשכיר', standalone: true, leadIntent: 'SELL', dealKind: 'RENT',
+      questions: [['address', 'איפה הנכס? עיר ורחוב'], ['rooms', 'כמה חדרים?'], ['available', 'מתי הדירה מתפנה?']] }
+  ],
+  services: [
+    { key: 'quote', label: 'הצעת מחיר', hook: 'קבלו הצעת מחיר בלי התחייבות', goal: 'לידים שמבקשים הצעת מחיר', questions: [['need', 'במה אפשר לעזור?'], ['area', 'באיזו עיר?'], ['timing', 'מתי זה צריך לקרות?']] },
+    { key: 'urgent', label: 'עבודה דחופה', hook: 'צריכים מישהו עוד היום? אנחנו זמינים', goal: 'לידים של עבודות דחופות', standalone: true, questions: [['need', 'מה קרה? בקצרה'], ['area', 'באיזו עיר?']] }
+  ],
+  retail: [
+    { key: 'purchase', label: 'קונים למוצר', hook: 'המוצר שחיפשת, עכשיו אצלנו', goal: 'לידים של קונים למוצר', when: (i) => i?.status !== 'SOLD_OUT', questions: [['product', 'איזה מוצר מעניין אתכם?'], ['delivery', 'משלוח או איסוף עצמי?']] },
+    { key: 'back_in_stock', label: 'חזר למלאי', hook: 'חזר למלאי! השאירו פרטים ונשמור לכם', goal: 'לידים של מי שחיכה למוצר שחזר', when: (i) => i?.status === 'SOLD_OUT', questions: [['product', 'איזה מוצר שמור לכם?'], ['quantity', 'כמה יחידות?']] }
+  ],
+  fitness: [
+    { key: 'trial', label: 'אימון ניסיון', hook: 'אימון ניסיון ראשון עלינו', goal: 'לידים שרוצים לבוא לאימון ניסיון', questions: [['goal', 'מה המטרה העיקרית?'], ['slot_pref', 'איזו שעה ביום הכי נוחה?']] }
+  ],
+  generic: [
+    { key: 'inquiry', label: 'פנייה', hook: 'רוצים לשמוע עוד? השאירו פרטים', goal: 'לידים של לקוחות שמתעניינים', questions: [['need', 'במה אפשר לעזור?'], ['timing', 'מתי זה רלוונטי?']] }
+  ]
+};
+// How a closed deal is measured, in the business's own words. commission: the business earns a % of the price.
+const DEALS = {
+  real_estate: { commission: true, priceQuestion: (kind) => (kind === 'RENT' ? 'מה שכר הדירה החודשי בעסקה?' : 'מה מחיר העסקה?'), revenueLabel: 'עמלה' },
+  services: { priceQuestion: () => 'כמה עלתה העבודה?', revenueLabel: 'מחיר העבודה' },
+  retail: { priceQuestion: () => 'מה סכום ההזמנה?', revenueLabel: 'סכום ההזמנה' },
+  fitness: { priceQuestion: () => 'כמה שילם על החבילה או המנוי?', revenueLabel: 'מחיר החבילה' },
+  generic: { priceQuestion: () => 'מה סכום העסקה?', revenueLabel: 'סכום העסקה' }
+};
+// When a past customer is worth a reminder, and what to say (to the owner and to the customer).
+const WINBACK = {
+  real_estate: { days: 330, owner: 'עברה כמעט שנה מהעסקה', customer: 'עברה כמעט שנה מאז העסקה שעשינו יחד 🙂 אם אתם או מישהו שאתם מכירים חושבים על מעבר, מכירה או השכרה, נשמח לעזור.' },
+  services: { days: 180, owner: 'עברו חצי שנה מהעבודה', customer: 'עברו כמה חודשים מאז שעבדנו יחד. אם צריך בדיקה, טיפול חוזר או משהו חדש, נשמח לעזור.' },
+  retail: { days: 60, owner: 'עברו חודשיים מהקנייה', customer: 'הגיעו אלינו דברים חדשים שאולי יתאימו לכם. רוצים שנשלח פרטים?' },
+  fitness: { days: 45, owner: 'עברו 6 שבועות', customer: 'מתגעגעים אליכם באימונים 💪 רוצים לחזור? נשמח לשמור לכם מקום.' },
+  generic: { days: 90, owner: 'עברו 3 חודשים', customer: 'עבר קצת זמן מאז שעבדנו יחד. אם אפשר לעזור במשהו, נשמח.' }
+};
+for (const [k, p] of Object.entries(PROFILES)) { p.funnels = FUNNELS[k]; p.deal = DEALS[k]; p.winback = WINBACK[k]; }
+
 const KEYS = Object.keys(PROFILES);
 const CHOICES = [['real_estate', 'תיווך נדל"ן'], ['services', 'נותן שירות'], ['retail', 'חנות / מוצרים'], ['fitness', 'כושר / סטודיו'], ['generic', 'משהו אחר']];
 // Generic "new item" words; a word that names a vertical is a hint when the business type is unknown.

@@ -231,6 +231,7 @@ async function routeText(from, text, prefix = '') {
   {const speed=await require('./leadSpeed').handleReply(from,text);if(speed){await safeSend(from,speed.reply);return;}}
   {const item=await require('./catalogConversation').handleText(from,text);if(item){if(item.task)await deliverTaskReply(from,item.clientId,item.task);else await safeSend(from,item.text,item);return;}}
   {const lc=await require('./leadConcierge').handleOwnerText(from,text);if(lc){if(lc.buttons&&configured()){const c=await getOrCreateClient(from),ui=await require('./conversationUi').prepareChoices(c.id,lc.reply,lc.buttons,lc.decisionKey);await safeSend(from,ui.text,ui);}else await safeSend(from,lc.reply);return;}}
+  {const g=await require('./growthConversation').handleText(from,text);if(g){if(g.task)await deliverTaskReply(from,g.clientId,g.task);else await safeSend(from,g.text,g.interactivePayload?g:undefined);return;}}
   if(await require('./weeklyReportOffer').handleText(from,text))return;
   {const kept=await require('./dataRetention').handleText(from,text);if(kept){await safeSend(from,kept.reply);return;}}
 
@@ -435,6 +436,8 @@ async function routeText(from, text, prefix = '') {
 async function handleIncomingMessage(message, contact) {
   // Replies from a lead the agent contacted go to the lead conversation, never the owner agent.
   if (await require('./leadConcierge').routeInbound(message, contact)) return;
+  // Team members (lead notifications) and past customers who answered an after-sale message.
+  if (await require('./growth').routeInbound(message)) return;
   if (!isAuthorized(message.from)) return handleTenantMessage(message, contact);
   if(process.env.PUBLIC_ONBOARDING_ENABLED==='true'){
     const known=await require('./db').query('SELECT id FROM clients WHERE phone=$1',[require('./auth').normalizePhone(message.from)]);

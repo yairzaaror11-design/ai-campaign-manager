@@ -417,6 +417,8 @@ async function firstContact(clientId, lead, { answers = [], formId = null } = {}
   if (biz.vertical !== 'real_estate') { /* intent is a real-estate question */ }
   else if (!prefill.intent && /(שכירות|לשכור)/.test(formText)) prefill.intent = { value: 'RENT', label: 'שכירות', points: 1, source: 'form' };
   else if (!prefill.intent && /(קנייה|קניה|לקנות|רכישה)/.test(formText)) prefill.intent = { value: 'BUY', label: 'קנייה', source: 'form' };
+  // A seller/landlord funnel campaign ("כמה שווה הדירה שלך?") already says who the lead is.
+  if (biz.vertical === 'real_estate' && !prefill.intent && lead.funnel) { const f = require('./growth').funnel('real_estate', lead.funnel); if (f?.standalone && f.leadIntent === 'SELL') prefill.intent = { value: 'SELL', label: 'מוכרים נכס', points: 2, source: 'funnel' }; }
   const subject = property?.subject || (biz.facts.product && biz.facts.product.length <= 40 ? clean(biz.facts.product, 40) : biz.profile.subject);
   const params = [firstName(lead.name) || 'לכם', clean(biz.name, 60), clean(subject, 60)];
   const conv = (await db.query(`INSERT INTO lead_conversations(id,client_id,lead_id,wa_phone,status,answers,vertical)

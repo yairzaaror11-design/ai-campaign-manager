@@ -298,7 +298,7 @@ function facts(item) {
   const p = profileOf(item), a = item.attributes || {};
   return [title(item), priceText(item) && `${priceText(item)} ${p.dealLabel(item)}`.trim(), ...p.summary(item), a.features?.length && 'מאפיינים: ' + a.features.join(', '), item.description && 'תיאור: ' + item.description.slice(0, 500)].filter(Boolean).join('. ');
 }
-const campaignBrief = (item) => `קמפיין לידים ב־Meta ל${profileOf(item).item}: ${facts(item)}. המטרה: ${profileOf(item).goal(item)}. ${adRules(item)}`.slice(0, 1990);
+const campaignBrief = (item) => `קמפיין לידים ב־Meta ל${profileOf(item).item}: ${facts(item)}. המטרה: ${profileOf(item).goal(item)}. ${require('./growth').briefLine(profileOf(item).key, require('./growth').itemFunnel(item))} ${adRules(item)}`.replace(/\s{2,}/g, ' ').slice(0, 1990);
 const housingCategoryNeeded = (item, countries = ['IL']) => profileOf(item).housingCategory && countries.some((c) => HOUSING_COUNTRIES.includes(String(c).toUpperCase()));
 
 // ---------- Campaign per item (through the existing task flow) ----------
@@ -355,6 +355,7 @@ async function prepareCampaign(clientId, id, { channel = 'WHATSAPP', requestId, 
   const result = await run(campaignBrief(item));
   const taskId = result?.task?.id || (await tasks.active(clientId))?.id || null;
   if (taskId) await db.query('UPDATE catalog_items SET campaign_task_id=$3,updated_at=NOW() WHERE client_id=$1 AND id=$2', [clientId, item.id, taskId]);
+  if (taskId) await require('./growth').rememberCampaign(clientId, { taskId, funnel: require('./growth').itemFunnel(item) }).catch(() => {});
   await db.query("INSERT INTO tenant_audit(client_id,event,result) VALUES($1,'CATALOG_CAMPAIGN','PREPARED')", [clientId]);
   const note = meta.ok ? '' : meta.reason === 'ACCOUNT'
     ? '\n\nℹ️ שים לב: עוד לא נבחר חשבון מודעות ב־Meta, אז הקמפיין יישאר טיוטה. כתוב "החשבונות שלי" כדי לבחור חשבון.'

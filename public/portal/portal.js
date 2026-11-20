@@ -47,7 +47,7 @@ async function loadLeads(){
   {const conv=lc?.conversations?.find(c=>c.lead_id===lead.id);if(conv&&dash?.conciergeBlock)details.append(dash.conciergeBlock(lead,conv,loadLeads));}
   const select=document.createElement('select');select.setAttribute('aria-label','מצב הטיפול ב-'+lead.name);
   for(const [v,label]of Object.entries(statuses)){const option=document.createElement('option');option.value=v;option.textContent=label;option.selected=v===lead.status;select.append(option);}
-  select.addEventListener('change',async()=>{select.disabled=true;try{await api('leads/'+lead.id,{status:select.value,version:lead.version},'PATCH');await loadLeads();await refresh();tell('הליד עודכן.');}catch(e){tell(e.message,true);select.disabled=false;}});
+  select.addEventListener('change',async()=>{select.disabled=true;try{await api('leads/'+lead.id,{status:select.value,version:lead.version},'PATCH');await loadLeads();await refresh();tell('הליד עודכן.');if(select.value==='WON'&&window.ScorpioGrowth)window.ScorpioGrowth.dealDialog(lead).catch(()=>{});}catch(e){tell(e.message,true);select.disabled=false;}});
   const number=waNumber(lead.phone);
   if(number){const first=String(lead.name||'').trim().split(/\s+/)[0]||'',business=state?.business?.businessName,message=lead.ready_message||(first&&lead.name!=='ליד מ־Meta'?'היי '+first:'היי')+', כאן'+(business?' מ'+business:'')+'. ראינו שהשארת פרטים, תודה! מתי נוח לך לדבר כמה דקות?',link=(href,label,cls)=>{const a=document.createElement('a');a.href=href;a.target='_blank';a.rel='noopener noreferrer';a.className='button '+cls;a.textContent=label;return a;},row=text('div','','actions');
    // Speed to lead: the personal first message (drafted when the lead arrived) opens in the owner's own WhatsApp.
@@ -55,7 +55,7 @@ async function loadLeads(){
    if(lead.ready_message&&lead.status==='NEW')details.append(text('p','״'+lead.ready_message+'״','muted'));details.append(row);}
   if(lead.status==='NEW'){const done=document.createElement('button');done.type='button';done.className='button secondary';done.textContent='📞 חזרתי ללקוח';done.title='מסמן שהליד קיבל מענה, כדי למדוד את זמן התגובה';done.addEventListener('click',async()=>{done.disabled=true;try{await api('leads/'+lead.id,{status:'CONTACTED',version:lead.version},'PATCH');await loadLeads();await refresh();tell('סימנתי שהליד קיבל מענה 👍');}catch(e){tell(e.message,true);done.disabled=false;}});details.append(done);}
   if(lead.status==='NEW'&&lead.created_at){const minutes=Math.max(0,Math.round((Date.now()-new Date(lead.created_at))/60000));details.append(text('p',minutes<60?'⏱ מחכה '+minutes+' דקות למענה':minutes<1440?'⏱ מחכה '+Math.round(minutes/60)+' שעות למענה':'⚠️ מחכה יותר מיום, כדאי לחזור היום',minutes>=60?'error':'muted'));}
-  card.append(details,select);if(window.ScorpioDashboard){const tools=text('div','','lead-tools');tools.append(window.ScorpioDashboard.leadDetailsButton(lead),window.ScorpioDashboard.leadRevenueButton(lead));card.append(tools);}list.append(card);
+  card.append(details,select);if(window.ScorpioDashboard){const tools=text('div','','lead-tools');tools.append(window.ScorpioDashboard.leadDetailsButton(lead),window.ScorpioDashboard.leadRevenueButton(lead));if(window.ScorpioGrowth)tools.append(window.ScorpioGrowth.leadTools(lead));card.append(tools);}list.append(card);
  }
 }
 async function run(button,work){if(button.disabled)return;button.disabled=true;button.setAttribute('aria-busy','true');try{await work();}catch(e){tell(e.message,true);}finally{button.disabled=false;button.removeAttribute('aria-busy');}}
