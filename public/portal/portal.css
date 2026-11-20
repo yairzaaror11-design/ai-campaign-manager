@@ -1049,3 +1049,8 @@ details.home-page-directory>summary{font-weight:700;color:var(--text);cursor:poi
 .lg-bottom.up .lg-bottom-v{color:var(--gain)}.lg-bottom.down .lg-bottom-v{color:#C2410C}
 .lg-bottom-v.small{font-size:20px}
 .lg-bottom-note{font-size:13px;color:var(--muted)}
+
+/* Narrow screens: never let the home columns grow past the screen */
+.lg-layout{grid-template-columns:minmax(0,1fr)}
+.lg-main,.lg-rail{min-width:0}
+@media (min-width:1201px){.lg-layout{grid-template-columns:minmax(0,1fr) 340px}}
