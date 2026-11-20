@@ -8,7 +8,7 @@
 const db = require('./db');
 const copy = require('./onboardingCopy');
 
-const STEPS = ['LINK', 'SELL', 'GOAL', 'BUDGET', 'SUMMARY', 'CONSENT', 'AGREEMENT', 'META', 'CAMPAIGN', 'DONE'];
+const STEPS = ['LINK', 'SELL', 'GOAL', 'BUDGET', 'SUMMARY', 'LICENSE', 'CONSENT', 'AGREEMENT', 'META', 'CAMPAIGN', 'DONE'];
 const DECISION = 'onboarding';
 const BUDGETS = [50, 100, 150];
 const START = /^(?:\/start|היי|הי|שלום|היי שם|אהלן|הלו|נתחיל|בוא נתחיל|אני רוצה קמפיין|קמפיין חדש|אני רוצה להתחיל)[!.?\s👋]*$/u;
@@ -48,12 +48,14 @@ function askSell(clientId, answers, lead = []) {
   const ideas = [answers.site?.product, ...(copy.sellSuggestions[vertical(answers)] || [])].filter(Boolean);
   return choices(clientId, copy.askSell, [...ideas.slice(0, 2), { title: copy.sellOtherButton, text: copy.sellOtherButton }], { lead });
 }
-const askGoal = (clientId, lead = []) => choices(clientId, copy.askGoal, Object.values(copy.goals).map((g) => ({ title: g.button, text: g.button })), { lead });
-const askBudget = (clientId, lead = []) => choices(clientId, copy.askBudget, BUDGETS.map((n) => copy.budgetButton(n)), { lead });
+const goalKeys = (a = {}) => copy.goalsByVertical[vertical(a)] || copy.goalsByVertical.default;
+const askGoal = (clientId, lead = [], a = {}) => choices(clientId, copy.askGoal, goalKeys(a).map((k) => ({ title: copy.goals[k].button, text: copy.goals[k].button })), { lead });
+const askBudget = (clientId, lead = [], a = {}) => choices(clientId, copy.askBudget + '\n' + (copy.budgetHint[vertical(a)] || copy.budgetHint.generic), BUDGETS.map((n) => copy.budgetButton(n)), { lead });
 function summaryText(a) {
-  return copy.summaryTitle + '\n' + copy.summaryLines({ business: a.site?.name || a.business || '', item: a.item, goal: copy.goals[a.goal].label, daily: a.daily }) + '\n\n' + copy.summaryQuestion;
+  return [copy.summaryTitle, copy.summaryLines({ business: a.site?.name || a.business || '', item: a.item, goal: copy.goals[a.goal].label, daily: a.daily }), copy.summaryQuestion].filter(Boolean).join('\n');
 }
 const askSummary = (clientId, a) => choices(clientId, summaryText(a), [copy.summaryYes, copy.summaryFix]);
+const askLicense = (clientId, lead = [], media = []) => choices(clientId, copy.askLicense, [copy.licenseLaterButton], { lead, media });
 const askConsent = (clientId, lead = []) => choices(clientId, copy.askConsent, [copy.consentYes, copy.consentNo], { lead });
 const askAgreement = (clientId, a, lead = []) => choices(clientId, copy.askAgreement({ monthly: a.daily * 30, daily: a.daily }), [copy.agreementDefaults, copy.agreementCustom, copy.agreementLater], { lead });
 const askMeta = (clientId, lead = [], media = []) => choices(clientId, copy.askMeta, [copy.metaConnect, copy.metaNoAccount, copy.metaLater], { lead, media });
@@ -61,8 +63,9 @@ const askMeta = (clientId, lead = [], media = []) => choices(clientId, copy.askM
 async function question(clientId, step, a, lead = []) {
   if (step === 'LINK') return choices(clientId, copy.askLink, [copy.noLinkButton], { lead });
   if (step === 'SELL') return askSell(clientId, a, lead);
-  if (step === 'GOAL') return askGoal(clientId, lead);
-  if (step === 'BUDGET') return askBudget(clientId, lead);
+  if (step === 'GOAL') return askGoal(clientId, lead, a);
+  if (step === 'BUDGET') return askBudget(clientId, lead, a);
+  if (step === 'LICENSE') return askLicense(clientId, lead);
   if (step === 'SUMMARY') return choices(clientId, summaryText(a), [copy.summaryYes, copy.summaryFix], { lead });
   if (step === 'CONSENT') return askConsent(clientId, lead);
   if (step === 'AGREEMENT') return askAgreement(clientId, a, lead);
@@ -140,11 +143,15 @@ async function sample(clientId, a, { makeImage = defaultImage } = {}) {
   return { text, media: image ? [{ id: image.id, caption: copy.sampleImageCaption }] : [] };
 }
 async function toSampleAndMeta(clientId, a, lead, options) {
-  const s = await sample(clientId, a, options);
+  const s = a.sampleAt ? { text: '', media: [] } : await sample(clientId, a, options);
   await save(clientId, 'META', a);
   await require('./marketingStore').update(clientId, null, (p) => { p.onboardingV2 = { ...(p.onboardingV2 || {}), step: 'META' }; return { handled: false, changed: true }; });
-  return askMeta(clientId, [...lead, s.text], s.media);
+  return askMeta(clientId, [...lead, s.text].filter(Boolean), s.media);
 }
+
+// ---------- broker license (real estate): stored on the profile, shared with the catalog ----------
+async function brokerLicense(clientId) { try { return (await require('./marketingStore').load(clientId))?.brokerLicense || null; } catch { return null; } }
+async function saveBrokerLicense(clientId, n) { await require('./marketingStore').update(clientId, null, (p) => { p.brokerLicense = String(n); return { handled: false, changed: true, audit: 'BROKER_LICENSE_SET' }; }); }
 
 // ---------- main entry: returns null when the text is not ours ----------
 async function handleText(clientId, text, options = {}) {
@@ -199,32 +206,43 @@ async function handleText(clientId, text, options = {}) {
       if (t.length < 2 || t.startsWith('/')) return null;
       a.item = t.slice(0, 160);
       await save(clientId, 'GOAL', a);
-      return askGoal(clientId);
+      return askGoal(clientId, [], a);
     }
     case 'GOAL': {
       const goal = Object.entries(copy.goals).find(([, g]) => g.button === t || g.label === t)?.[0]
-        || (/וואטסאפ|ווטסאפ|whatsapp/i.test(t) ? 'WHATSAPP' : /מכיר|קני|אתר/.test(t) ? 'SALES' : /ליד|טלפון|פניות|טופס/.test(t) ? 'LEADS' : null);
+        || (/וואטסאפ|ווטסאפ|whatsapp/i.test(t) ? 'WHATSAPP' : /צפי/.test(t) ? 'VIEWING' : /מכיר|קני|אתר/.test(t) ? 'SALES' : /ליד|טלפון|שיחה|פניות|טופס/.test(t) ? 'LEADS' : null);
       if (!goal) return null;
       a.goal = goal;
       await save(clientId, 'BUDGET', a);
-      return askBudget(clientId);
+      return askBudget(clientId, [], a);
     }
     case 'BUDGET': {
       const m = t.replace(/,/g, '').match(/\d{1,6}/);
       if (!m) return null;
       const n = Number(m[0]);
-      if (n < 10 || n > 100000) return askBudget(clientId, [copy.budgetInvalid]);
+      if (n < 10 || n > 100000) return askBudget(clientId, [copy.budgetInvalid], a);
       a.daily = n;
       await save(clientId, 'SUMMARY', a);
       return askSummary(clientId, a);
     }
     case 'SUMMARY': {
       if (t === copy.summaryFix || /^(?:לא|לתקן|יש טעות)$/.test(t)) { delete a.item; delete a.goal; delete a.daily; await save(clientId, 'SELL', a); return askSell(clientId, a, [copy.summaryRestart]); }
-      if (t !== copy.summaryYes && !/^(?:כן|נכון|מאשר|נכון, ממשיכים)$/.test(t)) return null;
+      if (t !== copy.summaryYes && !/^(?:כן|נכון|מאשר|נכון, ממשיכים|נכון ✓)$/.test(t)) return null;
       await applyAnswers(clientId, a);
       a.confirmedAt = new Date().toISOString();
+      // Value first: the sample ad right after the card, before any setup question.
+      const s = await sample(clientId, a, options);
+      if (vertical(a) === 'real_estate' && !await brokerLicense(clientId)) { await save(clientId, 'LICENSE', a); return askLicense(clientId, [s.text], s.media); }
       await save(clientId, 'CONSENT', a);
-      return askConsent(clientId);
+      return { ...(await askConsent(clientId, [s.text])), media: s.media };
+    }
+    case 'LICENSE': {
+      if (t === copy.licenseLaterButton || /^(?:אחר כך|אח"כ|לא עכשיו)$/.test(t)) { await save(clientId, 'CONSENT', a); return askConsent(clientId, [copy.licenseLater]); }
+      const m = t.replace(/[\s-]/g, '').match(/\d{3,10}/);
+      if (!m) return askLicense(clientId, [copy.licenseInvalid]);
+      await saveBrokerLicense(clientId, m[0]);
+      await save(clientId, 'CONSENT', a);
+      return askConsent(clientId, [copy.licenseSaved(m[0])]);
     }
     case 'CONSENT': {
       const yes = t === copy.consentYes || /^(?:כן|מאשר|בטח)$/.test(t), no = t === copy.consentNo || /^(?:לא|לא תודה)$/.test(t);
