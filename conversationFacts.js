@@ -48,7 +48,7 @@ function write(p,field,input,{status='known',source='user_explicit',evidence='',
  return true;
 }
 function all(p){return Object.fromEntries(Object.keys(FIELDS).map(k=>[k,value(p,k)]).filter(([,v])=>v!==null));}
-function display(v){if(v&&typeof v==='object'&&v.amount!==undefined)return `${v.amount} ${v.currency} ליום`;return typeof v==='boolean'?(v?'כן':'לא'):String(v??'לא ידוע');}
+function display(v){if(v&&typeof v==='object'&&v.amount!==undefined)return `${v.amount} ${({ILS:'₪',USD:'$',EUR:'€'}[v.currency]||v.currency)} ליום`;return typeof v==='boolean'?(v?'כן':'לא'):String(v??'לא ידוע');}
 function summary(p){return Object.keys(FIELDS).filter(f=>read(p,f)).map(f=>{const a=read(p,f);return `${FIELDS[f].label}: ${a.status==='unknown'?'לא ידוע':a.status==='not_applicable'?'לא רלוונטי':display(a.value)+(a.status==='estimated'?' (הערכה)':'')}`;}).join('\n');}
 function correctionsInvalidate(p,fields){
  if(!fields.length||!p.journey)return;

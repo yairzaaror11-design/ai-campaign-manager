@@ -128,7 +128,7 @@ function format(report) {
     lines.push(`🏆 השורה התחתונה: ${f.won} מכירות` + (m.costPerCustomer !== null ? ` · ${ils(m.costPerCustomer)} עלות למכירה` : '') + (f.revenue ? ` · ${ils(f.revenue)} הכנסות` : '') + (left !== null && f.revenue ? ` · ${left >= 0 ? 'נשאר לך' : 'חסר'} ${ils(Math.abs(left))} אחרי הפרסום` : ''));
     lines.push('');
   }
-  lines.push('💰 סכום שהוצא: ' + (spend === null ? 'אין חשבון Meta מחובר (אפשר לחבר עם /meta-connect)' : ils(spend)));
+  lines.push('💰 סכום שהוצא: ' + (spend === null ? 'אין חשבון פרסום מחובר (כדי לחבר, כתוב ״חבר את חשבון המודעות״)' : ils(spend)));
   lines.push(`📥 לידים: ${f.leads}` + (m.costPerLead !== null ? ` (${ils(m.costPerLead)} עלות לליד)` : ''));
   lines.push(`📞 קיבלו מענה: ${f.contacted} (${pct(m.contactRate)})`);
   if (report.speed?.leads) lines.push(`⏱ זמן תגובה ממוצע: ${report.speed.label}` + (report.speed.fastShare !== null ? ` (${pct(report.speed.fastShare)} תוך 15 דקות)` : ''));

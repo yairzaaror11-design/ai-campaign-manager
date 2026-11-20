@@ -106,7 +106,7 @@ function formatValue(answer) {
   if (answer.status==='unknown') return 'לא ידוע';
   if (answer.status==='not_applicable') return 'לא רלוונטי';
   const v=answer.value;
-  return typeof v==='boolean'?(v?'כן':'לא'):v&&typeof v==='object'?(v.amount!==undefined?`${v.amount} ${v.currency}`:v.rate!==undefined?`${v.rate*100}% (${v.basis||'ללא מקור'})`:JSON.stringify(v)):String(v??'');
+  return typeof v==='boolean'?(v?'כן':'לא'):v&&typeof v==='object'?(v.amount!==undefined?`${v.amount} ${({ILS:'₪',USD:'$',EUR:'€'}[v.currency]||v.currency)}`:v.rate!==undefined?`${v.rate*100}% (${v.basis||'ללא מקור'})`:JSON.stringify(v)):String(v??'');
 }
 function summary(profile) {
   const labels={'BUS-001':'שם העסק','BUS-002':'מה העסק עושה','BUS-005':'אזורי שירות','BUS-008':'אתר','BUS-018':'רכישה באתר','BUS-021':'קיבולת חודשית','GOAL-001':'המטרה','GOAL-002':'השירות לקידום','GOAL-021':'מועד היעד','AUD-001':'לקוחות מתאימים','AUD-002':'לקוחות שאינם מתאימים','AUD-003':'אזורי הקהל הרצוי','DIF-001':'סיבת הבחירה בעסק','SALES-003':'זמן לתגובה ראשונה','SALES-041':'שיעור סגירה מדווח','SALES-044':'יכולת טיפול בפניות','PROF-001':'מחיר עסקה נטו','PROF-002':'עלות משתנה לעסקה','PROF-010':'תרומה רצויה אחרי פרסום','PROF-011':'בסיס עלות הגיוס','PROF-017':'שיעור סגירה צפוי','PROF-018':'שיעור התאמה צפוי','PROF-019':'עלות טיפול נוספת בפנייה','PROF-020':'תקרת עלות גיוס','MEAS-001':'הגדרת פנייה','MEAS-002':'הגדרת פנייה מתאימה','MEAS-003':'הגדרת עסקה','MEAS-005':'תקופת המדידה','MEAS-009':'עדכניות הנתונים'};

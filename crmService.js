@@ -49,7 +49,7 @@ async function update(clientId,id,{status,version,note,revenueMinor,currency}={}
   const row=r.rows[0];
   if(before&&before.status!==row.status)await tx("INSERT INTO lead_events(lead_id,client_id,kind,detail) VALUES($1,$2,'STATUS',$3)",[id,clientId,row.status]);
   if(note!=null&&note!==before?.note)await tx("INSERT INTO lead_events(lead_id,client_id,kind,detail) VALUES($1,$2,'NOTE',$3)",[id,clientId,String(note).slice(0,300)]);
-  if(revenueMinor!=null)await tx("INSERT INTO lead_events(lead_id,client_id,kind,detail) VALUES($1,$2,'REVENUE',$3)",[id,clientId,(revenueMinor/100)+' '+currency]);
+  if(revenueMinor!=null)await tx("INSERT INTO lead_events(lead_id,client_id,kind,detail) VALUES($1,$2,'REVENUE',$3)",[id,clientId,(revenueMinor/100)+' '+({ILS:'₪',USD:'$',EUR:'€'}[currency]||currency)]);
   await tx("INSERT INTO tenant_audit(client_id,event,result) VALUES($1,'CRM_LEAD', $2)",[clientId,status]);return r.rows[0];
  });
 }

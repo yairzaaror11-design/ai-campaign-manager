@@ -17,6 +17,8 @@ services:
         sync: false
       - key: WHATSAPP_SEND_ENABLED
         sync: false
+      - key: WHATSAPP_DISPLAY_NUMBER
+        sync: false
       - key: WHATSAPP_WORKER_IN_WEB
         value: "true"
       - key: META_LEGACY_SINGLE_TENANT

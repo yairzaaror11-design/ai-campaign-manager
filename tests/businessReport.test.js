@@ -38,7 +38,7 @@ test('no connected ad account and no leads still produce a useful report', async
   try {
     const client = (await db.query("INSERT INTO clients(phone) VALUES('972500000102') RETURNING id")).rows[0].id;
     const text = await report.businessReport(client, 'last_7d', { spendFor: async () => null });
-    assert.match(text, /אין חשבון Meta מחובר/);
+    assert.match(text, /אין חשבון פרסום מחובר/);assert.doesNotMatch(text, /\/meta-connect/);
     assert.match(text, /עוד אין (פניות|לידים)/);
     await assert.rejects(report.build(client, 'last_year'), /UNSUPPORTED_REPORT_PERIOD/);
   } finally { await close(); }
