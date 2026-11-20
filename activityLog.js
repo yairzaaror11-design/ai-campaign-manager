@@ -24,9 +24,13 @@ async function list(clientId, { days = 7 } = {}) {
   });
   let posts = [];
   try {
-    posts = (await db.query(`SELECT topic,sent_at FROM organic_posts WHERE client_id=$1 AND status='SENT' AND sent_at>NOW()-($2::int*INTERVAL '1 day') ORDER BY sent_at DESC LIMIT 10`, [clientId, days])).rows;
+    posts = (await db.query(`SELECT o.topic,o.sent_at,(SELECT string_agg(x.network,',') FROM organic_publications x WHERE x.post_id=o.id AND x.status='PUBLISHED') AS published
+      FROM organic_posts o WHERE o.client_id=$1 AND o.status='SENT' AND o.sent_at>NOW()-($2::int*INTERVAL '1 day') ORDER BY o.sent_at DESC LIMIT 10`, [clientId, days])).rows;
   } catch { posts = []; }
-  for (const p of posts) items.push({ at: p.sent_at, what: `שלחתי לך פוסט מוכן: "${p.topic}"`, why: 'לפי לוח התוכן שאישרת', status: 'נשלח ✅', kind: 'content' });
+  const where = (n) => n.split(',').map((x) => ({ facebook: 'פייסבוק', instagram: 'אינסטגרם' })[x]).join(' ו');
+  for (const p of posts) items.push(p.published
+    ? { at: p.sent_at, what: `פרסמתי בעצמי ב${where(p.published)}: "${p.topic}"`, why: 'הסכם העבודה מאפשר לפרסם פוסטים בסגנון שאישרת', status: 'פורסם ✅ · לבד, לפי הסכם העבודה', autonomous: true, kind: 'content' }
+    : { at: p.sent_at, what: `שלחתי לך פוסט מוכן: "${p.topic}"`, why: 'לפי לוח התוכן שאישרת', status: 'נשלח ✅', kind: 'content' });
   return items.sort((a, b) => new Date(b.at) - new Date(a.at));
 }
 

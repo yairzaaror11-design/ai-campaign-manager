@@ -229,6 +229,7 @@ async function routeText(from, text, prefix = '') {
   if(await require('./buyerAudiences').handleText(from,text))return;
   {const advice=await require('./dailyAdvice').handleReply(from,text);if(advice?.route)text=advice.route;else if(advice)return;}
   {const speed=await require('./leadSpeed').handleReply(from,text);if(speed){await safeSend(from,speed.reply);return;}}
+  {const channel=await require('./channelConversation').handleText(from,text);if(channel){await safeSend(from,channel.reply);return;}}
   {const item=await require('./catalogConversation').handleText(from,text);if(item){if(item.task)await deliverTaskReply(from,item.clientId,item.task);else await safeSend(from,item.text,item);return;}}
   {const lc=await require('./leadConcierge').handleOwnerText(from,text);if(lc){if(lc.buttons&&configured()){const c=await getOrCreateClient(from),ui=await require('./conversationUi').prepareChoices(c.id,lc.reply,lc.buttons,lc.decisionKey);await safeSend(from,ui.text,ui);}else await safeSend(from,lc.reply);return;}}
   if(await require('./weeklyReportOffer').handleText(from,text))return;

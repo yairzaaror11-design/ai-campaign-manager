@@ -2,7 +2,9 @@
 // Ongoing organic content. The owner gets a three-month posting calendar, picks how
 // visuals are made (AI graphic, AI video, a real photo shoot or a mix), approves
 // posts, and on each post's day receives it ready to publish on WhatsApp.
-// Nothing is published to a social network from here; the owner posts it.
+// When ORGANIC_AUTOPUBLISH_ENABLED is on and the work agreement allows it, the agent
+// publishes the post itself to the connected Facebook Page / Instagram account
+// (socialPublisher.js); anything it could not publish still reaches the owner here.
 const crypto = require('node:crypto');
 const db = require('./db');
 const { logger } = require('./logger');
@@ -136,6 +138,8 @@ async function overview(clientId, { now = new Date() } = {}) {
   const posts = (await db.query(`SELECT id,publish_on,format,media,purpose,topic,caption,visual,status,error FROM organic_posts
     WHERE client_id=$1 AND publish_on>=$2 ORDER BY publish_on LIMIT 120`, [clientId, addDays(today, -14)])).rows
     .map((x) => ({ ...x, publish_on: iso(x.publish_on) }));
+  const pubs = await require('./socialPublisher').publications(clientId, posts.map((x) => x.id)).catch(() => []);
+  for (const x of posts) x.publications = pubs.filter((p) => p.post_id === x.id).map(({ network, status, permalink, reason }) => ({ network, status, permalink, reason }));
   const shoots = (await db.query("SELECT id,status,details,created_at FROM photo_shoot_requests WHERE client_id=$1 AND status<>'DETAILS_PENDING' ORDER BY created_at DESC LIMIT 5", [clientId])).rows;
   const waiting = posts.filter((x) => x.status === 'DRAFT' && x.publish_on >= today).length;
   return { plan: p && { ...p, starts_on: iso(p.starts_on), ends_on: iso(p.ends_on), daysLeft: Math.round((new Date(iso(p.ends_on)) - new Date(today)) / 864e5) }, posts, shoots, waiting, today };
@@ -272,17 +276,36 @@ async function status(clientId) {
 }
 
 // Background: deliver approved posts on their day and remind weekly about drafts.
+// A post is due when it is approved and the owner's WhatsApp window is open. When the agent
+// may publish by itself (work agreement + connected network), the window is not needed for the
+// first try, and posts the owner has not reviewed yet are published in the approved style too.
 async function claim(today) {
+  const auto = require('./socialPublisher'), eligible = auto.enabled() ? auto.ELIGIBLE_SQL : 'FALSE';
   return (await db.query(`UPDATE organic_posts SET status='SENDING',attempts=attempts+1,updated_at=NOW() WHERE id=(
     SELECT p.id FROM organic_posts p JOIN organic_plans pl ON pl.client_id=p.client_id AND pl.status='ACTIVE'
-    JOIN clients c ON c.id=p.client_id JOIN whatsapp_contacts w ON w.phone=c.phone AND w.last_inbound_at>NOW()-INTERVAL '24 hours'
-    WHERE p.status='APPROVED' AND p.publish_on<=$1 AND p.publish_on>=$2 ORDER BY p.publish_on LIMIT 1 FOR UPDATE OF p SKIP LOCKED)
+    JOIN clients c ON c.id=p.client_id LEFT JOIN whatsapp_contacts w ON w.phone=c.phone AND w.last_inbound_at>NOW()-INTERVAL '24 hours'
+    WHERE p.publish_on<=$1 AND p.publish_on>=$2
+      AND ((p.status='APPROVED' AND w.phone IS NOT NULL) OR (p.status IN ('APPROVED','DRAFT') AND p.autopublish_checked_at IS NULL AND ${eligible}))
+    ORDER BY p.publish_on LIMIT 1 FOR UPDATE OF p SKIP LOCKED)
     RETURNING *`, [today, addDays(today, -2)])).rows[0] || null;
 }
+const windowOpen = async (phone) => (await db.query("SELECT 1 FROM whatsapp_contacts WHERE phone=$1 AND last_inbound_at>NOW()-INTERVAL '24 hours'", [phone])).rows.length > 0;
 
 async function deliver(post, phone) {
   const graphics = require('./graphicService'), delivery = require('./whatsappDelivery');
-  let note = '';
+  let note = '', auto = { attempted: false };
+  if (require('./socialPublisher').enabled() && !post.autopublish_checked_at) {
+    await db.query('UPDATE organic_posts SET autopublish_checked_at=NOW() WHERE id=$1', [post.id]);
+    auto = await require('./socialPublisher').publishPost(post);
+  }
+  const open = await windowOpen(phone);
+  if (auto.complete) {
+    // Published everywhere the owner connected: a short report, never the post to copy.
+    if (open) await require('./whatsapp').safeSend(phone, `🤖 פרסמתי לבד את ה${FORMAT_LABEL[post.format]} של היום, לפי הסכם העבודה שלך:\n"${post.topic}"\n${auto.note}\nזה מופיע גם בלוח התוכן בדשבורד.`).catch(() => {});
+    return 'PUBLISHED';
+  }
+  if (!open) throw Error('OWNER_WINDOW_CLOSED');
+  const autoNote = auto.attempted && auto.note ? auto.note + '\nהנה הפוסט לפרסום ידני:' : '';
   if (post.media === 'AI_VIDEO') {
     let r = { status: 'DISABLED' };
     try { r = await require('./videoService').request(post.client_id, phone, { prompt: post.visual || post.topic, aspectRatio: post.format === 'POST' ? '1:1' : '9:16', durationSeconds: 5 }, { eventId: `organic:${post.id}` }); } catch { r = { status: 'FAILED' }; }
@@ -298,7 +321,8 @@ async function deliver(post, phone) {
   if (post.media === 'PHOTO' && post.catalog_item_id) note = await require('./catalog').deliverPhotos(post.client_id, post.catalog_item_id, phone);
   else if (post.media === 'PHOTO') note = '📸 מצרפים תמונה מיום הצילום (או כל תמונה טובה מהעסק) ומפרסמים.';
   const how = post.format === 'STORY' ? 'מעתיקים ומעלים לסטורי באינסטגרם ובפייסבוק.' : 'מעתיקים ומפרסמים באינסטגרם ובפייסבוק.';
-  await require('./whatsapp').safeSend(phone, `📅 ה${FORMAT_LABEL[post.format]} של היום מוכן לפרסום!\n\n${post.caption}\n\n👆 ${how}${note ? '\n' + note : ''}`);
+  await require('./whatsapp').safeSend(phone, `${autoNote ? autoNote + '\n\n' : ''}📅 ה${FORMAT_LABEL[post.format]} של היום מוכן לפרסום!\n\n${post.caption}\n\n👆 ${how}${note ? '\n' + note : ''}`);
+  return 'SENT';
 }
 
 async function remind(today) {
@@ -343,11 +367,12 @@ async function runDue({ now = new Date(), send = deliver, limit = 20 } = {}) {
       results.push('SENT');
     } catch (error) {
       const code = /^[A-Z_]+$/.test(error.message) ? error.message : 'DELIVERY_FAILED';
-      const paused = code === 'HUMAN_SUPPORT_PAUSED';
+      // Waiting for the owner (support pause, or the WhatsApp window is closed) is not a failed attempt.
+      const paused = ['HUMAN_SUPPORT_PAUSED', 'OWNER_WINDOW_CLOSED'].includes(code);
       await db.query("UPDATE organic_posts SET status=CASE WHEN $3 THEN 'APPROVED' WHEN attempts>=3 THEN 'FAILED' ELSE 'APPROVED' END,attempts=attempts-CASE WHEN $3 THEN 1 ELSE 0 END,error=$2,updated_at=NOW() WHERE id=$1", [post.id, code, paused]);
       logger.warn('Organic post not delivered', { error: code });
       results.push('FAILED');
-      if (paused) break;
+      if (code === 'HUMAN_SUPPORT_PAUSED') break;
     }
   }
   const reminded = await remind(today);
