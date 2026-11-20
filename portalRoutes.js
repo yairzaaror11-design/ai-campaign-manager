@@ -46,6 +46,10 @@ router.post('/app/api/leads',endpoint(async(req,res)=>{
  const account=(await db.query('SELECT client_id FROM customer_accounts WHERE client_id=$1',[req.portal.clientId])).rows[0];if(!account)return res.status(403).json({error:'יש להשלים את פתיחת החשבון לפני הוספת פניות.'});
  res.json(await require('./crmService').create(req.portal.clientId,{...req.body,source:'manual'}));
 }));
+router.get('/app/api/lead-concierge',endpoint(async(req,res)=>res.json(await require('./leadConcierge').overview(req.portal.clientId))));
+router.put('/app/api/lead-concierge/settings',endpoint(async(req,res)=>{const lc=require('./leadConcierge'),b=req.body||{};if(b.enabled===true&&!lc.enabled())return res.status(409).json({error:'המענה האוטומטי ללידים עוד לא זמין בחשבון.'});const s=await lc.saveSettings(req.portal.clientId,{enabled:b.enabled,availability:b.availability,vertical:b.vertical});res.json({enabled:s.enabled,availability:s.availability,availabilityText:lc.availabilityText(s.availability)});}));
+router.get('/app/api/leads/:id/concierge',endpoint(async(req,res)=>res.json(await require('./leadConcierge').transcript(req.portal.clientId,req.params.id))));
+router.post('/app/api/leads/:id/takeover',endpoint(async(req,res)=>res.json(await require('./leadConcierge').takeover(req.portal.clientId,req.params.id))));
 router.patch('/app/api/leads/:id',endpoint(async(req,res)=>res.json(await require('./crmService').update(req.portal.clientId,req.params.id,req.body))));
 router.post('/app/api/business/inspect',endpoint(async(req,res)=>{
  if(!await require('./rateLimit').take('business-inspect:'+req.portal.clientId,6,3600))return res.status(429).json({error:'אפשר לבדוק קישור נוסף בהמשך.'});

@@ -54,7 +54,7 @@ async function businessNameFor(clientId) {
 // Queues the alert once per lead. Inside the 24-hour window it is a full message with a
 // personal ready reply (AI or template) and "I contacted them" buttons; outside it, an
 // approved template (LEAD_ALERT_TEMPLATE) invites the owner back.
-async function notifyOwner(clientId, lead, { answers = [], writer } = {}) {
+async function notifyOwner(clientId, lead, { answers = [], writer, buttons: allowButtons } = {}) {
   if (!enabled() || !lead?.id) return { status: 'SKIPPED' };
   try {
     const owner = (await db.query(`SELECT c.phone, w.last_inbound_at>NOW()-INTERVAL '24 hours' AS open
@@ -67,7 +67,7 @@ async function notifyOwner(clientId, lead, { answers = [], writer } = {}) {
       require('./whatsappDelivery').messageContext.run({ eventId: 'lead-alert:' + lead.id, sequence: 0, humanSupportNotice: false }, async () => {
         const delivery = require('./whatsappDelivery');
         if (owner.open) {
-          const buttons = await canShowButtons(clientId);
+          const buttons = allowButtons === false ? false : await canShowButtons(clientId);
           const first = await delivery.enqueue(owner.phone, delivery.textPayload(alertText(lead, reply, { buttons, answers })));
           if (first.queued) await rememberLead(clientId, lead, buttons, owner.phone);
           return { status: 'QUEUED' };

@@ -593,5 +593,34 @@
  // Script execution normally precedes the asynchronous first dashboard response.
  if(typeof state!=='undefined'&&state){buildShell();ready=true;navigate(routeScreen(),false);}
  // Expose only local UI navigation to the existing portal; API credentials stay in HttpOnly cookies.
- window.ScorpioDashboard={navigate,openAgent,importBusiness,leadRevenueButton,leadDetailsButton};
+ // Lead concierge: what the agent did with each lead, and the owner's one-tap takeover.
+ const conciergeStatus={PENDING:'הסוכן שולח הודעה ראשונה',CONTACTED:'הסוכן פנה לליד, מחכה לתשובה',QUALIFYING:'הסוכן שואל שאלות התאמה',SCHEDULING:'הסוכן מציע מועדים',BOOKED:'נקבע מועד',DONE:'השאלות הושלמו, כדאי לחזור לליד',OWNER:'אתה ממשיך עם הליד',OPTED_OUT:'הליד ביקש הסרה, לא פונים אליו',FALLBACK:'ההודעה האוטומטית לא נמסרה, נשלחה לך הודעה מוכנה'};
+ const conciergeScore={HOT:'🔥 חם',WARM:'🙂 פושר',COLD:'❄️ קר'},conciergeAnswer=[['intent','מחפשים'],['need','מה צריך'],['product','מוצר'],['goal','מטרה'],['budget','תקציב'],['area','אזור'],['quantity','כמות'],['delivery','קבלה'],['timing','מתי'],['slot_pref','שעה נוחה'],['mortgage','משכנתא']];
+ const conciergeHandoff={DISTRESS:'הליד כתב משהו שדורש מגע אישי',LEAD_ASKED_HUMAN:'הליד ביקש לדבר עם אדם',OTHER_TIME:'אף מועד לא התאים לליד',UNCLEAR:'השיחה עם הסוכן לא הסתדרה'};
+ function conciergeBlock(lead,conv,reload){
+  const box=el('div','','concierge');box.setAttribute('aria-label','השיחה של הסוכן עם '+lead.name);
+  const top=el('p','','actions');top.append(el('span','🤖 '+(conciergeStatus[conv.status]||conv.status),'badge'));if(conv.score)top.append(el('span',conciergeScore[conv.score],'badge'));box.append(top);
+  const answers=conciergeAnswer.filter(([k])=>conv.answers?.[k]).map(([k,label])=>label+': '+conv.answers[k].label);if(answers.length)box.append(el('p',answers.join(' · ')));
+  if(conv.viewing&&conv.viewingLabel)box.append(el('p','📅 מועד: '+conv.viewingLabel+({BOOKED:'',ATTENDED:' · הגיע',NO_SHOW:' · לא הגיע',PROGRESSING:' · מתקדמים',CANCELLED:' · בוטלה'}[conv.viewing.status]||'')));
+  if(conciergeHandoff[conv.handoff_reason])box.append(el('p','⚠️ '+conciergeHandoff[conv.handoff_reason],'error'));
+  const row=el('div','','actions');
+  row.append(button('💬 השיחה של הסוכן'+(conv.messages?' ('+conv.messages+')':''),async e=>run(e.currentTarget,async()=>{const d=dialog('השיחה עם '+lead.name),data=await api('leads/'+lead.id+'/concierge');d.append(el('p','כל הודעה שהסוכן שלח בשמך, וכל תשובה של הליד.','muted'));for(const m of data.messages){const b=el('div',m.body,'chat-message '+(m.direction==='OUT'?'assistant':'user'));b.title=new Date(m.created_at).toLocaleString('he-IL');d.append(b);}if(!data.messages.length)d.append(el('p','עוד אין הודעות.','muted'));d.showModal();}),'secondary'));
+  if(!['OWNER','OPTED_OUT','FALLBACK'].includes(conv.status)){const take=button('✋ אני ממשיך מכאן',()=>run(take,async()=>{await api('leads/'+lead.id+'/takeover',{});tell('הסוכן הפסיק לענות לליד הזה. מעכשיו אתה ממשיך איתו.');await reload?.();}),'secondary');take.title='הסוכן יפסיק לענות לליד, והודעות שלו יועברו אליך';row.append(take);}
+  box.append(row);return box;
+ }
+ function conciergeSettings(data,reload){
+  const meeting=data.meeting,c=card('🤖 הסוכן עונה ראשון ללידים',data.settings.enabled?'פועל: כל ליד מטופס Meta מקבל הודעה בשמך תוך דקות, עם עד 4 שאלות קצרות'+(meeting?' וקביעת '+meeting.noun+'.':'.'):'כבוי: כל ליד מגיע אליך עם הודעה מוכנה לשליחה בלחיצה.');
+  const toggle=button(data.settings.enabled?'כיבוי':'הפעלה',()=>run(toggle,async()=>{await api('lead-concierge/settings',{enabled:!data.settings.enabled},'PUT');tell(data.settings.enabled?'הסוכן כבר לא יענה ללידים בעצמו.':'מעכשיו הסוכן עונה ראשון ללידים.');await reload?.();}),data.settings.enabled?'secondary':'primary');
+  const form=el('form'),presets=[['0,1,2,3,4','א׳–ה׳'],['0,1,2,3,4,5','א׳–ו׳'],['0,1,2,3,4,5,6','כל השבוע']],w=data.settings.availability[0];
+  const days=el('select'),start=el('input'),end=el('input');days.setAttribute('aria-label','ימים פנויים');presets.forEach(([v,l])=>{const o=el('option',l);o.value=v;o.selected=w&&w.days.join(',')===v;days.append(o);});
+  for(const [i,v,l] of [[start,w?.start||'10:00','משעה'],[end,w?.end||'18:00','עד שעה']]){i.type='time';i.value=v;i.required=true;i.setAttribute('aria-label',l);}
+  const line=el('div','','actions');line.append(days,start,end);const save=button('שמירת זמינות',null,'secondary');save.type='submit';line.append(save);
+  form.append(el('p',data.settings.availabilityText?'זמינות ל'+meeting?.plural+': '+data.settings.availabilityText:'עוד לא הוגדרה זמינות ל'+meeting?.plural+'. בלי זמינות, הסוכן ישאל את השאלות ויעביר אליך לתיאום.','muted'),line);
+  form.addEventListener('submit',e=>{e.preventDefault();run(save,async()=>{await api('lead-concierge/settings',{availability:[{days:days.value.split(',').map(Number),start:start.value,end:end.value}]},'PUT');tell('הזמינות נשמרה.');await reload?.();});});
+  const kind=el('select');kind.setAttribute('aria-label','סוג העסק, לפיו נבחרות השאלות');(data.verticals||[]).forEach(v=>{const o=el('option',v.label);o.value=v.key;o.selected=v.key===data.vertical;kind.append(o);});
+  kind.addEventListener('change',()=>run(kind,async()=>{await api('lead-concierge/settings',{vertical:kind.value},'PUT');tell('סוג העסק עודכן. השאלות ללידים חדשים יתאימו אליו.');await reload?.();}));
+  const kindRow=el('label','סוג העסק (קובע אילו שאלות הסוכן שואל)');kindRow.append(kind);
+  c.append(toggle,kindRow);if(meeting)c.append(form);return c;
+ }
+ window.ScorpioDashboard={navigate,openAgent,importBusiness,leadRevenueButton,leadDetailsButton,conciergeBlock,conciergeSettings};
 })();

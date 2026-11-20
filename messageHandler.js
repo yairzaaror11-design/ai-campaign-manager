@@ -214,6 +214,7 @@ async function routeText(from, text, prefix = '') {
   if(await require('./buyerAudiences').handleText(from,text))return;
   {const advice=await require('./dailyAdvice').handleReply(from,text);if(advice?.route)text=advice.route;else if(advice)return;}
   {const speed=await require('./leadSpeed').handleReply(from,text);if(speed){await safeSend(from,speed.reply);return;}}
+  {const lc=await require('./leadConcierge').handleOwnerText(from,text);if(lc){if(lc.buttons&&configured()){const c=await getOrCreateClient(from),ui=await require('./conversationUi').prepareChoices(c.id,lc.reply,lc.buttons,lc.decisionKey);await safeSend(from,ui.text,ui);}else await safeSend(from,lc.reply);return;}}
 
   if(require('./conversationControl').isReset(text)){
     await resetSession(from);
@@ -413,6 +414,8 @@ async function routeText(from, text, prefix = '') {
 }
 
 async function handleIncomingMessage(message, contact) {
+  // Replies from a lead the agent contacted go to the lead conversation, never the owner agent.
+  if (await require('./leadConcierge').routeInbound(message, contact)) return;
   if (!isAuthorized(message.from)) return handleTenantMessage(message, contact);
   if(process.env.PUBLIC_ONBOARDING_ENABLED==='true'){
     const known=await require('./db').query('SELECT id FROM clients WHERE phone=$1',[require('./auth').normalizePhone(message.from)]);

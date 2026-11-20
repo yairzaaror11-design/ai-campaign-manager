@@ -37,12 +37,14 @@ async function refresh(){
 // Israeli local numbers (05x...) become international (9725x...), like the WhatsApp lead alert.
 function waNumber(phone){let d=String(phone||'').replace(/\D/g,'');if(/^0\d{8,9}$/.test(d))d='972'+d.slice(1);return /^\d{8,15}$/.test(d)?d:null;}
 async function loadLeads(){
- const data=await api('leads'),list=$('leads-list');list.replaceChildren();
+ const data=await api('leads'),list=$('leads-list'),lc=await api('lead-concierge').catch(()=>null),dash=window.ScorpioDashboard;list.replaceChildren();
+ if(lc?.available&&dash?.conciergeSettings)list.append(dash.conciergeSettings(lc,loadLeads));
  if(!data.leads.length)list.append(text('p','עוד אין לידים. אפשר להוסיף ליד ידנית או לחבר טופס לידים.'));
  if(data.speed?.leads){const pct=data.speed.fastShare==null?'':' · '+Math.round(data.speed.fastShare*100)+'% תוך 15 דקות';list.append(text('p','⏱ זמן תגובה ממוצע ב־30 הימים האחרונים: '+data.speed.label+pct,'lead-speed'));}
  for(const lead of data.leads){
   const card=text('article','','card lead'),details=text('div','');details.append(text('h3',lead.name),text('p',[lead.phone,lead.email].filter(Boolean).join(' · ')),text('p','מקור: '+({meta_lead_ads:'טופס לידים ב־Meta',whatsapp_manual:'נוסף בוואטסאפ',manual:'הוספה ידנית',landing_page:'עמוד מכירה'}[lead.source]||(/^landing/.test(lead.source)?'עמוד מכירה':lead.source))),text('p',lead.note));
   card.id='lead-'+lead.id;card.tabIndex=-1;
+  {const conv=lc?.conversations?.find(c=>c.lead_id===lead.id);if(conv&&dash?.conciergeBlock)details.append(dash.conciergeBlock(lead,conv,loadLeads));}
   const select=document.createElement('select');select.setAttribute('aria-label','מצב הטיפול ב-'+lead.name);
   for(const [v,label]of Object.entries(statuses)){const option=document.createElement('option');option.value=v;option.textContent=label;option.selected=v===lead.status;select.append(option);}
   select.addEventListener('change',async()=>{select.disabled=true;try{await api('leads/'+lead.id,{status:select.value,version:lead.version},'PATCH');await loadLeads();await refresh();tell('הליד עודכן.');}catch(e){tell(e.message,true);select.disabled=false;}});
