@@ -39,19 +39,27 @@ test('runs once a day per owner, sends one message, and never repeats an alert w
   const { db, close } = await openDatabase();
   const meta = require('../metaConnection');
   try {
-    const id = (await db.query("INSERT INTO clients(phone,meta_ad_account_id) VALUES('972500000301','act_77') RETURNING id")).rows[0].id;
-    await db.query("INSERT INTO whatsapp_contacts(phone,last_inbound_at) VALUES('972500000301',NOW())");
-    await db.query("INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,app_id,expires_at) VALUES($1,'10301',$2,$3,NOW()+INTERVAL '1 hour')", [id, meta.encrypt('t', id), process.env.META_APP_ID]);
-    const data = { account, accountId: 'act_77', campaigns: [{ id: '9', name: 'בדיקה', effective_status: 'DISAPPROVED' }] };
-    const first = await guard.runDue({ now: NOW, loader: async () => data });
-    assert.ok(first.results.includes('ALERTED'));
-    const again = await guard.runDue({ now: NOW, loader: async () => data });
-    assert.ok(!again.results.includes('ALERTED'), 'already reviewed today');
+    // Unique per run, and every check is scoped to this owner: other test files share the database
+    // and create owners the guard also picks up, so the global results list is not ours alone.
+    const tag = `${process.pid % 1000}${Date.now() % 100000}`.padStart(8, '0').slice(-8);
+    const phone = `9725${tag}`, account_id = `act_77${tag}`;
+    const id = (await db.query('INSERT INTO clients(phone,meta_ad_account_id) VALUES($1,$2) RETURNING id', [phone, account_id])).rows[0].id;
+    await db.query('INSERT INTO whatsapp_contacts(phone,last_inbound_at) VALUES($1,NOW())', [phone]);
+    await db.query("INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,app_id,expires_at) VALUES($1,$2,$3,$4,NOW()+INTERVAL '1 hour')", [id, `10${tag}`, meta.encrypt('t', id), process.env.META_APP_ID]);
+    const data = { account, accountId: account_id, campaigns: [{ id: '9', name: 'בדיקה', effective_status: 'DISAPPROVED' }] };
+    const loader = async () => data;
+    const sent = async () => (await db.query('SELECT payload FROM whatsapp_outbox WHERE client_id=$1', [id])).rows.map((r) => JSON.stringify(r.payload));
+    const ranToday = async () => (await db.query("SELECT COUNT(*)::int AS n FROM campaign_guard_runs WHERE client_id=$1 AND day=(NOW() AT TIME ZONE 'Asia/Jerusalem')::date", [id])).rows[0].n;
+    assert.equal((await guard.runDue({ now: NOW, loader })).status, 'RAN');
+    assert.equal(await ranToday(), 1);
+    assert.equal((await sent()).length, 1, 'alerted once');
+    await guard.runDue({ now: NOW, loader });
+    assert.equal((await sent()).length, 1, 'already reviewed today');
     await db.query('DELETE FROM campaign_guard_runs WHERE client_id=$1', [id]);
     await require('../marketingStore').update(id, null, (p) => { delete p.ui; return { handled: false, changed: true }; });
-    const next = await guard.runDue({ now: NOW, loader: async () => data });
-    assert.ok(next.results.includes('QUIET'), 'same alert is not repeated within 3 days');
-    const sent = (await db.query('SELECT payload FROM whatsapp_outbox WHERE client_id=$1', [id])).rows.map((r) => JSON.stringify(r.payload));
-    assert.equal(sent.length, 1); assert.match(sent[0], /נדחה/);
+    await guard.runDue({ now: NOW, loader });
+    assert.equal(await ranToday(), 1, 'reviewed again on a new day');
+    const messages = await sent();
+    assert.equal(messages.length, 1, 'same alert is not repeated within 3 days'); assert.match(messages[0], /נדחה/);
   } finally { await close(); }
 });
