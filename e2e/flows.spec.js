@@ -1,7 +1,7 @@
 'use strict';
 // End-to-end flows: fill the real forms, save, and see the saved data on screen (and after a reload).
 // Names are unique per run and project, because desktop and mobile share the seeded business.
-const { test, expect, settled } = require('./fixtures');
+const { test, expect, settled, noSidewaysScroll } = require('./fixtures');
 
 const unique = (info, what) => `${what} ${info.project.name} ${Date.now().toString(36)}`;
 const dialog = (page) => page.locator('dialog[open]');
@@ -110,6 +110,28 @@ test('a sales page is drafted, published and collects a lead', async ({ page, pr
     await d.locator('[name=body]').fill('הערכת שווי חינם לדירה שלך');
     await d.locator('[name=cta]').fill('השאירו פרטים');
   }, title);
+  // Preview → publish (with the explicit confirmation) → the public page collects a lead.
+  const row = page.locator('tr', { hasText: title });
+  await row.getByRole('button', { name: 'תצוגה מקדימה' }).click();
+  await dialog(page).getByRole('button', { name: 'אישור ופרסום העמוד' }).click();
+  await page.locator('dialog[open]').getByRole('button', { name: 'אישור פרסום' }).click();
+  await expect(page.locator('#status')).toContainText('עמוד המכירה פורסם');
+  const href = await page.locator('tr', { hasText: title }).getByRole('link', { name: 'פתיחת הדף' }).getAttribute('href');
+  const visitor = await page.context().newPage();
+  await visitor.goto(new URL(href).pathname);
+  await expect(visitor.getByRole('heading', { name: title })).toBeVisible();
+  const leadName = unique(info, 'פונה');
+  await visitor.locator('#contact-form [name=name]').fill(leadName);
+  await visitor.locator('#contact-form [name=phone]').fill('0507778888');
+  await visitor.locator('#contact-form [name=consent]').check();
+  await visitor.locator('#contact-form button').click();
+  await expect(visitor.locator('#form-status')).not.toBeEmpty();
+  await noSidewaysScroll(visitor);
+  await visitor.close();
+  await page.goto('/app/leads');
+  const card = page.locator('article.lead', { hasText: leadName });
+  await expect(card).toBeVisible();
+  await expect(card).toContainText('מקור: עמוד מכירה');
   expect(problems).toEqual([]);
 });
 

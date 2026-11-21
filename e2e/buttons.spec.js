@@ -12,6 +12,8 @@ async function candidates(page) {
     const re = new RegExp(unsafe);
     return [...document.querySelectorAll('#dashboard-screen button, main > section:not([hidden]) button')]
       .filter((b) => b.getClientRects().length && !b.disabled && b.type !== 'submit' && !b.closest('dialog'))
+      // Screen-reader-only controls (e.g. table sort headers when tables become cards on phones) are not visible buttons.
+      .filter((b) => { for (let n = b; n; n = n.parentElement) { const c = getComputedStyle(n); if ((c.clip && c.clip !== 'auto') || (c.clipPath && c.clipPath !== 'none')) return false; } return true; })
       .map((b) => (b.textContent.trim() || b.getAttribute('aria-label') || '').slice(0, 60))
       .filter((label, i, all) => label && !re.test(label) && all.indexOf(label) === i); // repeated rows share one handler
   }, UNSAFE.source);
@@ -19,7 +21,6 @@ async function candidates(page) {
 
 for (const screen of SCREENS) {
   test(`buttons on ${screen} all work`, async ({ page, problems }, info) => {
-    test.skip(info.project.name === 'mobile' && !['home', 'leads', 'content', 'brand', 'catalog'].includes(screen), 'full sweep runs on desktop');
     await page.goto('/app/' + screen);
     await settled(page);
     const labels = await candidates(page);
