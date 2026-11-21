@@ -71,7 +71,7 @@ function replyFor(task){
  }
  if(task.status==='WAITING_INPUT')return s.question;
  if(task.status==='WAITING_MODEL')return 'הבקשה נשמרה, אבל אני עדיין לא מוכן לעבוד עליה. בעוד כמה דקות כתוב לי ״נמשיך״ ואמשיך מאותה נקודה.';
- if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nתעבור על מה שהכנתי ותגיד לי מה תרצה לשנות. אם הכול מתאים, כתוב ״מאשר את התוכן״. זה אישור לתוכן בלבד; פרסום והפעלת תקציב דורשים אישור נפרד.';
+ if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nתעבור על מה שהכנתי ותגיד לי מה לשנות, או אשר את התוכן. זה אישור לתוכן בלבד; פרסום והוצאת כסף דורשים אישור נפרד.';
  // A closed task answers as closed, even if a step was still waiting for approval.
  if(task.status==='CANCELLED')return 'סגרתי את המשימה, והאישורים שחיכו לך בוטלו. מה שכבר בוצע נשאר כמו שהוא.';
  const waiting=s.steps?.find(x=>x.status==='WAITING_APPROVAL');
@@ -457,7 +457,9 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     if(task.state.revising&&hash(facts)!==hash(task.state.facts)){for(const dependent of task.state.steps)if(dependent.kind==='draft'){dependent.status='PENDING';delete dependent.artifact;}if(task.state.steps.some(s=>s.kind==='image'&&s.result?.mediaId)){for(const imageStep of task.state.steps)if(imageStep.kind==='image'&&imageStep.result?.mediaId)imageStep.status='STALE';task.status='BLOCKED';task.state.reason='פרטי המשימה השתנו אחרי יצירת תמונה; יש לבדוק ולהכין מחדש את התמונה לפני שימוש בה';task.state.facts=facts;return await settle(task,lease,requestId);}}
     task.state.facts=facts;step.status='DONE';
    }else if(n.op==='draft'){
-    const artifact={title:text(n.title,160),content:text(n.content,6000),reviewed:false};
+    // A revision may echo the previous artifact; drop backend-rendered settings/form blocks before re-rendering them.
+    const echoed=String(n.content||'').split('\n\nטיוטת הגדרות קמפיין — לא הופעל פרסום')[0].replace(/\n*[^\n]*— טיוטת טופס, טרם נוצר ב־Meta(?:\n\d+\.[^\n]*)*/g,'').trimEnd();
+    const artifact={title:text(n.title,160),content:text(n.campaignDraft!==undefined||n.formDraft!==undefined?echoed||n.content:n.content,6000),reviewed:false};
     if(n.campaignDraft!==undefined){artifact.adContent=artifact.content;artifact.campaignDraft=require('./campaignPackage').checked(n.campaignDraft);artifact.content+=require('./campaignPackage').render(artifact.campaignDraft);}
     if(n.formDraft!==undefined){
      artifact.formDraft=require('./taskDraftReview').formDraft(n.formDraft);

@@ -17,7 +17,7 @@ function build(view){
  if(draft.formDraft)lines.push('📝 טופס פניות: '+draft.formDraft.questions.length+' שאלות');
  const extras=artifacts.filter(a=>a!==draft&&a!==image&&!a.reviewed&&a.content).map(a=>'*'+cut(a.title,80)+'*\n'+cut(a.content,600));
  if(extras.length)lines.push('',...extras);
- lines.push('',missingBudget?'כדי להמשיך, כתוב לי כמה להוציא ביום (למשל: תקציב 30 ₪ ליום).':'אם הכול טוב, לוחצים ״מאשר״. זה אישור לתוכן בלבד, בלי פרסום ובלי חיוב.');
+ lines.push('',missingBudget?'מה התקציב היומי? אפשר לבחור או לכתוב סכום אחר.':'אם הכול טוב, לוחצים ״מאשר״. זה אישור לתוכן בלבד, בלי פרסום ובלי חיוב.');
  return{mediaId:image?.mediaId||null,caption,card:lines.join('\n').slice(0,3800),missingBudget,choices:missingBudget?[{title:'30 ₪ ליום',text:'תקציב 30 ₪ ליום'},{title:'50 ₪ ליום',text:'תקציב 50 ₪ ליום'},{title:'לשנות משהו',text:'אני רוצה לשנות משהו בקמפיין'}]:[{title:'מאשר ✅',text:'מאשר את התוכן'},{title:'לשנות נוסח',text:'אני רוצה לשנות את נוסח המודעה'},{title:'תמונה אחרת',text:'אני רוצה תמונה אחרת למודעה'}]};
 }
 module.exports={build,budgetMissing};

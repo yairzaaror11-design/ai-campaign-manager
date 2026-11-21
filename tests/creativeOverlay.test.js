@@ -46,8 +46,10 @@ test('Hebrew with numbers and ₪ is laid out right-to-left: the first word is o
  const columns=Array.from({length:full.info.width},(_,x)=>full.alphaAt(x)>0);
  const left=columns.indexOf(true),right=columns.lastIndexOf(true);
  // The leftmost glyph is ₪ (wide, about as wide as its own render); the rightmost is the digit 4.
- let leftRun=left;while(columns[leftRun+1])leftRun++;
- let rightRun=right;while(columns[rightRun-1])rightRun--;
+ // A glyph may render with a thin internal gap (₪ on Linux hinting): bridge gaps up to 4 columns.
+ const gap=4,inkAfter=x=>columns.slice(x+1,x+1+gap).some(Boolean),inkBefore=x=>columns.slice(Math.max(0,x-gap),x).some(Boolean);
+ let leftRun=left;while(leftRun<right&&inkAfter(leftRun)){leftRun++;while(!columns[leftRun])leftRun++;}
+ let rightRun=right;while(rightRun>left&&inkBefore(rightRun)){rightRun--;while(!columns[rightRun])rightRun--;}
  assert.ok(Math.abs((leftRun-left+1)-shekel.info.width)<=8,'₪ on the left');
  assert.ok(Math.abs((right-rightRun+1)-four.info.width)<=8,'4 on the right');
 });
