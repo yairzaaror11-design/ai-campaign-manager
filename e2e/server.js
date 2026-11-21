@@ -27,6 +27,10 @@ if (!fs.existsSync(keyFile) || !fs.existsSync(certFile)) {
 process.env.PORT = String(PORT);
 process.env.APP_PUBLIC_URL = `https://localhost:${PORT}/`;
 process.env.LOG_LEVEL = process.env.LOG_LEVEL || 'warn';
+Object.assign(process.env, { // the public privacy page needs its operator details (demo values)
+  PRIVACY_OPERATOR_NAME: 'SCORPIO AI (demo)', PRIVACY_CONTACT_EMAIL: 'privacy@example.test',
+  PRIVACY_HOSTING_PROVIDER: 'local demo', PRIVACY_BACKUP_RETENTION: '30 days'
+});
 process.env.RATE_LIMIT_SCALE = '50'; // all test browsers share one IP; production ignores this
 
 // index.js calls app.listen(); serve the same app over HTTPS instead.
