@@ -75,6 +75,8 @@ async function handleApproval(from, code,actionId=null) {
 }
 
 async function deliverTaskReply(from,clientId,result){
+ // A notice (a question or a fix before approval) goes as text, not as the review card again.
+ if(result.notice){if(result.choices){const ui=await require('./conversationUi').prepareTaskReview(clientId,result.reply,result.choices);await safeSend(from,ui.text,ui);}else await safeSend(from,result.reply);return;}
  const review=require('./taskReviewCard').build(result.task);
  if(review){
   const send=async(id,caption)=>{const asset=await require('./mediaStore').loadMedia(clientId,id);await require('./whatsappDelivery').enqueue(from,{type:'image',image:{id:asset.whatsapp_media_id,caption}});};
