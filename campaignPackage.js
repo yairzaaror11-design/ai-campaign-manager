@@ -54,5 +54,8 @@ function imageDecision(task,ready){
  if(!d||!step||!ready(task,step))return null;const p=checked(d);
  return{next:{op:'image',stepId:step.id,prompt:[p.designBrief,'Create one advertisement graphic. Render this exact Hebrew headline and CTA legibly, right-to-left, without extra text: '+JSON.stringify({headline:p.headline,cta:p.cta}),'Use supplied owned references as visual brand/product references. Do not invent a logo, salary, guarantees or requirements.'].join('\n').slice(0,2000),referenceMediaIds:p.referenceMediaIds,imageText:{headline:p.headline,cta:p.cta}}};
 }
-function render(d){return '\n\nטיוטת הגדרות קמפיין — לא הופעל פרסום\nמטרה: '+d.objective+'\nקהל מוצע: '+d.audience+'\nאזור: '+d.geography+'\nמיקומים מוצעים: '+d.placements+'\nתקציב: '+d.budgetNote+'\nתזמון: '+d.scheduleNote;}
+// Owner-facing words: Meta's technical objective names never reach the chat.
+const OBJECTIVE_WORDS=[[/LEAD|ליד/i,'פניות מלקוחות (לידים)'],[/MESSAG|WHATSAPP|וואטסאפ/i,'הודעות בוואטסאפ'],[/SALE|CONVERSION|PURCHASE/i,'מכירות'],[/TRAFFIC|LINK_CLICK/i,'כניסות לאתר'],[/ENGAGEMENT/i,'מעורבות'],[/AWARENESS|REACH/i,'חשיפה']];
+function plainWords(v){const t=String(v||'');const hit=/[A-Z]{3,}_?[A-Z]*/.test(t)&&OBJECTIVE_WORDS.find(([re])=>re.test(t));return hit?hit[1]:t.replace(/\s*\([A-Z_]{3,}\)/g,'');}
+function render(d){return '\n\nטיוטת הגדרות קמפיין — לא הופעל פרסום\nמטרה: '+plainWords(d.objective)+'\nקהל מוצע: '+d.audience+'\nאזור: '+d.geography+'\nמיקומים מוצעים: '+d.placements+'\nתקציב: '+d.budgetNote+'\nתזמון: '+d.scheduleNote;}
 module.exports={required,checked,ensure,issue,feedback,imageDecision,render};

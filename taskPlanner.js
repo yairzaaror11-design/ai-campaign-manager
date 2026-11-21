@@ -26,7 +26,10 @@ A DONE read may be refreshed once in a later user turn when conditions changed. 
 function businessContext(known={}){
  const {facts={},brand=null,person=null,connection=null,media=null}=known||{};
  const historicalCampaign=new Set(['businessGoal','dailyBudget','leadDestination','successCriteria','offer','offerMediaSeparate','offerScope','offerCommitment']);
- return{facts:Object.fromEntries(Object.entries(facts).filter(([key])=>!historicalCampaign.has(key))),brand,person,connection,media,rule:'Business background only. No prior campaign, draft, pending question, budget or goal is current-task authority. Ask for current-task details when missing.'};
+ // Settings the owner confirmed in onboarding (last 14 days) are the plan for the first campaign, not history.
+ const fresh=a=>a?.source==='onboarding_user_confirmed'&&a.at&&Date.now()-Date.parse(a.at)<14*864e5;
+ const confirmed=Object.fromEntries(Object.entries(facts).filter(([key,a])=>historicalCampaign.has(key)&&fresh(a)));
+ return{facts:Object.fromEntries(Object.entries(facts).filter(([key])=>!historicalCampaign.has(key))),...(Object.keys(confirmed).length?{confirmedForFirstCampaign:{...confirmed,rule:'The owner confirmed these for the first campaign during onboarding. Use them (e.g. as the daily budget) unless the owner now says otherwise; do not ask for them again.'}}:{}),brand,person,connection,media,rule:'Business background only. No prior campaign, draft, pending question, budget or goal is current-task authority unless listed in confirmedForFirstCampaign. Ask for current-task details when missing.'};
 }
 function initialFeedback(code){return{code,instruction:'No plan has been accepted. Return a complete valid ordered plan of 1..12 supported steps and one next operation against that plan. No external action has been performed by this planning attempt.'};}
 function repairableInitial(error){return ['INVALID_TASK_PLAN','INVALID_TASK_DECISION','TASK_PLAN_MISSING_OUTCOME','CAMPAIGN_PACKAGE_PLAN_LIMIT'].includes(error.message)||error instanceof SyntaxError;}

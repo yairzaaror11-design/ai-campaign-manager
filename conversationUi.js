@@ -105,7 +105,8 @@ async function prepareApproval(clientId,approval,summary){
  const creating=approval.actionPlan.intent==='CREATE_BUNDLE';
  const activating=approval.actionPlan.intent==='ACTIVATE_BUNDLE';
  // F8: activation is an explicit question; "לא עכשיו" keeps the campaign paused.
- const items=[{title:creating?'אישור יצירה מושהית':activating?'להפעיל עכשיו':'אישור השינוי',kind:'action_approval',actionId:approval.actionId,text:'אישור פעולה'},activating?choice('לא עכשיו','/cancel-action '+approval.actionId):choice('ביטול','בטל את הפעולה הממתינה')];
+ const BUTTON={UPLOAD_IMAGE:'להעלות את התמונה',CREATE_LEAD_FORM:'ליצור את הטופס',CHANGE_BUDGET:'לשנות את התקציב',PAUSE_CAMPAIGN:'לעצור את הקמפיין',RESUME_CAMPAIGN:'לחדש את הקמפיין',DUPLICATE_CAMPAIGN:'ליצור עותק מושהה'};
+ const items=[{title:creating?'אישור יצירה מושהית':activating?'להפעיל עכשיו':BUTTON[approval.actionPlan.intent]||'אישור השינוי',kind:'action_approval',actionId:approval.actionId,text:'אישור פעולה'},activating?choice('לא עכשיו','/cancel-action '+approval.actionId):choice('ביטול','בטל את הפעולה הממתינה')];
  await store.update(clientId,null,p=>{p.ui={nonce,decisionKey:'action_approval',context:context(p),choices:items,expiresAt:new Date(approval.expiresAt).getTime()};
   // Every approval card stays answerable after another card arrives or after it expires (then it is re-offered).
   p.approvalButtons=[...(p.approvalButtons||[]).filter(b=>b.actionId!==approval.actionId),{nonce,actionId:approval.actionId,at:Date.now()}].slice(-8);
