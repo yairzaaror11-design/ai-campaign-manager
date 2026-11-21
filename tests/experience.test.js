@@ -121,6 +121,12 @@ test('experience flows on the database', async (t) => {
         const linkFirst = await onboarding.handleText(fresh, 'https://shop.example.co.il', { inspect: async (url) => ({ source: url, facts: { businessName: 'החנות', businessType: 'חנות בגדים' }, brand: {} }) });
         assert.match(linkFirst.leadTexts[0], /אני הסוכן של SCORPIO/);
         assert.match(linkFirst.leadTexts[1], /קראתי את העמוד של החנות/);
+        // Onboarding waiting at META for a business that is already connected ends quietly; the agent answers.
+        const connected = (await db.query('INSERT INTO clients(phone,meta_ad_account_id) VALUES($1,$2) RETURNING id', [phone(), 'act_77'])).rows[0].id;
+        await db.query("INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,app_id,expires_at) VALUES($1,'u','x','1',NOW()+INTERVAL '1 hour')", [connected]);
+        await db.query("INSERT INTO onboarding_state(client_id,step,answers) VALUES($1,'META','{}'::jsonb)", [connected]);
+        assert.equal(await onboarding.handleText(connected, 'נמשיך'), null);
+        assert.ok((await onboarding.state(connected)).completed_at, 'onboarding marked done');
         await onboarding.reset(fresh);
         assert.equal(await onboarding.state(fresh), null, 'reset starts onboarding over');
         // An existing customer with past work (here: a task) never gets the first-time intro again.

@@ -74,6 +74,9 @@ async function question(clientId, step, a, lead = []) {
 }
 
 // ---------- start ----------
+async function metaConnected(clientId) {
+  try { return !!(await db.query(`SELECT 1 FROM clients c WHERE c.id=$1 AND c.meta_ad_account_id IS NOT NULL AND EXISTS(SELECT 1 FROM meta_connections m WHERE m.client_id=c.id AND m.expires_at>NOW())`, [clientId])).rows[0]; } catch { return false; }
+}
 async function isNew(clientId) {
   // An existing customer (past tasks, approvals or a Meta connection) never gets the first-time intro again.
   try {
@@ -178,6 +181,8 @@ async function handleText(clientId, text, options = {}) {
     return next ? { ...next, leadTexts: [...started.leadTexts, ...(next.leadTexts || [])] } : started;
   }
   if (row.completed_at) return null;
+  // Already connected to Meta while onboarding still waits at META: onboarding is done, the agent takes over.
+  if (row.step === 'META' && await metaConnected(clientId)) { await finish(clientId); return null; }
   const a = { ...(row.answers || {}) };
   if (copy.skipWords.test(t)) { await finish(clientId); return plain(copy.skip); }
   if (CONTINUE.test(t)) return question(clientId, row.step, a, [copy.resumeHint]);
