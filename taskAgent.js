@@ -452,7 +452,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     let output;
     // A failed createGraphic stores no media: the step may be retried under a fresh attempt id
     // (the per-event dedupe would otherwise refuse it); only a concurrent in-flight job stays uncertain.
-    try{output=await require('./whatsappDelivery').messageContext.run({eventId:'task:'+task.id+':'+step.id+(step.imageAttempts?':'+step.imageAttempts:'')},()=>require('./graphicService').createGraphic(clientId,prompt,{...(options.imageOptions||{}),referenceImages}));}
+    try{output=await require('./whatsappDelivery').messageContext.run({eventId:'task:'+task.id+':'+step.id+(step.imageAttempts?':'+step.imageAttempts:'')},()=>require('./graphicService').createGraphic(clientId,prompt,{...(n.imageText?{imageText:n.imageText}:{}),...(options.imageOptions||{}),referenceImages}));}
     catch(error){if(error?.message!=='GRAPHIC_ALREADY_ATTEMPTED'){step.status='PENDING';step.imageAttempts=(step.imageAttempts||0)+1;}throw error;}
     if(!output?.id)throw Error('TASK_IMAGE_NOT_VERIFIED');
     step.result={mediaId:output.id,kind:'image',verified:true};step.artifact={title:step.label,content:'התמונה שנוצרה נשלחה כאן לבדיקה.',mediaId:output.id,...(n.imageText?{imageText:n.imageText}:{}),reviewed:false,hash:hash({mediaId:output.id,imageText:n.imageText||null})};step.status='PREPARED';task.newMedia=[...(task.newMedia||[]),output.id];

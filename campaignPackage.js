@@ -52,7 +52,7 @@ function imageDecision(task,ready){
  if(current&&prepared&&(prepared.artifact.imageText.headline!==current.headline||prepared.artifact.imageText.cta!==current.cta)&&!task.state.steps.some(s=>s.kind==='meta'&&s.intent==='UPLOAD_IMAGE'&&s.status!=='PENDING')){prepared.status='PENDING';delete prepared.artifact;delete prepared.result;}
  const d=current,step=task.state.steps.find(s=>s.packageImage&&s.status==='PENDING');
  if(!d||!step||!ready(task,step))return null;const p=checked(d);
- return{next:{op:'image',stepId:step.id,prompt:[p.designBrief,'Create one advertisement graphic. Render this exact Hebrew headline and CTA legibly, right-to-left, without extra text: '+JSON.stringify({headline:p.headline,cta:p.cta}),'Use supplied owned references as visual brand/product references. Do not invent a logo, salary, guarantees or requirements.'].join('\n').slice(0,2000),referenceMediaIds:p.referenceMediaIds,imageText:{headline:p.headline,cta:p.cta}}};
+ return{next:{op:'image',stepId:step.id,prompt:[p.designBrief,'Create one advertisement visual for this ad (context only; the system adds this Hebrew headline and CTA afterwards, so draw no text at all): '+JSON.stringify({headline:p.headline,cta:p.cta}),'Use supplied owned references as visual brand/product references. Do not invent a logo, salary, guarantees or requirements.'].join('\n').slice(0,2000),referenceMediaIds:p.referenceMediaIds,imageText:{headline:p.headline,cta:p.cta}}};
 }
 // Owner-facing words: Meta's technical objective names never reach the chat.
 const OBJECTIVE_WORDS=[[/LEAD|ליד/i,'פניות מלקוחות (לידים)'],[/MESSAG|WHATSAPP|וואטסאפ/i,'הודעות בוואטסאפ'],[/SALE|CONVERSION|PURCHASE/i,'מכירות'],[/TRAFFIC|LINK_CLICK/i,'כניסות לאתר'],[/ENGAGEMENT/i,'מעורבות'],[/AWARENESS|REACH/i,'חשיפה']];
