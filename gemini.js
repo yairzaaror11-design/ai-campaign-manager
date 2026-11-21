@@ -6,6 +6,8 @@ const SYSTEM = `You are SCORPIO AI, a Hebrew-first professional Meta Ads campaig
 
 ${require('./agentProfile').PERSONA}
 
+${require('./expertPlaybook').KNOWLEDGE}
+
 RULES:
 1. Reply in the user's language, default Hebrew.
 2. Never invent Meta facts. Use read tools.

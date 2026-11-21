@@ -46,10 +46,10 @@ const plain = (text, extra = {}) => ({ text, leadTexts: [], media: [], ...extra 
 function vertical(answers) { return require('./verticalProfiles').infer([answers.business, answers.site?.name, answers.site?.description].filter(Boolean).join(' ')) || 'generic'; }
 function askSell(clientId, answers, lead = []) {
   const ideas = [answers.site?.product, ...(copy.sellSuggestions[vertical(answers)] || [])].filter(Boolean);
-  return choices(clientId, copy.askSell, [...ideas.slice(0, 2), { title: copy.sellOtherButton, text: copy.sellOtherButton }], { lead });
+  return choices(clientId, copy.askSell + '\n' + (copy.sellAdvice[vertical(answers)] || copy.sellAdvice.generic), [...ideas.slice(0, 2), { title: copy.sellOtherButton, text: copy.sellOtherButton }], { lead });
 }
 const goalKeys = (a = {}) => copy.goalsByVertical[vertical(a)] || copy.goalsByVertical.default;
-const askGoal = (clientId, lead = [], a = {}) => choices(clientId, copy.askGoal, goalKeys(a).map((k) => ({ title: copy.goals[k].button, text: copy.goals[k].button })), { lead });
+const askGoal = (clientId, lead = [], a = {}) => choices(clientId, copy.askGoal + '\n' + (copy.goalAdvice[vertical(a)] || copy.goalAdvice.generic), goalKeys(a).map((k) => ({ title: copy.goals[k].button, text: copy.goals[k].button })), { lead });
 const askBudget = (clientId, lead = [], a = {}) => choices(clientId, copy.askBudget + '\n' + (copy.budgetHint[vertical(a)] || copy.budgetHint.generic), BUDGETS.map((n) => copy.budgetButton(n)), { lead });
 function summaryText(a) {
   return [copy.summaryTitle, copy.summaryLines({ business: a.site?.name || a.business || '', item: a.item, goal: copy.goals[a.goal].label, daily: a.daily }), copy.summaryQuestion].filter(Boolean).join('\n');

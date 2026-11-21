@@ -199,6 +199,11 @@ function addLicenseLine(task,line,number){
  }
  return changed;
 }
+// The senior-marketer playbook for this kind of business (first campaign, questions worth asking, angles, rules).
+async function industryPlaybook(clientId){
+ const d=await require('./verticalProfiles').detect(clientId).catch(()=>({key:'generic'}));
+ return{industry:d.key,...require('./expertPlaybook').industry(d.key)};
+}
 function prepareReview(task){
  delete task.state.reviewIssue;delete task.state.lastError;delete task.state.reason;
  task.state.reviewHash=hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash]));task.status='WAITING_REVIEW';
@@ -253,7 +258,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     if(!options.deferPlanning){
      if(!await require('./rateLimit').take('task-planner:'+clientId,60,3600))throw Error('TASK_ROUTING_LIMIT');
      task.state.routingCalls=(task.state.routingCalls||0)+1;await checkpoint(task,lease);
-     const known=planner.businessContext(await require('./marketingStore').context(clientId));
+     const known={...planner.businessContext(await require('./marketingStore').context(clientId)),industryPlaybook:await industryPlaybook(clientId)};
      const input={message:routeMessage,...(pending?{pendingRequest:pending.message}:{}),task:{request:task.request,status:task.status,planningMode:task.state.planningMode,pendingQuestion:task.state.question||null,steps:task.state.steps.map(s=>({id:s.id,kind:s.kind,status:s.status,label:s.label,verified:s.result?.verified===true,artifact:s.artifact?{title:s.artifact.title,content:String(s.artifact.adContent||s.artifact.content||'').slice(0,700)}:null}))},messages:task.state.messages.slice(-6).map(m=>({role:m.role,content:m.content.slice(0,1200)})),business:known.facts};
      const route=await (options.turnRouter||router.route)(input);
      if(!router.KINDS.includes(route?.kind))throw Error('ROUTING_RESPONSE_INVALID');
@@ -341,7 +346,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    delete task.state.reviewHash;delete task.state.revising;
   }
   task.status='RUNNING';await checkpoint(task,lease);
-  const known=planner.businessContext(await require('./marketingStore').context(clientId));
+  const known={...planner.businessContext(await require('./marketingStore').context(clientId)),industryPlaybook:await industryPlaybook(clientId)};
   if(task.state.newGoal&&!generalRecommendation(task.request)&&!require('./planningIntent').isDiscovery(task)){delete known.facts.product;known.rule+=' The owner explicitly switched goals. Do not reuse a prior product or campaign.';}
   let initialRepairs=0,decisionRepairs=0,decisionFeedback=task.state.lastError==='UNGROUNDED_TASK_FACT'?FACT_REPAIR:null;
   for(let round=0;round<16;round++){
