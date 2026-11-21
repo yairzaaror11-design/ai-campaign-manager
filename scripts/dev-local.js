@@ -21,9 +21,10 @@ const safe = {
 // Force the safety values: a local .env must not be able to turn effects on.
 Object.assign(process.env, safe);
 
-(async () => {
+// Exported so the E2E launcher (e2e/server.js) can reuse the same safe wiring
+// with its own throwaway data directory.
+async function startLocal({ dataDir = path.join(__dirname, '..', '.local-dev', 'pgdata') } = {}) {
   const { PGlite } = require('@electric-sql/pglite');
-  const dataDir = path.join(__dirname, '..', '.local-dev', 'pgdata');
   fs.mkdirSync(dataDir, { recursive: true });
   const pg = new PGlite(dataDir);
   await pg.waitReady;
@@ -50,8 +51,12 @@ Object.assign(process.env, safe);
 
   console.log(`[dev-local] embedded database at ${dataDir}; READ_ONLY, no Meta writes, no WhatsApp sends`);
   // index.js only self-starts when run directly, so call its exported start().
-  await require('../index.js').start();
-})().catch((error) => {
+  return require('../index.js').start();
+}
+
+module.exports = { startLocal };
+
+if (require.main === module) startLocal().catch((error) => {
   console.error('[dev-local] failed to start:', error);
   process.exit(1);
 });

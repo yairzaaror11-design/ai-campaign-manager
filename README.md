@@ -12,6 +12,13 @@ npm run check
 npm test
 ```
 
+Dashboard browser tests (Playwright, desktop 1366×800 + mobile 390×844) run against the local demo server `e2e/server.js` (embedded database, READ_ONLY, no Meta writes, no WhatsApp sends). They need a browser, so they are not part of `npm test`; the optional `Dashboard E2E` workflow is ready in `docs/ci/e2e.yml` (copy it to `.github/workflows/` to enable; it installs Chromium). Screen-by-screen status: [docs/UI_MAP.md](docs/UI_MAP.md).
+
+```sh
+npx playwright install chromium   # once
+npm run test:e2e                  # starts e2e/server.js itself
+```
+
 - [Meta setup and chat commands](docs/META-ONBOARDING.md)
 - [Operations, backups, release and rollback](docs/OPERATIONS.md)
 - [Security review and remaining gates](docs/SECURITY-REVIEW.md)

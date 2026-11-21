@@ -10,7 +10,8 @@ const env = (vars, work) => async () => {
   for (const [k, v] of Object.entries(vars)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
   try { await work(); } finally { for (const [k, v] of Object.entries(before)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
 };
-const phone = () => '9725' + String(Date.now() % 1e8).padStart(8, '0') + String(Math.floor(Math.random() * 10));
+let phoneSeq = 0;
+const phone = () => '9726' + String(require('node:crypto').randomInt(0, 1e6)).padStart(6, '0') + String(++phoneSeq % 1000).padStart(3, '0');
 let database;
 test.before(async () => { database = await openDatabase(); });
 test.after(async () => { await database.close(); });

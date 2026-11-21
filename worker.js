@@ -8,7 +8,7 @@ process.on('SIGTERM', () => { stopping = true; });
 process.on('SIGINT', () => { stopping = true; });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function main() {
-  if (process.env.MOCK_META_ENABLED !== 'true' || process.env.READ_ONLY !== 'true') {
+  if (process.env.NODE_ENV === 'production' || process.env.MOCK_META_ENABLED !== 'true' || process.env.READ_ONLY !== 'true') {
     throw Error('Worker only supports MOCK_META_ENABLED=true and READ_ONLY=true');
   }
   await initializeDatabase();
