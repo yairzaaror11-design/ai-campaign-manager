@@ -3,7 +3,7 @@
 WhatsApp lets SCORPIO start a conversation with a business owner only within 24 hours of the
 owner's last message. Outside that window, Meta requires a pre-approved **template**. These three
 templates let SCORPIO stay proactive. Submit them in WhatsApp Manager → Message templates →
-Create template, category **Utility**, language **Hebrew (he)**, no variables, no buttons.
+Create template, category **Utility**, language **Hebrew (he)**, no variables. Add the quick-reply button listed under each template.
 
 After Meta approves them, set in Render (Environment):
 
@@ -16,15 +16,24 @@ WEEKLY_REPORTS_ENABLED=true
 
 ## 1. `new_lead_alert`
 
-> יש לך פנייה חדשה מהקמפיין. כדאי לחזור אליה כמה שיותר מהר. כתבו ״הלידים שלי״ כדי לראות את הפרטים ולקבל הודעה מוכנה לשליחה.
+> יש לך פנייה חדשה מהקמפיין 🔔 כדאי לחזור אליה בהקדם, כי פנייה שמקבלת מענה מהיר נסגרת יותר.
+
+Quick-reply button: `הלידים שלי`
 
 ## 2. `weekly_business_report`
 
-> הדוח העסקי השבועי שלך מוכן: כמה הושקע, כמה פניות הגיעו, כמה נסגרו ומה כדאי לעשות השבוע. כתבו ״דוח עסקי״ כדי לקבל אותו.
+> הדוח השבועי שלך מוכן: כמה הושקע, כמה פניות הגיעו ומה ההמלצה שלי לשבוע הקרוב.
+
+Quick-reply button: `דוח עסקי`
 
 ## 3. `lead_followup_reminder`
 
-> יש פניות שמחכות לעדכון. עדכון קצר של מה קרה עם כל פנייה עוזר לדעת איזה קמפיין באמת מביא לקוחות. כתבו ״הפניות שלי״ כדי לעדכן.
+> יש פניות שמחכות לעדכון ממך. עדכון קצר עוזר לי לדעת איזה קמפיין באמת מביא לקוחות.
+
+Quick-reply button: `הפניות שלי`
+
+Quick-reply buttons are static (no variables). A tap arrives as a `button` message and is handled exactly like the
+owner typing the button's words (messageHandler.handleIncomingMessage).
 
 ## 4. `data_retention_notice` (optional, used only outside the 24h window)
 

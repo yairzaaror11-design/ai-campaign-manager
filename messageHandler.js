@@ -454,6 +454,8 @@ async function routeText(from, text, prefix = '') {
 }
 
 async function handleIncomingMessage(message, contact) {
+  // A tap on a template quick-reply button arrives as type 'button': treat it as the words on the button.
+  if (message?.type === 'button' && message.button?.text) message = { ...message, type: 'text', text: { body: String(message.button.text).slice(0, 200) } };
   // Replies from a lead the agent contacted go to the lead conversation, never the owner agent.
   if (await require('./leadConcierge').routeInbound(message, contact)) return;
   // Team members (lead notifications) and past customers who answered an after-sale message.
