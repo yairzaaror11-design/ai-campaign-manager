@@ -123,6 +123,25 @@ test('experience flows on the database', async (t) => {
         assert.match(linkFirst.leadTexts[1], /קראתי את העמוד של החנות/);
         await onboarding.reset(fresh);
         assert.equal(await onboarding.state(fresh), null, 'reset starts onboarding over');
+        // An existing customer with past work (here: a task) never gets the first-time intro again.
+        const veteran = (await db.query('INSERT INTO clients(phone) VALUES($1) RETURNING id', [phone()])).rows[0].id;
+        await db.query("INSERT INTO agent_tasks(id,client_id,request,status,revision,state) VALUES($1,$2,'קמפיין','CANCELLED',1,'{}'::jsonb)", [crypto.randomUUID(), veteran]);
+        assert.equal(await onboarding.handleText(veteran, 'היי'), null);
+        // Free-text answers: understood when possible, otherwise asked again (never handed to another agent).
+        const words = (await db.query('INSERT INTO clients(phone) VALUES($1) RETURNING id', [phone()])).rows[0].id;
+        await onboarding.handleText(words, 'היי');
+        await onboarding.handleText(words, 'משרד תיווך בחולון');
+        await onboarding.handleText(words, 'דירות 4 חדרים');
+        assert.equal((await onboarding.state(words)).step, 'GOAL');
+        const unclear = await onboarding.handleText(words, 'משהו אחר לגמרי');
+        assert.ok(unclear, 'unclear goal answer is re-asked, not dropped');
+        assert.equal((await onboarding.state(words)).step, 'GOAL');
+        assert.equal(await onboarding.handleText(words, 'כמה זה עולה?'), null, 'a question still reaches the agent');
+        await onboarding.handleText(words, 'שיתקשרו אליי או ישאירו פרטים');
+        const after = await onboarding.state(words);
+        assert.equal(after.step, 'BUDGET');assert.equal(after.answers.goal, 'LEADS');
+        assert.ok(await onboarding.handleText(words, 'לא יודע'), 'unclear budget is re-asked');
+        assert.equal((await onboarding.state(words)).step, 'BUDGET');
       });
 
       await t.test('login code: no enumeration, 10-minute single use, wrong tries burn the code', async () => {

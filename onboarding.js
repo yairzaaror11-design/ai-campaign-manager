@@ -75,6 +75,11 @@ async function question(clientId, step, a, lead = []) {
 
 // ---------- start ----------
 async function isNew(clientId) {
+  // An existing customer (past tasks, approvals or a Meta connection) never gets the first-time intro again.
+  try {
+    const { rows: [h] } = await db.query(`SELECT EXISTS(SELECT 1 FROM agent_tasks WHERE client_id=$1) OR EXISTS(SELECT 1 FROM action_plans WHERE client_id=$1) OR EXISTS(SELECT 1 FROM meta_connections WHERE client_id=$1) AS known`, [clientId]);
+    if (h?.known) return false;
+  } catch { /* tables missing in a fresh install: fall back to the profile */ }
   const p = await require('./marketingStore').load(clientId).catch(() => null);
   if (!p) return true;
   return !facts().value(p, 'businessType') && !facts().value(p, 'product');
@@ -210,15 +215,16 @@ async function handleText(clientId, text, options = {}) {
     }
     case 'GOAL': {
       const goal = Object.entries(copy.goals).find(([, g]) => g.button === t || g.label === t)?.[0]
-        || (/וואטסאפ|ווטסאפ|whatsapp/i.test(t) ? 'WHATSAPP' : /צפי/.test(t) ? 'VIEWING' : /מכיר|קני|אתר/.test(t) ? 'SALES' : /ליד|טלפון|שיחה|פניות|טופס/.test(t) ? 'LEADS' : null);
-      if (!goal) return null;
+        || (/וואטסאפ|ווטסאפ|whatsapp/i.test(t) ? 'WHATSAPP' : /צפי/.test(t) ? 'VIEWING' : /מכיר|קני|אתר/.test(t) ? 'SALES' : /ליד|טלפון|שיחה|פניות|טופס|יתקשר|התקשר|לחזור אלי|יחזרו|פרטים|שם ומספר/.test(t) ? 'LEADS' : null);
+      // A question goes to the agent; anything else is re-asked instead of leaving the onboarding.
+      if (!goal) return /[?？]\s*$/.test(t) ? null : askGoal(clientId, [copy.goalUnclear], a);
       a.goal = goal;
       await save(clientId, 'BUDGET', a);
       return askBudget(clientId, [], a);
     }
     case 'BUDGET': {
       const m = t.replace(/,/g, '').match(/\d{1,6}/);
-      if (!m) return null;
+      if (!m) return /[?？]\s*$/.test(t) ? null : askBudget(clientId, [copy.budgetInvalid], a);
       const n = Number(m[0]);
       if (n < 10 || n > 100000) return askBudget(clientId, [copy.budgetInvalid], a);
       a.daily = n;
