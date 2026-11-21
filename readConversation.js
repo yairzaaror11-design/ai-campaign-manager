@@ -2,7 +2,7 @@
 const meta=require('./metaConnection'),connection=require('./metaConversation'),store=require('./marketingStore'),menu=require('./accountMenu');
 function request(text){
  const n=String(text).trim().replace(/[.!?]+$/,'');
- const named=n.match(/^(?:תעבור|תעברי|עבור|עברי|תחליף|תחליפי|החלף|החליפי|בחר|בחרי)(?: לי)? (?:לחשבון|לחשבון הפרסום|חשבון|את החשבון)\s+(.+)$/);
+ const named=n.match(/^(?:(?:אפשר|תוכל|אני רוצה|רוצה)\s+)?(?:תעבור|תעברי|עבור|עברי|לעבור|תחליף|תחליפי|החלף|החליפי|להחליף|בחר|בחרי|לבחור)(?: לי)? (?:לחשבון|לחשבון הפרסום|חשבון|את החשבון)\s+(.+)$/);
  const search=n.match(/^(?:חפש|חפשי)(?: לי)? (?:חשבון|חשבונות)\s+(.+)$/);
  const page=n.match(/^\/meta-page (\d{1,3})$/);
  // "Switch ad account" names no account: show the list instead of searching for "מודעות".
@@ -10,7 +10,7 @@ function request(text){
  if(named)return{type:'select',query:named[1]};
  if(search)return{type:'list',query:search[1]};
  if(page)return{type:'list',page:Number(page[1]),preserveQuery:true};
- if(/^(?:החשבונות שלי|חשבונות הפרסום|בחירת חשבון|הצג חשבונות|\/meta-accounts)$/.test(n))return{type:'list'};
+ if(/^(?:החשבונות שלי|חשבונות הפרסום|בחירת חשבון|הצג חשבונות|\/meta-accounts)$/.test(n)||/^(?:(?:אפשר|אני רוצה|רוצה)\s+(?:לראות|להציג)|(?:תראה|תראי|תציג|תציגי|הצג|הראה)(?: לי)?)\s+(?:את\s+)?(?:כל\s+)?(?:ה)?חשבונות(?:\s+ה?פרסום)?(?:\s+שלי)?$|^(?:איזה|אילו) חשבונות(?: פרסום)? יש לי$/.test(n))return{type:'list'};
  if(/^\/report(?: |$)/.test(n)||/כמה (?:כסף )?(?:הוצאתי|הוצאנו|הוצאת)|דוח ביצועים|תוצאות השבוע|(?:כמה לידים|כמה מכירות).*(?:היו|הגיעו|קיבלתי|השבוע|החודש|אתמול|היום)/.test(n))return{type:'report'};
  return null;
 }
@@ -18,8 +18,8 @@ async function handle(clientId,text){
  const req=request(text);if(!req)return null;
  if(req.type==='report'){
    let period;try{period=require('./reportPeriod').parse(text);}catch{return{handled:true,reply:'טווח התאריכים לא תקין. אפשר לשלוח תאריך התחלה וסיום, למשל 2026-01-01 עד 2026-01-31?'};}
-   if(!period)return{handled:true,reply:'לאיזו תקופה להציג את הדוח? אפשר לכתוב ״החודש״, ״בשנה האחרונה״ או שני תאריכים.'};
-   try{return{handled:true,reply:await require('./reportService').campaignReport(clientId,period)};}catch{return{handled:true,reply:'לא הצלחתי לקרוא דוח מאומת מהחשבון הנבחר. אפשר לכתוב ״מצב חיבור חשבון מטא״ לבדיקת הגישה.'};}
+   if(!period)return{handled:true,reply:'לאיזו תקופה להציג את הדוח? למשל החודש, השנה האחרונה, או בין שני תאריכים.'};
+   try{return{handled:true,reply:await require('./reportService').campaignReport(clientId,period)};}catch{return{handled:true,reply:'לא הצלחתי לקרוא דוח מאומת מהחשבון הנבחר. אם תרצה, רק תבקש ממני לבדוק את החיבור למטא.'};}
  }
  const fresh=await connection.verify(clientId);
  if(!['CONNECTED','ACCOUNT_SELECTION_REQUIRED'].includes(fresh.status))return{handled:true,reply:connection.statusReply(fresh)};

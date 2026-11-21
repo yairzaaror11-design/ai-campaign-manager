@@ -59,7 +59,7 @@ async function connection(clientId) {
 const tosLink = (accountId) => 'https://business.facebook.com/ads/manage/customaudiences/tos/?act=' + String(accountId).replace(/^act_/, '');
 const tosMessage = (accountId) => '✋ כדי ליצור קהל מרשימת לקוחות, Meta דורשת לאשר פעם אחת את "תנאי השימוש לקהלים מותאמים אישית" (Custom Audience Terms).\n' +
   'זה לוקח דקה: פותחים את הקישור, מתחברים עם חשבון הפייסבוק של העסק ולוחצים "אישור":\n' + tosLink(accountId) +
-  '\nאחרי שאישרת, כתוב לי "קהל לקוחות" ונמשיך. לא נשלח שום דבר ל־Meta.';
+  '\nאחרי שתאשר, רק תבקש ממני להמשיך עם קהל הלקוחות. לא נשלח שום דבר ל־Meta.';
 async function tosAccepted(c) {
   const r = await require('./metaConnection').graph('/' + c.meta_ad_account_id, c.token, { fields: 'tos_accepted' });
   return Number(r?.tos_accepted?.custom_audience_tos) === 1;
@@ -140,7 +140,7 @@ const choice = (title, text) => ({ title, text });
 // "קהל לקוחות": status in plain Hebrew plus the next sensible step as buttons.
 async function status(clientId) {
   let c;
-  try { c = await connection(clientId); } catch { return { text: '👥 קהל לקוחות: כדי ליצור קהל ב־Meta צריך קודם לחבר חשבון פרסום. כתוב "חיבור למטא" ונתחיל.', items: [] }; }
+  try { c = await connection(clientId); } catch { return { text: '👥 קהל לקוחות: כדי ליצור קהל ב־Meta צריך קודם לחבר חשבון פרסום. רק תבקש ממני לחבר את מטא ונתחיל.', items: [] }; }
   const hashes = await buyerHashes(clientId), now = await current(clientId, c.meta_ad_account_id);
   const size = await matched(c, now.audienceId), lines = ['👥 *קהל הלקוחות הקיימים שלך*'];
   lines.push('ב־CRM: ' + hashes.length + ' לקוחות שסגרו עסקה (עם מספר טלפון).');
@@ -180,13 +180,13 @@ const reasonText = {
 // WhatsApp: "קהל לקוחות" and its buttons. Returns true when handled.
 async function handleText(from, text, { approve } = {}) {
   const t = String(text || '').trim();
-  const command = /^\/buyers-(status|sync|lookalike|later)$/.exec(t)?.[1] || (/^(?:קהל ה?לקוחות(?: ה?קיימים)?)[?!.]*$/.test(t) ? 'status' : null);
+  const command = /^\/buyers-(status|sync|lookalike|later)$/.exec(t)?.[1] || (/^(?:(?:(?:תמשיך|נמשיך|להמשיך|המשך) עם |(?:תראה|תציג) לי את |מה (?:עם|מצב) )?(?:ה)?קהל ה?לקוחות(?: ה?קיימים)?(?: שלי)?)[?!.]*$/.test(t) ? 'status' : null);
   if (!command || !enabled() || !db.configured()) return false;
   const client = await require('./clientStore').getOrCreateClient(from);
   const say = (m, ui) => require('./whatsapp').safeSend(from, m, ui);
-  if (command === 'later') { await say('בסדר גמור 👍 אפשר לחזור לזה בכל רגע עם "קהל לקוחות".'); return true; }
+  if (command === 'later') { await say('בסדר גמור 👍 אפשר לחזור לזה בכל רגע, רק תבקש ממני את קהל הלקוחות.'); return true; }
   if (command === 'status') { await sendStatus(client.id, from); return true; }
-  if (await ownerBusy(client.id)) { await say('יש משימה שמחכה לאישור שלך. סיימו או בטלו אותה קודם, כדי ששום אישור לא יידרס.'); return true; }
+  if (await ownerBusy(client.id)) { await say('יש משימה שמחכה לאישור שלך. כדאי לסיים או לבטל אותה קודם, כדי ששום אישור לא יידרס.'); return true; }
   try {
     const r = command === 'sync' ? await prepareSync(client.id, { approve }) : await prepareLookalike(client.id, { approve });
     if (!r.approval) { await say(r.reply || reasonText[r.reason] || 'אין מה לעדכן כרגע.'); return true; }
@@ -197,7 +197,7 @@ async function handleText(from, text, { approve } = {}) {
     const code = /^[A-Z_]+$/.test(error?.message || '') ? error.message : 'BUYER_AUDIENCE_PREPARE_FAILED';
     logger.warn('Buyer audience approval not prepared', { error: code });
     if (error?.reply) await say(error.reply);
-    else await say(code === 'META_CONNECTION_REQUIRED' ? 'כדי ליצור קהל צריך חיבור פעיל לחשבון הפרסום. כתוב "חיבור למטא".' : 'לא הצלחתי להכין את הקהל מול Meta כרגע. לא נשלח שום דבר. אפשר לנסות שוב בעוד כמה דקות.');
+    else await say(code === 'META_CONNECTION_REQUIRED' ? 'כדי ליצור קהל צריך חיבור פעיל לחשבון הפרסום. רק תבקש ממני לחבר את מטא ונתחיל.' : 'לא הצלחתי להכין את הקהל מול Meta כרגע. לא נשלח שום דבר. אפשר לנסות שוב בעוד כמה דקות.');
   }
   return true;
 }

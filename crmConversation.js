@@ -1,5 +1,8 @@
 'use strict';
 const store=require('./marketingStore'),crm=require('./crmService'),db=require('./db');
+// The owner's lead list: the old exact phrases plus natural ones ("תראה לי את הלידים", "מה עם הלידים?",
+// "אני רוצה לעדכן את הפניות").
+const LEADS=/^(?:הלידים שלי|הפניות שלי|כמה לידים יש לי|כמה פניות יש לי|(?:(?:אפשר|אני רוצה|רוצה)\s+)?(?:לראות|לעדכן|תראה(?: לי)?|תראי(?: לי)?|תציג(?: לי)?|הצג(?: לי)?|הראה(?: לי)?|תעדכן|עדכון)\s+(?:את\s+)?(?:כל\s+)?(?:ה)?(?:לידים|פניות)(?:\s+שלי)?|מה (?:עם|קורה עם|המצב עם|מצב) (?:ה)?(?:לידים|פניות)(?:\s+שלי)?|עדכון לידים)[?.!\s]*$/;
 const LABELS={NEW:'חדשה',CONTACTED:'בטיפול',APPOINTMENT:'נקבעה פגישה',WON:'נסגרה עסקה',LOST:'לא הבשילה'};
 async function handle(clientId,text){
  const p=await store.load(clientId);
@@ -8,8 +11,8 @@ async function handle(clientId,text){
   const amount=s.revenue.map(x=>`${Number(x.amount)/100} ${({ILS:'₪',USD:'$',EUR:'€'}[x.currency]||x.currency)}`).join(', ');
   return{handled:true,reply:'הפניות במערכת:\n'+Object.entries(LABELS).map(([key,label])=>`${label}: ${s.counts[key]||0}`).join('\n')+(amount?'\nהכנסות מעסקאות שסומנו כנסגרו: '+amount:'')+'\nאלה נתוני המעקב שהוזנו למערכת; הם אינם ייחוס מאומת לקמפיין.'};
  }
- if(/^(?:הוסף פנייה|הוספת פנייה|פנייה חדשה)$/.test(text))return store.update(clientId,null,profile=>{profile.crmIntake={stage:'NAME'};return{handled:true,reply:'מה שם הפונה? אפשר לכתוב ״בטל הוספה״ בכל שלב.'};});
- if(p?.crmIntake&&text==='בטל הוספה')return store.update(clientId,null,profile=>{delete profile.crmIntake;return{handled:true,reply:'הוספת הפנייה בוטלה.'};});
+ if(/^(?:הוסף פנייה|הוספת פנייה|פנייה חדשה)$/.test(text))return store.update(clientId,null,profile=>{profile.crmIntake={stage:'NAME'};return{handled:true,reply:'מה שם הפונה? אם תתחרט, אפשר לבטל את ההוספה בכל שלב.'};});
+ if(p?.crmIntake&&/^(?:בטל הוספה|(?:תבטל|בטל|לבטל)(?: את)? (?:ה)?הוספה|(?:תבטל|בטל|עזוב)(?: את זה)?|התחרטתי)[.!\s]*$/.test(text))return store.update(clientId,null,profile=>{delete profile.crmIntake;return{handled:true,reply:'הוספת הפנייה בוטלה.'};});
  if(p?.crmIntake?.stage==='NAME'&&!/[?？]/.test(text)&&text.length<=120&&!/^(?:איך|למה|כמה|מה |תכין|תיצור|נעבור)/.test(text))return store.update(clientId,null,profile=>{profile.crmIntake={stage:'CONTACT',name:text.trim()};return{handled:true,reply:'מה מספר הטלפון או כתובת האימייל של הפונה?'};});
  if(p?.crmIntake?.stage==='CONTACT'&&/^(?:\+?[\d ()-]{7,30}|[^\s@]+@[^\s@]+\.[^\s@]+)$/.test(text)){
   const event=require('./whatsappDelivery').messageContext.getStore()?.eventId;
@@ -41,7 +44,7 @@ async function handle(clientId,text){
    return{handled:true,reply:follow.kind==='REVENUE'?'סכום העסקה נשמר. אפשר לבקש ״סיכום פניות״.':'הסיבה נשמרה למעקב ולשיפור.'};
   }
  }
- if(/^(?:הלידים שלי|הפניות שלי|כמה לידים יש לי|תראה לי את הפניות|תראה לי את הלידים)$/.test(text)){
+ if(LEADS.test(text)){
   const leads=(await crm.list(clientId)).slice(0,9),summary=await crm.summary(clientId);
   return store.update(clientId,null,profile=>{delete profile.crmIntake;delete profile.crmFollowup;profile.crmMenu=leads.map(x=>({id:x.id,name:x.name,version:x.version}));delete profile.crmFocus;
    return{handled:true,reply:leads.length?`נשמרו ${Object.values(summary.counts).reduce((a,b)=>a+b,0)} פניות במערכת.\n`+leads.map((l,i)=>`${i+1}. ${l.name} — ${LABELS[l.status]}`).join('\n')+'\nבאיזו פנייה נטפל?':'עדיין אין פניות במערכת. אפשר להוסיף פנייה בדשבורד או לפרסם דף פניות מהטיוטה.',decisionKey:leads.length?'crm_leads':null};
@@ -66,4 +69,4 @@ async function handle(clientId,text){
  }
  return null;
 }
-module.exports={handle,LABELS};
+module.exports={handle,LABELS,LEADS};

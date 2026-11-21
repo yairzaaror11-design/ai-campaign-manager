@@ -33,11 +33,11 @@ function record(p,q,answer,now) {
 }
 function diagnosticTransition(p,text,{now=new Date().toISOString()}={}) {
   const n=qs.normalized(text);
-  if(/^(עצור|עצירה|נעצור|אחר כך|הפסק|מספיק|לא עכשיו)$/.test(n)) {
+  if(/^(עצור|תעצור|עצירה|נעצור|בוא נעצור|אחר כך|הפסק|מספיק|לא עכשיו)$/.test(n)) {
     if(!p.session) return {handled:false};
-    p.session.paused=true;return {handled:true,reply:'עצרנו כאן. התשובות נשמרו. אפשר לכתוב ״נמשיך״ כשנוח לך.'};
+    p.session.paused=true;return {handled:true,reply:'עצרנו כאן, והתשובות נשמרו. כשנוח לך, רק תגיד לי ונמשיך.'};
   }
-  if(/^(סיכום אפיון|מה כבר ידוע|\/discovery-status)$/.test(n)) return {handled:true,reply:qs.summary(p)||'עדיין לא נשמרו תשובות. אפשר לכתוב ״נתחיל״.'};
+  if(/^(סיכום אפיון|מה כבר ידוע|\/discovery-status)$/.test(n)) return {handled:true,reply:qs.summary(p)||'עדיין לא נשמרו תשובות. כשתרצה להתחיל, רק תגיד לי.'};
   const change=text.match(/^(?:עדכן|תקן)\s+([A-Z]+-\d{3})\s+([\s\S]+)$/i);
   if(change) {
     const q=qs.question(change[1].toUpperCase());
@@ -55,9 +55,9 @@ function diagnosticTransition(p,text,{now=new Date().toISOString()}={}) {
       return deliverNext(p,'נמשיך מהמקום שבו עצרנו.');
     }
     p.session={route:requested,pendingId:null,answersSinceSummary:0,paused:false,awaitingContinue:false,complete:false};
-    return deliverNext(p,requested==='onboarding'?'היי, אני SCORPIO AI. נכיר את העסק ונבנה כיוון לפרסום, שאלה אחת בכל פעם. אפשר לכתוב ״לא ידוע״ או ״עצור״.':'נבדוק את זה יחד, שאלה אחת בכל פעם. אפשר לכתוב ״לא ידוע״ או ״עצור״.');
+    return deliverNext(p,requested==='onboarding'?'היי, אני SCORPIO AI. נכיר את העסק ונבנה כיוון לפרסום, שאלה אחת בכל פעם. אם אין לך תשובה לשאלה, זה בסדר, ואפשר לעצור בכל רגע.':'נבדוק את זה יחד, שאלה אחת בכל פעם. אם אין לך תשובה לשאלה, זה בסדר, ואפשר לעצור בכל רגע.');
   }
-  if(/^(להמשיך|נמשיך|המשך|ממשיכים|אפשר להמשיך)$/.test(n)||(n==='כן'&&p.session?.awaitingContinue)) {
+  if(/^(להמשיך|נמשיך|המשך|תמשיך|ממשיכים|אפשר להמשיך|בוא נמשיך)$/.test(n)||(n==='כן'&&p.session?.awaitingContinue)) {
     if(!p.session) return {handled:false};
     p.session.paused=false;p.session.awaitingContinue=false;p.session.answersSinceSummary=0;
     return deliverNext(p);
@@ -102,13 +102,13 @@ async function handleMarketingMessage(clientId,text,eventId,options={}) {
   await require('./personalConversation').hydrate(clientId);
   const personal=await require('./personalConversation').handle(clientId,text,eventId);if(personal)return personal;
   const launchProfile=await store.load(clientId);
-  if(text==='חבר הרשאת יצירת קמפיינים'||text==='תן הרשאה')return require('./metaConversation').handle(clientId,text,{},eventId);
-  const startLaunch=/^(המשך ליצירת הקמפיין|צור את הקמפיין במטא|הכן ליצירה ב־Meta)$/.test(text)||launchProfile?.launch?.stage!=='SETUP'&&launchProfile?.journey?.stage==='PLAN_REVIEW'&&!launchProfile?.journey?.detour&&!launchProfile?.offerReview&&launchProfile?.journey?.requestedOutput!=='social'&&/^(כן|מאשר|מאשרת)$/.test(text);
+  if(require('./metaConversation').MANAGE.test(text)||require('./metaConversation').GRANT.test(text))return require('./metaConversation').handle(clientId,text,{},eventId);
+  const startLaunch=/^(המשך ליצירת הקמפיין|צור את הקמפיין במטא|הכן ליצירה ב־Meta|(?:(?:אפשר|בוא|אני רוצה)\s+)?(?:להמשיך|נמשיך|תמשיך|המשך) ליצירת (?:ה)?קמפיין|(?:תיצור|צור|ליצור) את הקמפיין(?: ב(?:מטא|־?Meta))?)[.!\s]*$/.test(text)||launchProfile?.launch?.stage!=='SETUP'&&launchProfile?.journey?.stage==='PLAN_REVIEW'&&!launchProfile?.journey?.detour&&!launchProfile?.offerReview&&launchProfile?.journey?.requestedOutput!=='social'&&/^(כן|מאשר|מאשרת)$/.test(text);
   if(startLaunch&&launchProfile?.offerReview)return store.update(clientId,null,p=>require('./offerPolicy').review(p));
   if(startLaunch)return require('./campaignSetup').start(clientId);
   if(launchProfile?.launch?.stage==='SETUP'&&!launchProfile?.offerReview&&!['reject','ambiguous'].includes(require('./contentIntent').classify(text).kind)&&!require('./contentIntent').classify(text).correction&&launchProfile?.journey?.requestedOutput!=='social'&&!require('./socialContent').requested(text)&&!text.startsWith('/')&&!/^(לא עכשיו|עצור|קמפיין חדש|אני רוצה קמפיין)$/.test(text)){
    const current=await require('./metaConnection').credentials(clientId);
-   if(current.meta_ad_account_id!==launchProfile.launch.accountId){await store.update(clientId,null,p=>{delete p.launch;return{handled:false,changed:true};});return{handled:true,reply:'חשבון הפרסום השתנה. לפני יצירה נוודא שהתוכנית מתאימה לעסק של החשבון החדש. אפשר לכתוב ״המשך ליצירת הקמפיין״ לבדיקת הפרטים.'};}
+   if(current.meta_ad_account_id!==launchProfile.launch.accountId){await store.update(clientId,null,p=>{delete p.launch;return{handled:false,changed:true};});return{handled:true,reply:'חשבון הפרסום השתנה. לפני יצירה נוודא שהתוכנית מתאימה לעסק של החשבון החדש. כשתרצה להמשיך ליצירת הקמפיין, רק תגיד לי ונבדוק את הפרטים.'};}
    return{handled:false};
   }
   const task=await require('./taskAgent').maybeHandle(clientId,{message:text,requestId:'whatsapp:'+eventId,channel:'WHATSAPP'},options);if(task)return task;
@@ -120,7 +120,7 @@ async function handleMarketingMessage(clientId,text,eventId,options={}) {
     const analysis=await require('./conversationAnalysis').analyze(text,snapshot,options);
     if(analysis.intent==='report'){
       const period=require('./reportPeriod').parse(text);
-      if(!period)return{handled:true,reply:'לאיזו תקופה להציג את הדוח? אפשר לכתוב החודש, בשנה האחרונה או שני תאריכים.'};
+      if(!period)return{handled:true,reply:'לאיזו תקופה להציג את הדוח? למשל החודש, השנה האחרונה, או בין שני תאריכים.'};
       const status=await require('./metaConversation').verify(clientId);
       if(!status.canRead)return{handled:true,reply:require('./metaConversation').statusReply(status)};
       try{return{handled:true,reply:await require('./reportService').campaignReport(clientId,period)};}

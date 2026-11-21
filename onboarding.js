@@ -182,7 +182,7 @@ async function handleText(clientId, text, options = {}) {
   if (copy.skipWords.test(t)) { await finish(clientId); return plain(copy.skip); }
   if (CONTINUE.test(t)) return question(clientId, row.step, a, [copy.resumeHint]);
   // Commands that have their own handlers are never taken as an onboarding answer.
-  if (require('./dashboardLink').request(t) || require('./undoActions').REQUEST.test(t) || require('./activityLog').REQUEST.test(t) || require('./activityLog').STATUS_REQUEST.test(t) || /^(?:הסכם\s+(?:ה)?עבודה|עצור את כל הפעולות האוטומטיות|נציג|אשר\s+\d{6})$/u.test(t)) return null;
+  if (require('./dashboardLink').request(t) || require('./undoActions').REQUEST.test(t) || require('./activityLog').REQUEST.test(t) || require('./activityLog').STATUS_REQUEST.test(t) || require('./workAgreement').PAUSE.test(t) || require('./workAgreement').RESUME.test(t) || /^(?:הסכם\s+(?:ה)?עבודה|נציג|אשר\s+\d{6})$/u.test(t)) return null;
 
   switch (row.step) {
     case 'LINK': {

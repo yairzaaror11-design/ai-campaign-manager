@@ -92,7 +92,8 @@ test('no approval is offered for a plan above the daily cap, with a clear way to
     assert.equal(await spendCap.get(id), 80);
     await assert.rejects(require('../approvalEngine').createApprovalForClient(id, bundle(70902, 100)), (e) => {
       assert.equal(e.message, 'SPEND_CAP_EXCEEDED');
-      assert.match(e.reply, /100 ₪/); assert.match(e.reply, /80 ₪/); assert.match(e.reply, /תקרה יומית 100/);
+      assert.match(e.reply, /100 ₪/); assert.match(e.reply, /80 ₪/); assert.match(e.reply, /להעלות את התקרה ל־100 ₪/);
+      assert.deepEqual(require('../spendCap').parse('תעלה את התקרה ל־100'), { op: 'set', amount: 100 }, 'the suggested words are understood');
       return true;
     });
     assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM approvals WHERE client_id=$1', [id])).rows[0].n, 0);

@@ -49,7 +49,7 @@ function advance(p,{target='plan',prefix=''}={}){
 }
 function parsePending(field,text){
  const n=norm(text);
- if(require('./conversationControl').hasControlContamination(text))return{error:'כדי להתחיל שיחה חדשה אפשר לכתוב ״נתחיל מחדש״. מה נרצה לעשות?'};
+ if(require('./conversationControl').hasControlContamination(text))return{error:'אם תרצה להתחיל מההתחלה, רק תגיד לי. מה נרצה לעשות?'};
  if(/^(לא יודע(?:ת)?|לא ידוע|אין לי נתון|דלג|לא בטוח(?:ה)?)$/.test(n))return{status:'unknown',value:null};
  if(/^(לא רלוונטי|לא חל)$/.test(n))return{status:'not_applicable',value:null};
  if(field==='dailyBudget'){

@@ -17,11 +17,17 @@ test('report, readiness and video commands bypass the task planner', () => {
   }
 });
 
-test('alerts and reports name a command the bot actually understands', () => {
-  assert.match(require('../leadAlert').alertText({ name: 'x' }, 'r'), /הלידים שלי/);
+test('alerts and reports suggest a natural request the bot actually understands, never a command', () => {
+  const profile = require('../agentProfile'), { LEADS } = require('../crmConversation');
+  const alert = require('../leadAlert').alertText({ name: 'x' }, 'r');
+  assert.match(alert, /לראות את הלידים/); assert.ok(!profile.COMMAND.test(alert));
   const f = { leads: 0, untouched: 0, staleUntouched: 0, contacted: 0, meetings: 0, won: 0, lost: 0, revenue: 0 };
   const r = require('../businessReport');
-  assert.match(r.format({ days: 7, funnel: f, spend: null, metrics: r.metrics(f, null), campaigns: [], nextSteps: ['x'] }), /הלידים שלי/);
+  const report = r.format({ days: 7, funnel: f, spend: null, metrics: r.metrics(f, null), campaigns: [], nextSteps: ['x'] });
+  assert.match(report, /לראות אותם|לראות את הלידים/); assert.ok(!profile.COMMAND.test(report));
+  // What the owner naturally says back is understood, and the old exact words still work.
+  for (const m of ['הלידים שלי', 'הפניות שלי', 'תראה לי את הלידים', 'מה עם הלידים?', 'אני רוצה לראות את הלידים', 'אני רוצה לעדכן את הפניות']) assert.ok(LEADS.test(m), m);
+  assert.ok(!LEADS.test('תכין לי קמפיין לידים'));
 });
 
 test('asking to switch the ad account opens the verified account menu', () => {
@@ -30,6 +36,8 @@ test('asking to switch the ad account opens the verified account menu', () => {
   assert.notEqual(analysis.localAnalysis('תחליף את הכותרת').intent, 'select_account');
   const read = require('../readConversation');
   assert.deepEqual(read.request('החשבונות שלי'), { type: 'list' });
+  for (const m of ['תציג לי את כל החשבונות', 'תראה לי את החשבונות שלי', 'אני רוצה לראות את החשבונות']) assert.deepEqual(read.request(m), { type: 'list' }, m);
+  assert.deepEqual(read.request('אפשר לעבור לחשבון יאיר דיגיטל'), { type: 'select', query: 'יאיר דיגיטל' });
   assert.deepEqual(read.request('תעבור לחשבון יאיר דיגיטל'), { type: 'select', query: 'יאיר דיגיטל' });
   for (const m of ['תחליף חשבון מודעות', 'תחליף חשבון פרסום', 'החלף חשבון אחר']) assert.deepEqual(read.request(m), { type: 'list' }, m);
 });

@@ -185,14 +185,14 @@ async function submit(slug, input, { ip = null, userAgent = null } = {}) {
 
 // ---------- WhatsApp: "הדף שלי", "פרסם דף" ----------
 const SHOW = /^(?:הדף שלי|דף נחיתה|עמוד נחיתה|דף העסק|הדף של העסק|דף מכירה|עמוד מכירה|הדפים שלי)[?]?$/;
-const PUBLISH = /^(?:פרסם|תפרסם|לפרסם)(?: את)? (?:ה)?(?:דף|דפים|עמוד|עמודים)(?: ה?נחיתה| ה?מכירה| ה?עסק)?$/;
+const PUBLISH = /^(?:(?:אפשר|אני רוצה|רוצה)\s+)?(?:פרסם|תפרסם|לפרסם|תעלה|להעלות)(?: לי)?(?: את)? (?:ה)?(?:דף|דפים|עמוד|עמודים)(?: ה?נחיתה| ה?מכירה| ה?עסק| שלי)?(?: לאוויר)?[.!\s]*$/;
 const WHY = {
   NO_AGREEMENT: 'עוד אין הסכם עבודה שמאפשר לי לפרסם לבד',
   PAUSED: 'הפעולות האוטומטיות עצורות כרגע',
   NOT_ALLOWED: 'הסכם העבודה לא מאפשר לי לפרסם תוכן לבד',
   REGISTRATION_REQUIRED: 'צריך קודם להשלים הרשמה בדשבורד (שם ואימייל), כדי שיופיע מי מפעיל את הטופס'
 };
-function pendingText(why) { return `📄 הכנתי דף לעסק, והוא עוד לא באוויר: ${WHY[why] || 'צריך את האישור שלך'}.\nלפרסום כתוב: פרסם דף`; }
+function pendingText(why) { return `📄 הכנתי דף לעסק, והוא עוד לא באוויר: ${WHY[why] || 'צריך את האישור שלך'}.\nאם תרצה לפרסם את הדף, רק תגיד לי.`; }
 async function handleText(clientId, t) {
   if (SHOW.test(t)) {
     const r = await businessPage(clientId);
@@ -206,7 +206,7 @@ async function handleText(clientId, t) {
       const biz = live.find((x) => x.kind === 'BUSINESS');
       return { reply: `✅ ${out.length ? 'פרסמתי' : 'הדפים כבר באוויר'}. הדף של העסק:\n${biz?.url}\n${live.filter((x) => x.kind === 'ITEM' && x.url).slice(0, 5).map((x) => `• ${x.item_title}: ${x.url}`).join('\n')}`.trim() };
     } catch (e) {
-      if (e.message === 'REGISTRATION_REQUIRED') return { reply: '✋ ' + WHY.REGISTRATION_REQUIRED + '. כתוב "דשבורד" ואשלח לך קישור.' };
+      if (e.message === 'REGISTRATION_REQUIRED') return { reply: '✋ ' + WHY.REGISTRATION_REQUIRED + '. אם תרצה, רק תבקש ממני קישור לדשבורד.' };
       throw e;
     }
   }
@@ -216,7 +216,7 @@ async function handleText(clientId, t) {
 function itemLine(r) {
   if (!r) return '';
   if (r.published) return `🌐 הדף שלו באוויר: ${r.url}`;
-  return r.why === 'REGISTRATION_REQUIRED' ? '📄 הכנתי לו דף מכירה. כדי לפרסם אותו צריך להשלים הרשמה בדשבורד.' : '📄 הכנתי לו דף מכירה (עוד לא באוויר). לפרסום כתוב: פרסם דף';
+  return r.why === 'REGISTRATION_REQUIRED' ? '📄 הכנתי לו דף מכירה. כדי לפרסם אותו צריך להשלים הרשמה בדשבורד.' : '📄 הכנתי לו דף מכירה (עוד לא באוויר). אם תרצה לפרסם את הדף, רק תגיד לי.';
 }
 
 module.exports = { SLUG, ensure, publish, publishDrafts, decide, businessPage, onItemActive, list, get, view, photo, render, csp, submit, handleText, itemLine, pixelFor };

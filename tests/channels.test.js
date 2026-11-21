@@ -176,7 +176,7 @@ test('landing pages per business and item: agreement decides publishing, form cr
     // No agreement: drafts, and the owner is told why.
     let r = await lp.onItemActive(id, active);
     assert.equal(r.published, false); assert.equal(r.why, 'NO_AGREEMENT');
-    assert.match(lp.itemLine(r), /פרסם דף/);
+    assert.match(lp.itemLine(r), /לפרסם את הדף/);
     await assert.rejects(lp.get((await db.query("SELECT slug FROM landing_pages WHERE client_id=$1 AND kind='ITEM'", [id])).rows[0].slug), /LANDING_NOT_FOUND/);
     // The agreement allows publishing content: pages go live by themselves (idempotent, one page each).
     await agree(id, { organicPosts: true });
@@ -286,8 +286,8 @@ test('HTTP: public page, lead form origin check, webhook auth, WhatsApp commands
     await db.query("INSERT INTO customer_accounts(client_id,display_name,consent_version) VALUES($1,'דנה','v1')", [id]);
     const conv = require('../channelConversation');
     let r = await conv.handleText('972504804030', 'הדף שלי');
-    assert.match(r.reply, /פרסם דף/);
-    r = await conv.handleText('972504804030', 'פרסם דף');
+    assert.match(r.reply, /לפרסם את הדף, רק תגיד לי/);
+    r = await conv.handleText('972504804030', 'תפרסם את הדף');
     assert.match(r.reply, /https:\/\/app\.example\.test\/p\/b[a-z0-9]{10}/);
     const slug = r.reply.match(/\/p\/(b[a-z0-9]{10})/)[1];
     const page = await fetch(root + '/p/' + slug);

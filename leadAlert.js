@@ -37,8 +37,8 @@ function alertText(lead, reply, { buttons = false, answers = [] } = {}) {
     lines.push(`https://wa.me/${number}?text=${encodeURIComponent(reply)}`);
   }
   lines.push('');
-  lines.push(buttons ? 'אחרי שחזרת, לחצו על הכפתור למטה.' : 'אחרי שחזרת, כתבו: התקשרתי');
-  lines.push('לעדכון מצב הפנייה בהמשך, כתבו: הלידים שלי');
+  lines.push(buttons ? 'אחרי שחזרת אליו, תלחץ על הכפתור למטה.' : 'אחרי שחזרת אליו, רק תעדכן אותי.');
+  lines.push('כשיהיה עדכון בהמשך, רק תבקש ממני לראות את הלידים.');
   lines.push(require('./dashboardLink').hint('leads'));
   return lines.join('\n');
 }

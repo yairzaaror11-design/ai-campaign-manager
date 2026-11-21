@@ -10,7 +10,7 @@ const { logger } = require('./logger');
 const NOTICE_DAYS = 7;
 const KEEP_BUTTON_ID = 'retention:keep';
 const KEEP_TEXT = 'שמור את המידע שלי';
-const KEEP_PATTERN = /^(?:שמור|שמרו|תשמור|תשמרו)\s+את\s+(?:המידע|הנתונים)\s+שלי[.!]?$/u;
+const KEEP_PATTERN = /^(?:(?:כן,?\s+)?(?:(?:אני\s+)?רוצה\s+)?(?:שמור|שמרו|תשמור|תשמרו|לשמור|שתשמור)\s+את\s+(?:ה)?(?:מידע|נתונים|פרטים)(?:\s+שלי)?|(?:אל|לא)\s+(?:תמחק|למחוק)(?:\s+את\s+(?:ה)?(?:מידע|נתונים|פרטים)(?:\s+שלי)?)?)[.!]?$/u;
 
 function auditRetentionDays() {
   const n = Number(process.env.AUDIT_RETENTION_DAYS || 2557);
@@ -19,7 +19,7 @@ function auditRetentionDays() {
 }
 
 function noticeText(days) {
-  return `🗂️ שמנו לב שלא עבדנו יחד על השיווק כבר הרבה זמן.\nלפי מדיניות הפרטיות, בעוד ${NOTICE_DAYS} ימים נמחק את פרטי השיווק ששמרנו על העסק (קהל, מסרים והעדפות) – כי לא נעשה בהם שימוש ${days} ימים.\nרוצים שנשמור אותם? לחצו על הכפתור או כתבו "${KEEP_TEXT}".`;
+  return `🗂️ שמנו לב שלא עבדנו יחד על השיווק כבר הרבה זמן.\nלפי מדיניות הפרטיות, בעוד ${NOTICE_DAYS} ימים נמחק את פרטי השיווק ששמרנו על העסק (קהל, מסרים והעדפות) – כי לא נעשה בהם שימוש ${days} ימים.\nרוצה שנשמור אותם? אפשר ללחוץ על הכפתור למטה, או פשוט לבקש ממני לשמור את המידע.`;
 }
 function buttonPayload(text) {
   return { type: 'interactive', interactive: { type: 'button', body: { text }, action: { buttons: [{ type: 'reply', reply: { id: KEEP_BUTTON_ID, title: 'שמרו את המידע שלי' } }] } } };

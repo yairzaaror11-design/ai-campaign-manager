@@ -3,7 +3,7 @@
 // The link is personal, single-use and valid for 10 minutes; the address is never
 // written to AI history.
 const SCREENS = { 'לידים': 'leads', 'פניות': 'leads', 'ביצועים': 'performance', 'דוח': 'performance', 'תוצאות': 'performance', 'קמפיין': 'campaign', 'מותג': 'brand', 'תוכן': 'content', 'מכירות': 'sales', 'אישורים': 'approvals', 'נכסים': 'catalog', 'מוצרים': 'catalog', 'שירותים': 'catalog', 'קטלוג': 'catalog' };
-const PATTERN = /^(?:פתח(?:י)?\s+(?:לי\s+)?(?:את\s+)?)?(?:ה)?(?:דשבורד|תצוגה מקדימה|החשבון שלי|ניהול לידים)(?:\s+(?:של\s+)?(?:ה)?(לידים|פניות|ביצועים|דוח|תוצאות|קמפיין|מותג|תוכן|מכירות|אישורים|נכסים|מוצרים|שירותים|קטלוג))?$/;
+const PATTERN = /^(?:(?:(?:אפשר|תוכל|תוכלי|אני רוצה|רוצה)\s+)?(?:פתח(?:י)?|תפתח(?:י)?|לפתוח|שלח(?:י)?|תשלח(?:י)?|לשלוח|תן|תני|תראה|תראי|לראות|הראה|תביא|תביאי)\s+(?:לי\s+)?(?:את\s+)?)?(?:ה)?(?:דשבורד|תצוגה מקדימה|החשבון שלי|ניהול לידים)(?:\s+(?:של\s+)?(?:ה)?(לידים|פניות|ביצועים|דוח|תוצאות|קמפיין|מותג|תוכן|מכירות|אישורים|נכסים|מוצרים|שירותים|קטלוג))?(?:\s+(?:בבקשה|שלי))?[?.!\s]*$/;
 const ALLOWED = new Set(Object.values(SCREENS));
 
 // Flexible ways owners ask for the link: "שלח לי קישור לדשבורד", "תן לינק למערכת",
@@ -30,7 +30,11 @@ async function handle(clientId, text) {
   return { handled: true, reply: '🔐 הקישור האישי שלך לדשבורד (תקף ל־10 דקות, לשימוש אחד):\n' + address + '\n\nכל מה שכאן בשיחה מופיע גם שם, ולהפך.', historyReply: 'נשלח קישור אישי לדשבורד. כתובת הקישור לא נשמרה בהיסטוריית AI.' };
 }
 
-// A short hint that bot messages append, so the owner always knows how to see more.
-const hint = (screen) => `לפירוט מלא בדשבורד כתבו: דשבורד ${Object.keys(SCREENS).find((k) => SCREENS[k] === screen) || ''}`.trim();
+// A short hint that bot messages append, so the owner always knows how to see more. Phrased as a
+// natural request ("את דשבורד הביצועים") that request() understands, never as a command to type.
+const hint = (screen) => {
+  const word = Object.keys(SCREENS).find((k) => SCREENS[k] === screen);
+  return `אם תרצה לראות את כל הפרטים, רק תבקש ממני את ${word ? 'דשבורד ה' + word : 'הדשבורד'}.`;
+};
 
 module.exports = { request, handle, hint, ALLOWED, PATTERN };
