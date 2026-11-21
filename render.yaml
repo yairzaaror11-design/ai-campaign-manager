@@ -51,6 +51,10 @@ services:
         value: "true"
       - key: APP_PUBLIC_URL
         sync: false
+      - key: GOOGLE_LOGIN_CLIENT_ID
+        sync: false
+      - key: GOOGLE_LOGIN_CLIENT_SECRET
+        sync: false
       - key: META_APP_ID
         value: "3244596585929846"
       - key: META_LOGIN_CONFIG_ID
