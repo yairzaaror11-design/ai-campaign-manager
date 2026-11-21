@@ -170,13 +170,17 @@ async function publishInstagram(c, post, image, { wait = (ms) => new Promise((r)
   if (image.mimeType !== 'image/jpeg') throw fail('NEEDS_JPEG');
   const container = await postGraph(`/${c.accountId}/media`, c.token, 'instagram', { image_url: image.url, caption: post.caption, ...(post.format === 'STORY' ? { media_type: 'STORIES' } : {}) });
   if (!/^\d{1,40}$/.test(String(container.id || ''))) throw fail('PUBLISH_FAILED');
-  // Meta recommends checking the container when it is not ready yet; images are usually immediate.
-  for (let i = 0; i < 3; i++) {
+  // Publish only a FINISHED container (Meta: status_code EXPIRED/ERROR/FINISHED/IN_PROGRESS/PUBLISHED).
+  // Images are usually ready at once; a container still in progress after ~1 minute is not
+  // published (nothing went live, so the post safely falls back to the owner on WhatsApp).
+  let ready = false;
+  for (let i = 0; i < 10; i++) {
     const s = await get('/' + container.id, c.token, 'instagram', { fields: 'status_code' }).catch(() => ({}));
-    if (!s.status_code || s.status_code === 'FINISHED') break;
-    if (['ERROR', 'EXPIRED'].includes(s.status_code)) throw fail('PUBLISH_FAILED');
-    await wait(3000);
+    if (!s.status_code || s.status_code === 'FINISHED') { ready = true; break; }
+    if (['ERROR', 'EXPIRED', 'PUBLISHED'].includes(s.status_code)) throw fail('PUBLISH_FAILED');
+    await wait(6000);
   }
+  if (!ready) throw fail('PUBLISH_FAILED');
   const done = await postGraph(`/${c.accountId}/media_publish`, c.token, 'instagram', { creation_id: String(container.id) });
   const id = String(done.id || '');
   if (!/^\d{1,40}$/.test(id)) throw fail('PUBLISH_FAILED', { noAnswer: true });
