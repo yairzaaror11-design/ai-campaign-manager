@@ -3,11 +3,11 @@
 // "/notifications-on" command (kept as an alias, together with plain Hebrew phrases).
 const db=require('./db');
 const ON=/^(?:\/notifications-on|תשלח לי דוח כל שבוע|דוח שבועי אוטומטי|כן,? כל שבוע)[.!\s]*$/;
-const OFF=/^(?:\/notifications-off|בלי דוח שבועי|הפסק(?: את)? הדוח השבועי|לא רוצה דוח שבועי)[.!\s]*$/;
+const OFF=/^(?:\/notifications-off|בלי דוח שבועי|(?:הפסק|תפסיק|להפסיק|תעצור|עצור|תבטל|בטל)(?: את)?(?: ה)? ?דוח(?: ה)? ?שבועי|(?:אני\s+)?לא (?:רוצה|צריך|צריכה) (?:את )?(?:ה)?דוח (?:ה)?שבועי|בלי (?:ה)?דוחות(?: ה?שבועיים)?)[.!\s]*$/;
 // Promise only what will happen: weekly reports may be off, and outside WhatsApp's 24-hour
 // window a report can only go out through an approved template.
 function onText(){
- const stop=' כדי להפסיק, כתוב ״בלי דוח שבועי״.';
+ const stop=' אם תרצה להפסיק, רק תגיד לי.';
  if(process.env.WEEKLY_REPORTS_ENABLED!=='true')return'רשמתי ✓ הדוח השבועי האוטומטי עוד לא פעיל אצלנו. ברגע שיופעל תקבל אותו כל יום ראשון בבוקר. בינתיים אפשר לבקש ״דוח עסקי״ בכל רגע.'+stop;
  if(!process.env.WEEKLY_REPORT_TEMPLATE)return'מעולה ✓ כל יום ראשון בבוקר אשלח לך דוח שבועי קצר על הפרסום והלידים, כשהשיחה בינינו פעילה (וואטסאפ מאפשר לי לכתוב עד 24 שעות מההודעה האחרונה שלך).'+stop;
  return'מעולה ✓ כל יום ראשון בבוקר אשלח לך דוח שבועי קצר על הפרסום והלידים.'+stop;

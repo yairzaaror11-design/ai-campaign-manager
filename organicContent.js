@@ -209,15 +209,15 @@ async function requestShoot(clientId, details = null) {
 }
 
 // WhatsApp conversation.
-const SETUP = /^(?:תוכן שוטף|תוכן אורגני|תוכן קבוע|פוסטים קבועים|לוח תוכן ל(?:שלושה|3|־3|-3) חודשים|תכין לי תוכן (?:שוטף|אורגני|לשלושה חודשים))$/;
+const SETUP = /^(?:תוכן שוטף|(?:(?:אני רוצה|רוצה|אפשר)\s+)?(?:תוכן שוטף|לוח תוכן)(?: לרשתות)?|(?:תכין|תבנה|תעשה)(?: לי)? (?:לוח תוכן|תוכן שוטף)|תוכן אורגני|תוכן קבוע|פוסטים קבועים|לוח תוכן ל(?:שלושה|3|־3|-3) חודשים|תכין לי תוכן (?:שוטף|אורגני|לשלושה חודשים))$/;
 const SETUP_WITH = /^תוכן שוטף (?:עם |ב)?(גרפיקות AI|סרטוני AI|יום צילום|צילום אמיתי|משולב|שילוב)$/;
-const APPROVE = /^(?:אשר את כל התוכן|אשר את התוכן|אשר את כל הפוסטים|לאשר את כל הפוסטים|אשר פוסטים)$/;
-const PAUSE = /^(?:עצור|הפסק|השהה|תעצור|תשהה) (?:את ה)?תוכן(?: ה?שוטף)?$/;
-const RESUME = /^(?:המשך|חדש|תמשיך) (?:את ה)?תוכן (?:ה)?שוטף$/;
+const APPROVE = /^(?:אשר את כל התוכן|אשר את התוכן|אשר את כל הפוסטים|לאשר את כל הפוסטים|אשר פוסטים|(?:(?:אני\s+)?(?:מאשר|מאשרת)|תאשר|אפשר לאשר) את כל (?:ה)?(?:פוסטים|תוכן)|(?:כל )?הפוסטים מאושרים)[.!\s]*$/;
+const PAUSE = /^(?:עצור|הפסק|השהה|תעצור|תשהה|תפסיק|לעצור|להפסיק) (?:את ה|ה)?תוכן(?: ה?שוטף)?[.!\s]*$/;
+const RESUME = /^(?:(?:המשך|חדש|תמשיך|תחדש|להמשיך|לחדש|תחזיר|תפעיל)(?: את)? (?:ה)?תוכן (?:ה)?שוטף(?: מחדש)?|(?:אפשר|בוא)\s+(?:להמשיך|לחדש|נחדש|נמשיך)(?: את)? (?:ה)?תוכן (?:ה)?שוטף)[.!\s]*$/;
 const EXTEND = /^(?:תמשיך את התוכן|עוד שלושה חודשים|עוד 3 חודשים)$/;
 const STATUS = /^(?:התוכן שלי|לוח התוכן שלי|מה הפוסטים הבאים|הפוסטים הבאים)$/;
 const SHOOT = /^(?:(?:אני\s+)?(?:רוצה|מבקש|מבקשת|צריך|צריכה)\s+)?(?:(?:להזמין|הזמן|תזמין|לקבוע)\s+)?יום צילום$/;
-const CANCEL = /^(?:בטל|ביטול|לא עכשיו|עזוב)$/;
+const CANCEL = /^(?:בטל|תבטל|ביטול|לא עכשיו|עזוב|עזוב את זה|התחרטתי|לא משנה)[.!\s]*$/;
 const MODE_OF = { 'גרפיקות AI': 'AI_GRAPHIC', 'סרטוני AI': 'AI_VIDEO', 'יום צילום': 'PHOTO', 'צילום אמיתי': 'PHOTO', 'משולב': 'MIXED', 'שילוב': 'MIXED' };
 
 const line = (x) => `• ${shortDate(x.date || x.publish_on)}, ${FORMAT_LABEL[x.format]} עם ${MEDIA_LABEL[x.media]}: "${x.topic}"`;
@@ -236,7 +236,7 @@ async function handle(clientId, text) {
   }
   if (SHOOT.test(t)) {
     await requestShoot(clientId);
-    return { handled: true, reply: 'מעולה 📸 יום צילום בעסק נותן תמונות אמיתיות לפוסטים ולמודעות לכמה חודשים קדימה.\n\nכתוב לי בהודעה אחת:\n1. כתובת העסק\n2. ימים ושעות נוחים\n3. מה חשוב לצלם (צוות, מוצרים, עבודה, המקום)\n\nאפשר לכתוב "בטל" אם התחרטת.' };
+    return { handled: true, reply: 'מעולה 📸 יום צילום בעסק נותן תמונות אמיתיות לפוסטים ולמודעות לכמה חודשים קדימה.\n\nכתוב לי בהודעה אחת:\n1. כתובת העסק\n2. ימים ושעות נוחים\n3. מה חשוב לצלם (צוות, מוצרים, עבודה, המקום)\n\nואם התחרטת, רק תגיד לי.' };
   }
   const withMode = t.match(SETUP_WITH);
   if (withMode || SETUP.test(t)) {
@@ -248,15 +248,15 @@ async function handle(clientId, text) {
     return { handled: true, reply: summary(result), decisionKey: 'organic_review' };
   }
   if (APPROVE.test(t)) {
-    if (!await plan(clientId)) return { handled: true, reply: 'עוד אין לוח תוכן. כתוב "תוכן שוטף" ואכין לך אחד ל־3 חודשים.' };
+    if (!await plan(clientId)) return { handled: true, reply: 'עוד אין לוח תוכן. אם תרצה, רק תבקש ממני תוכן שוטף ואכין לך לוח ל־3 חודשים.' };
     const n = await approveAll(clientId);
     return { handled: true, reply: n ? `✅ אישרתי ${n} פוסטים. בכל יום פרסום אשלח לך כאן את הפוסט מוכן.` : 'כל הפוסטים כבר מאושרים ✓' };
   }
-  if (PAUSE.test(t)) { try { await setStatus(clientId, 'PAUSED'); return { handled: true, reply: 'עצרתי את התוכן השוטף. כתוב "המשך תוכן שוטף" כשתרצה לחזור.' }; } catch { return { handled: true, reply: 'עוד אין תוכן שוטף פעיל.' }; } }
-  if (RESUME.test(t)) { try { await setStatus(clientId, 'ACTIVE'); return { handled: true, reply: 'חזרנו ✓ הפוסטים המאושרים יגיעו אליך כרגיל.' }; } catch { return { handled: true, reply: 'עוד אין לוח תוכן. כתוב "תוכן שוטף" ואכין לך אחד.' }; } }
+  if (PAUSE.test(t)) { try { await setStatus(clientId, 'PAUSED'); return { handled: true, reply: 'עצרתי את התוכן השוטף. כשתרצה לחזור, רק תגיד לי.' }; } catch { return { handled: true, reply: 'עוד אין תוכן שוטף פעיל.' }; } }
+  if (RESUME.test(t)) { try { await setStatus(clientId, 'ACTIVE'); return { handled: true, reply: 'חזרנו ✓ הפוסטים המאושרים יגיעו אליך כרגיל.' }; } catch { return { handled: true, reply: 'עוד אין לוח תוכן. אם תרצה, רק תבקש ממני תוכן שוטף ואכין לך לוח.' }; } }
   if (EXTEND.test(t)) {
     const current = await plan(clientId);
-    if (!current) return { handled: true, reply: 'עוד אין לוח תוכן. כתוב "תוכן שוטף" ואכין לך אחד ל־3 חודשים.' };
+    if (!current) return { handled: true, reply: 'עוד אין לוח תוכן. אם תרצה, רק תבקש ממני תוכן שוטף ואכין לך לוח ל־3 חודשים.' };
     const result = await create(clientId, { perWeek: current.posts_per_week, media: current.media_mode, extend: true });
     return { handled: true, reply: summary(result), decisionKey: 'organic_review' };
   }
@@ -266,7 +266,7 @@ async function handle(clientId, text) {
 
 async function status(clientId) {
   const o = await overview(clientId);
-  if (!o.plan) return { handled: true, reply: 'עוד אין לוח תוכן. כתוב "תוכן שוטף" ואכין לך אחד ל־3 חודשים.' };
+  if (!o.plan) return { handled: true, reply: 'עוד אין לוח תוכן. אם תרצה, רק תבקש ממני תוכן שוטף ואכין לך לוח ל־3 חודשים.' };
   const next = o.posts.filter((x) => x.publish_on >= o.today && ['DRAFT', 'APPROVED'].includes(x.status)).slice(0, 4);
   return {
     handled: true,

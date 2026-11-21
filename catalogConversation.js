@@ -14,10 +14,10 @@ const { logger } = require('./logger');
 const TTL = 6 * 60 * 60 * 1000;
 const isNew = (t) => Object.values(V.PROFILES).some((p) => p.newPattern.test(t)) || V.NEW_GENERIC.test(t);
 const stripNew = (t) => { for (const p of [...Object.values(V.PROFILES).map((x) => x.newPattern), V.NEW_GENERIC]) if (p.test(t)) return t.replace(p, '').trim(); return t; };
-const LIST = new RegExp('^(?:' + [...new Set(Object.values(V.PROFILES).flatMap((p) => p.listWords))].join('|') + '|תראה לי את (?:ה)?(?:נכסים|מוצרים|שירותים|חבילות))\\??$');
+const LIST = new RegExp('^(?:' + [...new Set(Object.values(V.PROFILES).flatMap((p) => p.listWords))].join('|') + '|(?:(?:אפשר|אני רוצה|רוצה)\\s+לראות|(?:תראה|תציג|הצג|הראה)(?: לי)?) את (?:ה)?(?:נכסים|מוצרים|שירותים|חבילות|פריטים|קטלוג)(?: שלי)?|(?:ה)?קטלוג)\\??$');
 const VERBS = 'נמכר|נמכרה|הושכר|הושכרה|אזל מהמלאי|נגמר המלאי|אזל|אזלה|הסתיים|הסתיימה|הופסק|הופסקה|ירד מהמכירה';
 const CLOSE = new RegExp(`^(?:(?:ה)?(?:נכס|דירה|מוצר|שירות|חבילה|מנוי|פריט)\\s+)?(?:(.{2,40}?)\\s+)?(${VERBS})(?:\\s+(.{2,40}))?[.! ]*$`);
-const CONSENT = /^(?:יש הסכמה|יש הסכמה (?:של|מ)בעל(?:ת)? הנכס|בעל(?:ת)? הנכס הסכים|בעלת הנכס הסכימה|קיבלתי הסכמה)[.! ]*$/;
+const CONSENT = /^(?:(?:יש|יש לי|יש כבר|קיבלתי|קיבלנו|השגתי) (?:את )?(?:ה)?הסכמה(?: (?:של|מ)בעל(?:ת)? הנכס)?|בעל(?:ת)? הנכס הסכים|בעלת הנכס הסכימה|(?:הוא|היא|הם) (?:הסכים|הסכימה|הסכימו))[.! ]*$/;
 const CANCEL = /^(?:בטל|ביטול|בטל נכס|בטל מוצר|בטל שירות|עזוב|לא משנה)[.! ]*$/;
 const CMD = /^\/catalog-(vertical|set|consent|confirm|fix|cancel|campaign|posts|close|open|later)(?:\s+([0-9a-f-]{36}|[a-z_]{3,20}))?(?:\s+(\S+))?(?:\s+(\S+))?$/i;
 
@@ -186,7 +186,7 @@ async function closeReply(clientId, id, outcome) {
 
 async function command(clientId, [, name, id, arg, value]) {
   name = name.toLowerCase();
-  if (name === 'later') { await setIntake(clientId, null); return plain('בסדר. כשתרצה, כתוב "מה אני מוכר" ובחר מהרשימה.'); }
+  if (name === 'later') { await setIntake(clientId, null); return plain('בסדר. כשתרצה, רק תבקש ממני לראות את הקטלוג ותבחר מהרשימה.'); }
   if (name === 'vertical') {
     if (!V.PROFILES[id]) return plain('הבחירה הזו כבר לא עדכנית.');
     const x = await intake(clientId);
@@ -195,9 +195,9 @@ async function command(clientId, [, name, id, arg, value]) {
     if (x?.awaiting === 'vertical') return start(clientId, x.pendingText || V.get(id).newWord);
     return plain(`רשמתי ✓ מעכשיו "${V.get(id).label}" הם מה שאתה מוכר.`);
   }
-  if (!id) return plain('הבחירה הזו כבר לא עדכנית. כתוב "מה אני מוכר" כדי לבחור מהרשימה.');
+  if (!id) return plain('הבחירה הזו כבר לא עדכנית. אם תבקש ממני לראות את הקטלוג, תוכל לבחור שוב מהרשימה.');
   let item;
-  try { item = await catalog.get(clientId, id); } catch { return plain('לא מצאתי את זה. כתוב "מה אני מוכר" כדי לבחור מהרשימה.'); }
+  try { item = await catalog.get(clientId, id); } catch { return plain('לא מצאתי את זה. אם תבקש ממני לראות את הקטלוג, תוכל לבחור מהרשימה.'); }
   const profile = profileOf(item);
   if (name === 'set') {
     const f = profile.fields.find((x) => x.key === arg);
@@ -208,7 +208,7 @@ async function command(clientId, [, name, id, arg, value]) {
   if (name === 'consent') {
     if (arg === 'yes') { await catalog.setConsent(clientId, id, true); return next(clientId, id, '✅ רשמתי את ההסכמה להיום.'); }
     await setIntake(clientId, null);
-    return plain(`שמרתי כטיוטה:\n\n${catalog.card(item, { photos: await photoCount(clientId, id) })}\n\nבלי הסכמה לא אפרסם. כשתהיה הסכמה כתוב "יש הסכמה" ואמשיך משם.`);
+    return plain(`שמרתי כטיוטה:\n\n${catalog.card(item, { photos: await photoCount(clientId, id) })}\n\nבלי הסכמה לא אפרסם. כשתהיה הסכמה, רק תגיד לי ואמשיך משם.`);
   }
   if (name === 'confirm') return afterConfirm(clientId, id);
   if (name === 'fix') { await setIntake(clientId, { id, awaiting: 'fix' }); return plain('מה לתקן? כתוב את הפרט החדש, למשל "מחיר 350".'); }

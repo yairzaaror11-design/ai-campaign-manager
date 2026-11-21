@@ -22,8 +22,8 @@ async function clear(clientId) {
 
 // "תקרה יומית 150", "תקרת הוצאה 150 ש"ח ליום", "בטל את התקרה", "מה התקרה היומית?"
 const CLEAR = /^(?:בטל|תבטל|הסר|תסיר|מחק|תמחק|להסיר|לבטל|בלי)\s+(?:את\s+)?(?:ה)?תקר(?:ה|ת)/u;
-const START = /^(?:(?:מה|תראה|הצג|תגיד|קבע|תקבע|שים|תשים|הגדר|תגדיר|עדכן|תעדכן)\s+(?:לי\s+)?(?:את\s+)?(?:זה\s+)?)?(?:ה)?תקר(?:ה|ת)(?:\s|\?|$)/u;
-const ABOUT_SPEND = /יומית|הוצאה|תקציב|ליום|ביום|^(?:מה\s+)?התקרה\??$/u;
+const START = /^(?:(?:מה|תראה|הצג|תגיד|קבע|תקבע|שים|תשים|הגדר|תגדיר|עדכן|תעדכן|תעלה|תוריד|תשנה|שנה|העלה|הורד|לשנות|להעלות|להוריד)\s+(?:לי\s+)?(?:את\s+)?(?:זה\s+)?)?(?:ה)?תקר(?:ה|ת)(?:\s|\?|$)/u;
+const ABOUT_SPEND = /יומית|הוצאה|תקציב|ליום|ביום|^(?:מה\s+)?התקרה\??$|^(?:תעלה|תוריד|תשנה|שנה|העלה|הורד|לשנות|להעלות|להוריד)\s/u;
 function parse(text) {
   const t = String(text || '').trim().replace(/\s+/g, ' ');
   if (t.length > 80) return null;
@@ -39,14 +39,14 @@ async function handle(clientId, message) {
   if (cmd.op === 'set') {
     if (!(cmd.amount > 0)) return { handled: true, reply: 'כדי לקבוע תקרה צריך מספר גדול מאפס, למשל: תקרה יומית 150' };
     await set(clientId, cmd.amount);
-    return { handled: true, reply: `סגרנו ✅ תקרת ההוצאה היומית שלך: ${money(cmd.amount)}.\nלא אכין לאישור שום קמפיין או שינוי תקציב שעובר אותה, ואם ביום מסוים ההוצאה בפועל תעבור אותה, אעדכן אותך מיד.\nלשינוי כתוב "תקרה יומית" ומספר חדש, ולביטול "בטל תקרה".` };
+    return { handled: true, reply: `סגרנו ✅ תקרת ההוצאה היומית שלך: ${money(cmd.amount)}.\nלא אכין לאישור שום קמפיין או שינוי תקציב שעובר אותה, ואם ביום מסוים ההוצאה בפועל תעבור אותה, אעדכן אותך מיד.\nאם תרצה לשנות או לבטל אותה, רק תגיד לי.` };
   }
   if (cmd.op === 'clear') {
     const had = await clear(clientId);
     return { handled: true, reply: had ? 'ביטלתי את תקרת ההוצאה היומית. כל שינוי בתקציב עדיין מחכה לאישור שלך, כמו תמיד.' : 'אין כרגע תקרת הוצאה יומית. אפשר לקבוע אחת, למשל: תקרה יומית 150' };
   }
   const cap = await get(clientId);
-  return { handled: true, reply: cap ? `תקרת ההוצאה היומית שלך היא ${money(cap)}.\nלשינוי כתוב "תקרה יומית" ומספר חדש, ולביטול "בטל תקרה".` : 'עוד לא קבעת תקרת הוצאה יומית.\nאם תרצה, כתוב למשל "תקרה יומית 150", ואני לא אציע שום דבר שעובר את הסכום הזה ביום.' };
+  return { handled: true, reply: cap ? `תקרת ההוצאה היומית שלך היא ${money(cap)}.\nאם תרצה לשנות או לבטל אותה, רק תגיד לי.` : 'עוד לא קבעת תקרת הוצאה יומית.\nאם תרצה לקבוע אחת, למשל תקרה יומית של 150 ₪, רק תגיד לי, ואני לא אציע שום דבר שעובר את הסכום הזה ביום.' };
 }
 
 // Daily budget (minor units) that an approved plan would commit, or 0 if it adds none.
@@ -68,7 +68,7 @@ async function assertWithinCap(clientId, plan) {
   const cur = plan.parameters?.currency || plan.review?.currency || 'ILS', unit = 10 ** exponent(cur);
   if (dailyMinor <= Math.round(cap * unit)) return;
   const daily = dailyMinor / unit;
-  const reply = `✋ עצרתי לפני האישור: התקציב היומי כאן הוא ${money(daily, cur)}, וזה מעל תקרת ההוצאה היומית שקבעת (${money(cap, cur)}).\nלא נשלח שום דבר ל־Meta.\nאם זה בסדר מבחינתך, כתוב "תקרה יומית ${Math.ceil(daily)}" ואז בקש שוב. אפשר גם לבקש תקציב נמוך יותר.`;
+  const reply = `✋ עצרתי לפני האישור: התקציב היומי כאן הוא ${money(daily, cur)}, וזה מעל תקרת ההוצאה היומית שקבעת (${money(cap, cur)}).\nלא נשלח שום דבר ל־Meta.\nאם זה בסדר מבחינתך, תגיד לי להעלות את התקרה ל־${Math.ceil(daily)} ₪ ואז נבקש שוב. אפשר גם לבחור תקציב נמוך יותר.`;
   throw Object.assign(Error('SPEND_CAP_EXCEEDED'), { reply, cap, daily });
 }
 

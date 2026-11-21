@@ -101,7 +101,7 @@ test('"נציג" and natural variants hand over, notify operators once, and stat
   const handle=require('../messageHandler').handleIncomingMessage;
   await handle(msg('972500000775','wamid.h1','נציג'),{});
   const toOwner=out.filter(x=>x.to==='972500000775'),toOperator=out.filter(x=>x.to==='972500000776');
-  assert.equal(toOwner.length,1);assert.match(toOwner[0].text,/נציג יחזור אליך עד יום העסקים הבא/);assert.match(toOwner[0].text,/המשך עם הבוט/);
+  assert.equal(toOwner.length,1);assert.match(toOwner[0].text,/נציג יחזור אליך עד יום העסקים הבא/);assert.match(toOwner[0].text,/לחזור אליי לפני כן, רק תגיד לי/);
   assert.doesNotMatch(toOwner[0].text,/עדיין לא הוגדר זמן מענה/);
   assert.equal(toOperator.length,1);assert.match(toOperator[0].text,/נציג אנושי/);assert.match(toOperator[0].text,new RegExp('#'+owner.id));
   assert.equal((await support.current(owner.id)).bot_paused,true);

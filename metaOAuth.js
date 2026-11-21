@@ -27,7 +27,7 @@ router.get('/callback',require('./rateLimit').middleware('meta-callback',30),wra
   // Some required permissions were left unticked: say exactly which, in WhatsApp and here.
   let missing=[];
   try{missing=(await require('./metaAuth').metaView(clientId)).missing;}catch{/* the screen shows it later */}
-  const missingText=missing.length?'\n\nחסרות עדיין הרשאות: '+missing.map(p=>require('./metaAuth').LABELS[p]).join(', ')+'. כתוב לי ״תן הרשאה״ או לחץ ״תן הרשאה״ בדשבורד ← חיבורים.':'';
+  const missingText=missing.length?'\n\nחסרות עדיין הרשאות: '+missing.map(p=>require('./metaAuth').LABELS[p]).join(', ')+'. אפשר לבקש ממני בוואטסאפ לתת את ההרשאה, או ללחוץ ״תן הרשאה״ בדשבורד ← חיבורים.':'';
   if(missing.length)require('./metaAuth').notifyOwner(clientId,'missing',missingText.trim()).catch(()=>{});
   if(require('./marketingConversation').enabled()){
     await require('./metaConversation').recordStatus(clientId,'OAUTH_CALLBACK_RECEIVED');
@@ -35,7 +35,7 @@ router.get('/callback',require('./rateLimit').middleware('meta-callback',30),wra
     // buttons, the saved draft, or a guide when there is no ad account yet).
     const next=await require('./metaConversation').notifyConnected(clientId,await require('./metaConversation').verify(clientId));
     const connected=next.verified.status==='CONNECTED';
-    require('./metaConnectPage').send(res,{state:'done',title:connected&&!missing.length?'החשבון חובר ✓':'ההרשאה התקבלה ✓',description:(next.sent?'שלחתי לך הודעה בוואטסאפ. חזור לשיחה כדי להמשיך מאיפה שעצרנו.':'חזור לשיחה בוואטסאפ וכתוב ״המשך״ כדי להמשיך מאיפה שעצרנו.')+missingText});
+    require('./metaConnectPage').send(res,{state:'done',title:connected&&!missing.length?'החשבון חובר ✓':'ההרשאה התקבלה ✓',description:(next.sent?'שלחתי לך הודעה בוואטסאפ. חזור לשיחה כדי להמשיך מאיפה שעצרנו.':'חזור לשיחה בוואטסאפ ותגיד לי להמשיך, ואמשיך מאיפה שעצרנו.')+missingText});
   }else require('./metaConnectPage').send(res,{state:'done',...(missing.length?{description:'ההרשאה התקבלה.'+missingText}:{})});
 }));
 module.exports = router;

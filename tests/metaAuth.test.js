@@ -175,7 +175,7 @@ test('Meta auth: login, permissions, long-lived tokens, revocation, assets, conn
       await auth.checkOne(a.id);
       const notes = (await outbox(a.id)).filter((m) => /יפוג בעוד/.test(m));
       assert.equal(notes.length, 1);
-      assert.match(notes[0], /שלח לי קישור חדש לחיבור Meta/);
+      assert.match(notes[0], /קישור חדש לחיבור מטא/);
       debug = { ...debug, expires_at: nowSec() + 60 * 86400 }; exchangeExpiresIn = 5183944;
     });
     await t.test('error 190 → debug_token confirms → disconnected, jobs stopped, owner told in Hebrew', async () => {

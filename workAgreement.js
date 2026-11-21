@@ -53,16 +53,16 @@ async function assertReady(clientId) {
   const meta = require('./metaConnection');
   let c;
   try { c = await meta.credentials(clientId); } catch {
-    throw notReady('✋ לפני שאני מבקש ממך אישור: חשבון הפרסום שלך ב־Meta לא מחובר (או שהחיבור פג).\nהצעד הבא: כתוב "חבר את מטא" ואשלח לך קישור אישי לחיבור. זה לוקח דקה.');
+    throw notReady('✋ לפני שאני מבקש ממך אישור: חשבון הפרסום שלך ב־Meta לא מחובר (או שהחיבור פג).\nהצעד הבא: לחבר את מטא. רק תבקש ממני, ואשלח לך קישור אישי לחיבור. זה לוקח דקה.');
   }
-  if (!c.meta_ad_account_id) throw notReady('✋ לפני שאני מבקש ממך אישור: עוד לא בחרת באיזה חשבון מודעות לעבוד.\nהצעד הבא: כתוב "החשבונות שלי" ובחר את החשבון של העסק.');
+  if (!c.meta_ad_account_id) throw notReady('✋ לפני שאני מבקש ממך אישור: עוד לא בחרת באיזה חשבון מודעות לעבוד.\nהצעד הבא: לבחור את החשבון של העסק. רק תבקש ממני, ואציג לך את החשבונות.');
   let perms = null;
   try { perms = await meta.graph('/me/permissions', c.token); } catch (error) {
-    if (error.message === 'META_TOKEN_EXPIRED') throw notReady('✋ לפני שאני מבקש ממך אישור: החיבור ל־Meta פג.\nהצעד הבא: כתוב "חבר את מטא" ואשלח לך קישור לחיבור מחדש.');
+    if (error.message === 'META_TOKEN_EXPIRED') throw notReady('✋ לפני שאני מבקש ממך אישור: החיבור ל־Meta פג.\nהצעד הבא: לחבר את מטא מחדש. רק תבקש ממני, ואשלח לך קישור.');
     perms = null; // could not check now; the execution re-checks right before any write
   }
   if (perms && !perms.data?.some((p) => p.permission === 'ads_management' && p.status === 'granted'))
-    throw notReady('✋ לפני שאני מבקש ממך אישור: החיבור ל־Meta מאפשר לי רק לראות נתונים, לא לשנות קמפיינים.\nהצעד הבא: כתוב "חבר הרשאת יצירת קמפיינים" ובמסך של Meta סמן גם ניהול מודעות.');
+    throw notReady('✋ לפני שאני מבקש ממך אישור: החיבור ל־Meta מאפשר לי רק לראות נתונים, לא לשנות קמפיינים.\nהצעד הבא: לתת הרשאה ליצירת קמפיינים. רק תבקש ממני ואשלח לך קישור, ובמסך של Meta תסמן גם ניהול מודעות.');
   return true;
 }
 
@@ -117,7 +117,7 @@ async function activeRow(clientId) {
 function report(plan, result, reason) {
   const what = (require('./actionPlan').INTENT_HE[plan.intent] || 'פעולה') + (plan.target?.campaignName ? `: "${plan.target.campaignName}"` : '');
   return (result.ok ? '🤖 עשיתי לבד, לפי הסכם העבודה שלך:\n' : '⚠️ ניסיתי לבצע לבד לפי הסכם העבודה, וזה לא הושלם:\n') + `• ${what}` + (reason ? `\nלמה: ${reason}` : '') +
-    (result.ok ? '\nזה מופיע ב"מה עשיתי ולמה".' : '\n' + (result.message || 'לא בוצע שינוי.')) + '\nלעצירת כל הפעולות האוטומטיות כתוב: עצור את כל הפעולות האוטומטיות';
+    (result.ok ? '\nזה מופיע ב"מה עשיתי ולמה".' : '\n' + (result.message || 'לא בוצע שינוי.')) + '\nאם תרצה לעצור את כל הפעולות האוטומטיות, רק תגיד לי.';
 }
 
 // ---------- F8: after a campaign is created paused ----------
@@ -155,7 +155,7 @@ const REOFFER_INTRO = 'תוקף האישור הקודם פג, אז בדקתי ש
 
 // ---------- Text ----------
 function summaryText(a) {
-  if (!a) return 'עוד אין הסכם עבודה. כתוב "הסכם עבודה" ואשאל אותך כמה שאלות קצרות.';
+  if (!a) return 'עוד אין הסכם עבודה. אם תרצה להגדיר אחד, רק תגיד לי ואשאל אותך כמה שאלות קצרות.';
   const yes = Object.entries(ALLOW_HE).filter(([k]) => a.allow[k]).map(([, v]) => '✅ ' + v);
   const lines = ['📜 *הסכם העבודה שלך*' + (a.paused ? ' — ⏸ הפעולות האוטומטיות עצורות' : ''), '',
     `💰 תקרת הוצאה חודשית על פרסום: ${money(a.monthlyCeiling, a.currency)}`, `📅 תקציב יומי מקסימלי לקמפיין: ${money(a.maxDailyPerCampaign, a.currency)}`, '',
@@ -168,10 +168,12 @@ function summaryText(a) {
 }
 
 // ---------- WhatsApp: set once with button questions ----------
-const SHOW = /^(?:הסכם\s+(?:ה)?עבודה|ההסכם שלי|מה ההסכם(?: שלי)?|מה הסוכן יכול לעשות לבד\??)[?]?$/u;
+const SHOW = /^(?:הסכם\s+(?:ה)?עבודה|ההסכם שלי|מה ההסכם(?: שלי)?|מה הסוכן יכול לעשות לבד\??|(?:(?:אני רוצה|רוצה|אפשר|בוא)\s+)?(?:להגדיר|לקבוע|נגדיר|לראות|תגדיר|תראה(?: לי)?|תציג(?: לי)?)\s+(?:את\s+)?(?:ה)?הסכם\s+(?:ה)?עבודה(?:\s+שלי)?)[?.!]?$/u;
 const EDIT = /^(?:עדכן|תעדכן|לעדכן|שנה|לשנות|הגדר|להגדיר)(?: את)? (?:ה)?הסכם(?: ה)?(?:עבודה)?$/u;
-const PAUSE = /^(?:עצור|תעצור|לעצור) את כל הפעולות האוטומטיות|^(?:עצור|תעצור) (?:את )?(?:כל )?הפעולות האוטומטיות$/u;
-const RESUME = /^(?:חדש|תחדש|לחדש|הפעל מחדש|תפעיל מחדש|להחזיר|תחזיר) את (?:כל )?הפעולות האוטומטיות$/u;
+// Exact old phrases plus natural ones: "תעצור את כל האוטומציות", "תפסיק את הפעולות האוטומטיות", "תחדש את האוטומציות".
+const AUTO = '(?:ה?פעולות ה?אוטומטיות|ה?אוטומציות|ה?אוטומציה)';
+const PAUSE = new RegExp('^(?:(?:אפשר|אני רוצה|רוצה)\\s+)?(?:עצור|תעצור|לעצור|תפסיק|להפסיק|הפסק|תשהה|להשהות|השהה)(?: לי)? (?:את )?(?:כל )?' + AUTO + '(?: שלך)?(?:\\s+(?:עכשיו|מיד|בבקשה))?[.!\\s]*$', 'u');
+const RESUME = new RegExp('^(?:(?:אפשר|אני רוצה|רוצה)\\s+)?(?:חדש|תחדש|לחדש|הפעל מחדש|תפעיל מחדש|להפעיל מחדש|להחזיר|תחזיר|תפעיל|להפעיל)(?: לי)? (?:את )?(?:כל )?' + AUTO + '(?: שלך)?(?: מחדש)?[.!\\s]*$', 'u');
 const SKIP = /^(?:אין|לא|דלג|תדלג|אין, תמשיך|בלי)$/u;
 const CANCEL = /^(?:בטל|ביטול|עזוב|לא עכשיו|בטל את ההגדרה)$/u;
 const STEPS = ['monthly', 'daily', 'scope', 'style', 'forbidden', 'confirm'];
@@ -208,11 +210,11 @@ async function handleText(clientId, text) {
     const a = await authority.getAgreement(clientId);
     if (!a) return { text: 'אין כרגע פעולות אוטומטיות: עוד לא הוגדר הסכם עבודה, אז הסוכן שואל אותך על כל פעולה.' };
     await run(() => authority.pauseAll(clientId));
-    return { text: '⏸ עצרתי את כל הפעולות האוטומטיות. מעכשיו הסוכן שואל אותך על כל פעולה, וכל פעולה אוטומטית שעוד לא בוצעה נחסמה.\nלהחזרה כתוב: חדש את הפעולות האוטומטיות' };
+    return { text: '⏸ עצרתי את כל הפעולות האוטומטיות. מעכשיו הסוכן שואל אותך על כל פעולה, וכל פעולה אוטומטית שעוד לא בוצעה נחסמה.\nכשתרצה לחדש אותן, רק תגיד לי.' };
   }
   if (RESUME.test(t)) {
     const a = await authority.getAgreement(clientId);
-    if (!a) return { text: 'עוד אין הסכם עבודה. כתוב "הסכם עבודה" כדי להגדיר אחד.' };
+    if (!a) return { text: 'עוד אין הסכם עבודה. אם תרצה להגדיר אחד, רק תגיד לי.' };
     await run(() => authority.resumeAll(clientId));
     return { text: '▶️ הפעולות האוטומטיות חזרו לפעול, בדיוק לפי הסכם העבודה.\n\n' + summaryText({ ...a, paused: false }) };
   }
@@ -249,7 +251,7 @@ async function handleText(clientId, text) {
     if (!/^מאשר/.test(t)) return ask(clientId, 'confirm', draft, 'לאשר את ההסכם, להתחיל מחדש או לבטל?');
     const saved = await run(() => authority.setAgreement(clientId, { monthlyCeiling: draft.monthlyCeiling, maxDailyPerCampaign: draft.maxDailyPerCampaign, allow: draft.allow, styleNotes: draft.styleNotes || '', forbiddenTopics: draft.forbiddenTopics || [] }));
     await setupState(clientId, (p) => { delete p.agreementSetup; });
-    return { text: 'סגרנו ✅ הסכם העבודה נשמר.\n\n' + summaryText(saved) + '\n\nכל מה שהסוכן עושה לבד יופיע ב"מה עשיתי ולמה" עם הסיבה.\nלעצירה מיידית של הכול כתוב: עצור את כל הפעולות האוטומטיות' };
+    return { text: 'סגרנו ✅ הסכם העבודה נשמר.\n\n' + summaryText(saved) + '\n\nכל מה שהסוכן עושה לבד יופיע ב"מה עשיתי ולמה" עם הסיבה.\nאם תרצה לעצור הכול מיד, רק תגיד לי ואעצור את כל הפעולות האוטומטיות.' };
   }
   return null;
 }
@@ -260,4 +262,4 @@ async function start(clientId) {
   return ask(clientId, 'monthly', draft, 'בוא נסגור הסכם עבודה, פעם אחת: מה הסוכן עושה לבד ומה תמיד מחכה לאישור שלך. 5 שאלות קצרות.');
 }
 
-module.exports = { actionClass, ttlMs, assertReady, spendContext, daysLeftInMonth, proposeOrAct, offerActivation, reoffer, summaryText, handleText, ACTIVATION_QUESTION, REOFFER_INTRO, ALLOW_HE, ALWAYS_ASK_HE, PRESETS, ASK_WHY };
+module.exports = { PAUSE, RESUME, actionClass, ttlMs, assertReady, spendContext, daysLeftInMonth, proposeOrAct, offerActivation, reoffer, summaryText, handleText, ACTIVATION_QUESTION, REOFFER_INTRO, ALLOW_HE, ALWAYS_ASK_HE, PRESETS, ASK_WHY };

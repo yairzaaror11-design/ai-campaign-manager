@@ -93,7 +93,7 @@ function formatStatus(s) {
     '✋ מחכה לאישור שלך:', list(s.waiting, 'שום דבר.'),
     '⚠️ מה נכשל או נעצר:', list(s.failed, 'כלום, הכול עבר תקין.'),
     '💸 הוצאה בפועל:', s.spend ? `  היום ${m(s.spend.today)} · החודש ${m(s.spend.month)}` + (s.spend.monthlyCeiling ? ` מתוך תקרה של ${m(s.spend.monthlyCeiling)}` : '') : '  לא זמין כרגע (חשבון Meta לא מחובר או לא ענה).',
-    ...(s.agreement?.paused ? ['', '⏸ הפעולות האוטומטיות עצורות. להחזרה כתוב: חדש את הפעולות האוטומטיות'] : [])].join('\n');
+    ...(s.agreement?.paused ? ['', '⏸ הפעולות האוטומטיות עצורות. כשתרצה לחדש אותן, רק תגיד לי.'] : [])].join('\n');
 }
 async function handleStatus(clientId, text) {
   if (!STATUS_REQUEST.test(String(text || '').trim())) return null;

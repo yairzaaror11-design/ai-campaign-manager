@@ -126,7 +126,7 @@ function format(report) {
     lines.push(`🏆 השורה התחתונה: ${f.won} מכירות` + (m.costPerCustomer !== null ? ` · ${ils(m.costPerCustomer)} עלות למכירה` : '') + (f.revenue ? ` · ${ils(f.revenue)} הכנסות` : '') + (left !== null && f.revenue ? ` · ${left >= 0 ? 'נשאר לך' : 'חסר'} ${ils(Math.abs(left))} אחרי הפרסום` : ''));
     lines.push('');
   }
-  lines.push('💰 סכום שהוצא: ' + (spend === null ? 'אין חשבון פרסום מחובר (כדי לחבר, כתוב ״חבר את חשבון המודעות״)' : money(spend)));
+  lines.push('💰 סכום שהוצא: ' + (spend === null ? 'אין חשבון פרסום מחובר (אם תרצה לחבר אותו, רק תבקש ממני)' : money(spend)));
   if (report.ads && report.ads.impressions !== null) lines.push(`👀 לפי Meta: ${Math.round(report.ads.impressions).toLocaleString('he-IL')} חשיפות, ${Math.round(report.ads.clicks).toLocaleString('he-IL')} קליקים, ${report.ads.leads} לידים` + (report.ads.costPerLead !== null ? ` (${money(report.ads.costPerLead)} לליד)` : ''));
   lines.push(`📥 לידים: ${f.leads}` + (m.costPerLead !== null && !mixed ? ` (${ils(m.costPerLead)} עלות לליד)` : ''));
   lines.push(`📞 קיבלו מענה: ${f.contacted} (${pct(m.contactRate)})`);
@@ -143,13 +143,13 @@ function format(report) {
   }
   if (report.funnel.leads > 0 && report.funnel.won === 0) {
     lines.push('');
-    lines.push('שים לב: עוד לא סימנת מכירות, אז אפשר למדוד לידים אבל עוד לא לדעת מאיזה קמפיין נוצרה הכנסה. כדי לסמן מכירה כתוב: הלידים שלי');
+    lines.push('שים לב: עוד לא סימנת מכירות, אז אפשר למדוד לידים אבל עוד לא לדעת מאיזה קמפיין נוצרה הכנסה. כדי לסמן מכירה, רק תבקש ממני לראות את הלידים.');
   }
   lines.push('');
   lines.push('מה כדאי לעשות עכשיו:');
   report.nextSteps.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
   lines.push('');
-  lines.push('ההכנסות כאן לפני עלויות המוצר או השירות. לעדכון לידים כתוב: הלידים שלי');
+  lines.push('ההכנסות כאן לפני עלויות המוצר או השירות. אם תרצה לעדכן לידים, רק תבקש ממני לראות אותם.');
   lines.push(require('./dashboardLink').hint('performance'));
   return lines.join('\n');
 }

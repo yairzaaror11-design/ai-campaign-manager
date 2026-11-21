@@ -3,6 +3,9 @@ const db=require('./db');
 const meta=require('./metaConnection');
 const store=require('./marketingStore');
 const {norm}=require('./conversationAnalysis');
+// Asking for the campaign-management permission / the missing permissions, in exact or natural words.
+const MANAGE=/^(?:חבר הרשאת יצירת קמפיינים|(?:(?:אני רוצה|אפשר)\s+)?(?:תחבר|חבר|לחבר|תן|לתת|תוסיף|להוסיף)(?: לי)?(?: את)? (?:ה)?הרשא(?:ה|ת|ות) (?:ל)?(?:יצירת|ניהול) (?:ה)?(?:קמפיינים|מודעות))[.!\s]*$/;
+const GRANT=/^(?:תן הרשאה|(?:(?:אני רוצה|אפשר)\s+)?(?:תן|לתת|תבקש|לבקש|תוסיף|להוסיף)(?: את)? (?:ה)?הרשא(?:ה|ות)(?: החסר(?:ה|ות))?)[.!\s]*$/;
 const STATES=['NOT_CONNECTED','CONNECTION_OFFERED','AWAITING_OAUTH','OAUTH_CALLBACK_RECEIVED','ACCOUNT_SELECTION_REQUIRED','VERIFYING_ACCESS','CONNECTED','MISSING_PERMISSIONS','TOKEN_EXPIRED','RECONNECT_REQUIRED','CONNECTION_FAILED','DISCONNECTED'];
 const TRANSITIONS={
  NOT_CONNECTED:['CONNECTION_OFFERED','AWAITING_OAUTH','VERIFYING_ACCESS','OAUTH_CALLBACK_RECEIVED','DISCONNECTED'],
@@ -157,12 +160,12 @@ async function invite(clientId,eventId){
 }
 async function handle(clientId,text,analysis,eventId){
  // "תן הרשאה": a one-time link that asks Meta again for exactly the missing permissions.
- if(text==='תן הרשאה'||text==='/meta-permissions'){
+ if(GRANT.test(text)||text==='/meta-permissions'){
   try{const url=await meta.createInvite(clientId,{rerequest:true});return{handled:true,reply:'כדי להשלים את ההרשאות החסרות, פתח את הקישור (תקף ל־10 דקות). Meta תבקש רק את מה שחסר, ואז חוזרים לכאן:\n'+url};}
   catch{return{handled:true,reply:'לא הצלחתי ליצור קישור כרגע. נסה שוב בעוד רגע.'};}
  }
- if(text==='חבר הרשאת יצירת קמפיינים'){
-  try{const url=await meta.createInvite(clientId,{management:true});return{handled:true,reply:'כדי ליצור קמפיינים, אשר את הרשאות החשבון במסך הרשמי של Meta. לאחר מכן חזור לכאן לכתוב ״המשך ליצירת הקמפיין״.\n'+url,historyReply:'נשלח קישור אישי לקבלת הרשאת ניהול ב־Meta. הקישור אינו נשמר בהיסטוריה.'};}
+ if(MANAGE.test(text)){
+  try{const url=await meta.createInvite(clientId,{management:true});return{handled:true,reply:'כדי ליצור קמפיינים, אשר את הרשאות החשבון במסך הרשמי של Meta. לאחר מכן חזור לכאן ותגיד לי להמשיך ליצירת הקמפיין.\n'+url,historyReply:'נשלח קישור אישי לקבלת הרשאת ניהול ב־Meta. הקישור אינו נשמר בהיסטוריה.'};}
   catch(error){return{handled:true,reply:error.message==='MANAGEMENT_LOGIN_CONFIG_REQUIRED'?'הרשאת הניהול עדיין לא הוגדרה באפליקציית Meta של המערכת. התוכנית שלך שמורה; לאחר שמפעיל המערכת ישלים את ההגדרה נוכל לחבר אותה כאן.':'לא הצלחתי ליצור קישור הרשאה. התוכנית שמורה; אפשר לנסות שוב בהמשך.'};}
  }
 
@@ -190,7 +193,7 @@ async function handle(clientId,text,analysis,eventId){
   catch{return{handled:true,reply:'לא ניתן לבחור את החשבון הזה בלי גישה תקפה. אפשר לבדוק שוב את רשימת החשבונות.'};}
  }
  if(analysis.intent==='yes'&&p?.connection?.status==='CONNECTION_OFFERED')return invite(clientId,eventId);
- if(text==='/meta-connect'||/^(?:שלח|שלחי) (?:לי )?קישור (?:חדש )?(?:לחיבור|למטא|Meta)/i.test(n)){
+ if(text==='/meta-connect'||/^(?:(?:אפשר|תוכל)\s+)?(?:שלח|שלחי|תשלח|תשלחי|לשלוח)(?: לי)? (?:את )?(?:ה)?(?:קישור|לינק) (?:חדש )?(?:לחיבור|למטא|ל־?Meta)/i.test(n)){
   if(text==='/meta-connect'){
     const v=await verify(clientId);if(['CONNECTED','ACCOUNT_SELECTION_REQUIRED'].includes(v.status)&&(!meta.unifiedLogin()||v.permissions.includes('ads_management')))return statusResult(v);
     if(meta.unifiedLogin()&&['CONNECTED','ACCOUNT_SELECTION_REQUIRED'].includes(v.status))await recordStatus(clientId,'CONNECTION_OFFERED');
@@ -217,5 +220,5 @@ async function handle(clientId,text,analysis,eventId){
  }
  return{handled:false};
 }
-module.exports={STATES,TRANSITIONS,AD_ACCOUNT_URL,RECHECK_TEXT,move,recordStatus,verify,statusReply,offer,invite,handle,afterConnect,notifyConnected,noAccountGuide};
+module.exports={MANAGE,GRANT,STATES,TRANSITIONS,AD_ACCOUNT_URL,RECHECK_TEXT,move,recordStatus,verify,statusReply,offer,invite,handle,afterConnect,notifyConnected,noAccountGuide};
 

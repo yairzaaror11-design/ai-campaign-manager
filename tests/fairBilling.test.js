@@ -40,7 +40,7 @@ test('trial, reminder, one-step cancel and refund work without any payment provi
   // Outside the window the dashboard shows it instead.
   assert.equal((await subs.summary(quiet.id)).trialReminderDue,true);
   // Cancel over WhatsApp: a confirmation step, then a written end date.
-  assert.match((await chat.handle(owner.id,'אישור ביטול מנוי')).reply,/כתבו "בטל מנוי"/,'no cancel without the prompt');
+  assert.match((await chat.handle(owner.id,'אישור ביטול מנוי')).reply,/רוצה לבטל את המנוי ואשלח לך כפתור אישור/,'no cancel without the prompt');
   const ask=await chat.handle(owner.id,'בטל מנוי');assert.equal(ask.decisionKey,'billing_cancel');assert.match(ask.reply,/לבטל את מסלול בסיס/);
   assert.match((await chat.handle(owner.id,'השאר את המנוי')).reply,/נשאר/);
   const done=await chat.handle(owner.id,'אישור ביטול מנוי');assert.match(done.reply,/המנוי בוטל/);assert.match(done.reply,/הגישה נשארת עד/);
@@ -97,6 +97,6 @@ test('cancel confirmation buttons are offered and accepted in every conversation
  const items=ui.choices({},'billing_cancel');assert.deepEqual(items.map(i=>i.text),['אישור ביטול מנוי','השאר את המנוי']);
  assert.equal(require('../conversationController').acceptsInteractive({ui:{decisionKey:'billing_cancel'}}),true);
  const chat=require('../billingConversation');
- for(const t of ['בטל מנוי','ביטול המנוי','לבטל את המנוי','אישור ביטול מנוי','החזר כספי','המנוי שלי'])assert.equal(chat.matches(t),true,t);
+ for(const t of ['בטל מנוי','ביטול המנוי','לבטל את המנוי','אישור ביטול מנוי','החזר כספי','המנוי שלי','אני רוצה לבטל את המנוי','תבטל לי את המנוי','אני מאשר את הביטול','אני רוצה החזר','תחזיר לי את הכסף'])assert.equal(chat.matches(t),true,t);
  for(const t of ['בטל','מנוי','תבטל את הקמפיין','מחירים'])assert.equal(chat.matches(t),false,t);
 });

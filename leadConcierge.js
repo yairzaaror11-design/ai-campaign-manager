@@ -722,11 +722,14 @@ async function askOptIn(clientId, key) {
     'optin:' + key, { buttons: [{ title: 'כן, שיענה', text: '/lc-optin yes' }, { title: 'לא כרגע', text: '/lc-optin no' }], decisionKey: 'lead_concierge_optin' });
 }
 
+// Turning the lead auto-reply on/off: the old exact phrases plus natural ones ("תכבה את המענה ללידים").
+const LC_ON = /^(?:הפעל מענה ללידים|הסוכן יענה ללידים|(?:(?:אני רוצה|רוצה)\s+)?(?:תפעיל|הפעל|להפעיל)(?: את)? (?:ה)?מענה (?:ה)?(?:אוטומטי )?ללידים|(?:שהסוכן )?(?:יענה|תענה) ללידים)[.!\s]*$/;
+const LC_OFF = /^(?:כבה מענה ללידים|(?:(?:אני רוצה|רוצה)\s+)?(?:תכבה|כבה|לכבות|תפסיק|להפסיק|תעצור|עצור)(?: את)? (?:ה)?מענה (?:ה)?(?:אוטומטי )?ללידים|(?:תפסיק|להפסיק) לענות ללידים)[.!\s]*$/;
 const OWNER_TEXT = /^(?:\/lc-|מענה אוטומטי ללידים|הפעל מענה ללידים|כבה מענה ללידים|הסוכן יענה ללידים|זמינות|הזמינות שלי|אני ממשיך מכאן|הגיע|לא הגיע|מתקדמים)/;
 // Owner WhatsApp commands. Returns {reply, ui?} or null when the text is not ours.
 async function handleOwnerText(from, text) {
   const t = String(text || '').trim();
-  if (!OWNER_TEXT.test(t) || !db.configured()) return null;
+  if (!(OWNER_TEXT.test(t) || LC_ON.test(t) || LC_OFF.test(t)) || !db.configured()) return null;
   const clientId = (await db.query('SELECT id FROM clients WHERE phone=$1', [digits(from)])).rows[0]?.id;
   if (!clientId) return null;
   const store = require('./marketingStore');
@@ -746,17 +749,17 @@ async function handleOwnerText(from, text) {
     await store.update(clientId, null, (p) => { if (p.leadConciergeViewing === viewingId) { delete p.leadConciergeViewing; return { handled: false, changed: true }; } return { handled: false, changed: false }; });
     return { reply: outcome === 'PROGRESSING' ? 'מעולה! 💪 כשתסגרו, סמן ״נסגרה עסקה״ בליד, ככה אלמד אילו לידים הכי שווים.' : outcome === 'ATTENDED' ? 'נרשם שהליד הגיע לצפייה.' : 'נרשם שהליד לא הגיע. כדאי לנסות לתאם שוב.' };
   }
-  if (t === '/lc-optin yes' || t === 'הפעל מענה ללידים' || t === 'הסוכן יענה ללידים') {
+  if (t === '/lc-optin yes' || LC_ON.test(t)) {
     if (!enabled()) return { reply: 'המענה האוטומטי ללידים עוד לא זמין בחשבון שלך. כרגע אשלח לך כל ליד עם הודעה מוכנה לשליחה בלחיצה.' };
     const s = await saveSettings(clientId, { enabled: true });
     const meeting = (await business(clientId)).profile.meeting;
-    if (!meeting) return { reply: 'מעולה! מעכשיו הסוכן עונה ראשון לכל ליד מטופס Meta, ושואל עד 4 שאלות קצרות.\nלכיבוי כתוב: כבה מענה ללידים' };
-    if (s.availability?.length) return { reply: `מעולה! מעכשיו הסוכן עונה ראשון לכל ליד מטופס Meta, ושואל עד 4 שאלות. ${meeting.plural} ייקבעו בזמינות: ${availabilityText(s.availability)}.\nלכיבוי כתוב: כבה מענה ללידים` };
+    if (!meeting) return { reply: 'מעולה! מעכשיו הסוכן עונה ראשון לכל ליד מטופס Meta, ושואל עד 4 שאלות קצרות.\nאם תרצה לכבות את זה, רק תגיד לי.' };
+    if (s.availability?.length) return { reply: `מעולה! מעכשיו הסוכן עונה ראשון לכל ליד מטופס Meta, ושואל עד 4 שאלות. ${meeting.plural} ייקבעו בזמינות: ${availabilityText(s.availability)}.\nאם תרצה לכבות את זה, רק תגיד לי.` };
     return { reply: `מעולה! מעכשיו הסוכן עונה ראשון לכל ליד מטופס Meta.\nבאילו ימים ושעות נוח לך ל${meeting.plural}? ככה הוא יקבע אותם בעצמו.`, buttons: [{ title: 'א׳–ה׳ 10:00–18:00', text: 'זמינות א-ה 10:00-18:00' }, { title: 'א׳–ה׳ 16:00–20:00', text: 'זמינות א-ה 16:00-20:00' }, { title: 'אכתוב בעצמי', text: '/lc-hours custom' }], decisionKey: 'lead_concierge_hours' };
   }
-  if (t === '/lc-optin no' || t === 'כבה מענה ללידים') {
+  if (t === '/lc-optin no' || LC_OFF.test(t)) {
     await saveSettings(clientId, { enabled: false });
-    return { reply: 'בסדר. אמשיך לשלוח לך כל ליד עם הודעה מוכנה לשליחה בלחיצה אחת. אפשר להפעיל בכל רגע: הפעל מענה ללידים' };
+    return { reply: 'בסדר. אמשיך לשלוח לך כל ליד עם הודעה מוכנה לשליחה בלחיצה אחת. אם תרצה להפעיל אותו בהמשך, רק תגיד לי.' };
   }
   if (t === 'מענה אוטומטי ללידים') {
     const s = await settings(clientId), biz = await business(clientId);

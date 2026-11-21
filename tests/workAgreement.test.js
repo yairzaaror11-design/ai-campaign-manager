@@ -209,7 +209,7 @@ test('readiness is checked before any approval, in plain Hebrew with the next st
     assert.match(e.reply, /עוד לא בחרת באיזה חשבון מודעות/); assert.doesNotMatch(e.reply, jargon);
     const readOnly = await owner(db, '972500944008', 94406);
     e = await engine.createApprovalForClient(readOnly, plan('PAUSE_CAMPAIGN', 94406, '7706')).catch((x) => x);
-    assert.match(e.reply, /רק לראות נתונים/); assert.match(e.reply, /חבר הרשאת יצירת קמפיינים/); assert.doesNotMatch(e.reply, jargon);
+    assert.match(e.reply, /רק לראות נתונים/); assert.match(e.reply, /לתת הרשאה ליצירת קמפיינים/); assert.doesNotMatch(e.reply, jargon);
     assert.equal((await db.query('SELECT COUNT(*)::int n FROM approvals WHERE client_id = ANY($1::bigint[])', [[none, noAccount, readOnly]])).rows[0].n, 0, 'no approval was offered');
     // The dashboard surfaces the same sentence.
     const r = await require('../dashboardApprovals').prepareCampaignAction(none, '7706', 'PAUSE').catch((x) => x);
