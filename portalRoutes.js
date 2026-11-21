@@ -11,12 +11,14 @@ router.get('/app/experience.js',(req,res)=>res.sendFile(path.join(__dirname,'pub
 router.get('/app/connections.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/connections.js')));
 router.get('/app/components.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/components.js')));
 router.get('/app/portal.css',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/portal.css')));
+const GPENDING_CLEAR='cb_gpending=; Path=/app; HttpOnly; Secure; SameSite=Lax; Max-Age=0';
 router.post('/app/api/login',require('./rateLimit').middleware('portal-login',20),async(req,res)=>{
  try{
   if(req.headers.origin!==auth.origin()||!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))return res.sendStatus(403);
   const result=await auth.redeem(req.body?.token);
-  res.setHeader('Set-Cookie',[`cb_session=${result.session}; Path=/app; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`,`cb_csrf=${result.csrf}; Path=/app; Secure; SameSite=Strict; Max-Age=604800`]);
-  res.json({ok:true});
+  const googleLinked=await require('./googleLogin').completePending(auth.cookies(req).cb_gpending,result.clientId);
+  res.setHeader('Set-Cookie',[...[`cb_session=${result.session}; Path=/app; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`,`cb_csrf=${result.csrf}; Path=/app; Secure; SameSite=Strict; Max-Age=604800`],...(googleLinked?[GPENDING_CLEAR]:[])]);
+  res.json({ok:true,googleLinked});
  }catch{res.status(401).json({error:'הקישור אינו תקף. אפשר לבקש קישור חדש בשיחת ה-WhatsApp.'});}
 });
 // Sign-in without a WhatsApp link: phone number -> one-time 6-digit code on WhatsApp.
@@ -30,9 +32,29 @@ router.post('/app/api/login/code/verify',require('./rateLimit').middleware('port
  try{
   if(!sameOriginJson(req))return res.sendStatus(403);
   const result=await require('./loginCode').verify(req.body?.phone,req.body?.code);
-  res.setHeader('Set-Cookie',[`cb_session=${result.session}; Path=/app; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`,`cb_csrf=${result.csrf}; Path=/app; Secure; SameSite=Strict; Max-Age=604800`]);
-  res.json({ok:true});
+  const googleLinked=await require('./googleLogin').completePending(auth.cookies(req).cb_gpending,result.clientId);
+  res.setHeader('Set-Cookie',[...[`cb_session=${result.session}; Path=/app; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`,`cb_csrf=${result.csrf}; Path=/app; Secure; SameSite=Strict; Max-Age=604800`],...(googleLinked?[GPENDING_CLEAR]:[])]);
+  res.json({ok:true,googleLinked});
  }catch(e){const copy=require('./onboardingCopy');res.status(e.message==='LOGIN_CODE_RATE_LIMITED'?429:401).json({error:e.message==='LOGIN_CODE_RATE_LIMITED'?copy.loginCodeSlowDown:copy.loginCodeInvalid});}
+});
+// Sign-in with Google (googleLogin.js). Off unless GOOGLE_LOGIN_CLIENT_ID/SECRET are set; the button is hidden then.
+// Google redirects back cross-site, so the callback answers with a same-site refresh to /app
+// (SameSite=Strict session cookies are then sent) and reports the result in the URL fragment.
+const GOOGLE_RESULT={GOOGLE_LOGIN_DENIED:'denied',GOOGLE_ACCOUNT_IN_USE:'in-use',GOOGLE_EMAIL_NOT_VERIFIED:'unverified',GOOGLE_LOGIN_EXPIRED:'expired',GOOGLE_LOGIN_DISABLED:'unavailable',PORTAL_AUTH_REQUIRED:'signin'};
+const GFLOW_CLEAR='cb_gflow=; Path=/app/auth/google; HttpOnly; Secure; SameSite=Lax; Max-Age=0';
+function googleBack(res,result,cookies=[]){res.setHeader('Set-Cookie',[GFLOW_CLEAR,...cookies]);const to='/app#google='+result;res.type('html').send(`<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${to}"><title>SCORPIO AI</title></head><body><p><a href="${to}">המשך לדשבורד</a></p></body></html>`);}
+router.get('/app/auth/google/config',(req,res)=>res.json({enabled:require('./googleLogin').configured()}));
+router.get('/app/auth/google/start',require('./rateLimit').middleware('google-login-start',30),async(req,res)=>{
+ try{const mode=req.query.mode==='link'?'LINK':'LOGIN',clientId=mode==='LINK'?(await auth.authenticate(req)).clientId:null,r=await require('./googleLogin').start(mode,clientId);
+  res.setHeader('Set-Cookie',`cb_gflow=${r.browser}; Path=/app/auth/google; HttpOnly; Secure; SameSite=Lax; Max-Age=600`);res.redirect(302,r.url);}
+ catch(e){res.redirect(302,'/app#google='+(GOOGLE_RESULT[e.message]||'error'));}
+});
+router.get('/app/auth/google/callback',require('./rateLimit').middleware('google-login-callback',30),async(req,res)=>{
+ try{const q=req.query,r=await require('./googleLogin').callback({code:q.code,state:q.state,error:q.error,browser:auth.cookies(req).cb_gflow});
+  if(r.kind==='SESSION')return googleBack(res,'ok',[`cb_session=${r.session}; Path=/app; HttpOnly; Secure; SameSite=Strict; Max-Age=604800`,`cb_csrf=${r.csrf}; Path=/app; Secure; SameSite=Strict; Max-Age=604800`]);
+  if(r.kind==='LINKED')return googleBack(res,'linked');
+  googleBack(res,'pending',[`cb_gpending=${r.pending}; Path=/app; HttpOnly; Secure; SameSite=Lax; Max-Age=900`]);}
+ catch(e){googleBack(res,GOOGLE_RESULT[e.message]||'error');}
 });
 router.use('/app/api',require('./rateLimit').middleware('portal-api',600),async(req,res,next)=>{
  try{req.portal=await auth.authenticate(req,{write:!['GET','HEAD'].includes(req.method)});next();}catch(e){res.status(e.message==='PORTAL_CSRF'?403:401).json({error:'צריך להיכנס: בקישור אישי מה־WhatsApp, או עם מספר הטלפון וקוד.'});}
@@ -40,6 +62,8 @@ router.use('/app/api',require('./rateLimit').middleware('portal-api',600),async(
 // Field errors the owner can fix, in plain Hebrew (never the raw code).
 const FORM_ERRORS={LEAD_CONTACT_REQUIRED:'כדי לשמור ליד צריך טלפון או דוא״ל.',INVALID_LEAD_PHONE:'מספר הטלפון לא נראה תקין. למשל 0501234567.',INVALID_LEAD_EMAIL:'כתובת הדוא״ל לא נראית תקינה.',INVALID_LEAD:'צריך שם לליד (עד 120 תווים).',INVALID_LEAD_UPDATE:'הפרטים לא נשמרו. בדקו את הסכום ונסו שוב.',INVALID_REGISTRATION:'צריך שם ואישור של מדיניות הפרטיות.'};
 const endpoint=handler=>async(req,res)=>{try{await require('./metaConnection').context.run(String(req.portal.clientId),()=>handler(req,res));}catch(e){res.status(['LEAD_NOT_FOUND_OR_STALE','WORKSPACE_STALE','WORKSPACE_REQUEST_CONFLICT'].includes(e.message)?409:400).json({error:e.message==='LEAD_NOT_FOUND_OR_STALE'?'הפנייה עודכנה במקום אחר. רעננו ונסו שוב.':e.message==='WORKSPACE_STALE'?'הפרטים עודכנו במקביל. רעננו את המסך לפני עריכה נוספת.':e.message==='WORKSPACE_REQUEST_CONFLICT'?'הבקשה הזו כבר נשמרה עם פרטים אחרים. פתחו מחדש את הטופס.':FORM_ERRORS[e.message]||'משהו לא עבד. בדקו את הפרטים ונסו שוב.'});}};
+router.get('/app/api/google-login',endpoint(async(req,res)=>res.json(await require('./googleLogin').status(req.portal.clientId))));
+router.post('/app/api/google-login/unlink',endpoint(async(req,res)=>{if(req.body?.confirm!==true)return res.sendStatus(400);res.json(await require('./googleLogin').unlink(req.portal.clientId));}));
 router.use('/app/api/authority',require('./authorityRoutes'));
 router.use('/app/api/catalog',require('./catalogRoutes'));
 router.use('/app/api/growth',require('./growthRoutes'));

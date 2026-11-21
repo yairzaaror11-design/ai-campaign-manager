@@ -11,6 +11,8 @@ test.describe('signed out', () => {
     await expect(page.locator('#locked')).toBeVisible();
     await expect(page.locator('#workspace')).toBeHidden();
     await expect(page.locator('#status')).toContainText('צריך להיכנס');
+    // Google sign-in is not configured in the demo: no button (never a button that cannot work).
+    await expect(page.locator('#google-login')).toBeHidden();
     await page.locator('#code-request [name=phone]').fill('0501234567');
     await page.locator('#code-request button[type=submit]').click();
     await expect(page.locator('#code-verify')).toBeVisible();

@@ -72,12 +72,19 @@ $('meta-connect').addEventListener('click',()=>run($('meta-connect'),async()=>{
  const address=await api('meta/connect',{});if(address.url){const link=document.createElement('a');link.textContent='לחיבור מאובטח דרך Meta';link.href=address.url;link.rel='noreferrer noopener';$('meta-accounts').append(link);$('meta-status').textContent='יש להשלים את החיבור במסך הרשמי, ואז ללחוץ שוב על בדיקת החיבור.';tell('קישור החיבור מוכן.');}
 }));
 $('report').addEventListener('click',()=>run($('report'),async()=>{tell('מכין את הדוח…');const data=await api('report');$('report-output').textContent=data.text;tell('הדוח מוכן.');}));
+// Coming back from Google (#google=...): what happened, in plain Hebrew.
+const GOOGLE_NOTES={linked:['חשבון Google חובר. מעכשיו אפשר להיכנס גם איתו.',false],pending:['כמעט סיימנו: חשבון ה־Google הזה עוד לא מחובר לעסק. היכנסו פעם אחת עם מספר הטלפון והקוד (או מהקישור בוואטסאפ), והוא יחובר אוטומטית.',false],denied:['הכניסה עם Google בוטלה.',true],'in-use':['חשבון ה־Google הזה כבר מחובר לעסק אחר.',true],unverified:['כתובת המייל בחשבון ה־Google הזה לא מאומתת אצל Google.',true],expired:['הכניסה עם Google לקחה יותר מדי זמן. נסו שוב.',true],unavailable:['הכניסה עם Google עוד לא מופעלת.',true],signin:['כדי לחבר חשבון Google צריך קודם להיכנס.',true],error:['הכניסה עם Google לא הושלמה. נסו שוב או היכנסו עם מספר הטלפון.',true]};
+let googleNote=null;
+// A login link opened in a tab that already shows /app only changes the fragment: reload to use it.
+window.addEventListener('hashchange',()=>{if(/(^|&)(login|google)=/.test(location.hash.slice(1)))location.reload();});
+function showGoogleNote(){const n=GOOGLE_NOTES[googleNote];if(!n||googleNote==='ok')return;if(!$('locked').hidden){$('google-note').textContent=n[0];$('google-note').hidden=false;$('google-note').classList.toggle('error',n[1]);}else tell(n[0],n[1]);}
 (async()=>{try{
- const fragment=new URLSearchParams(location.hash.slice(1)),token=fragment.get('login');
- if(token){history.replaceState(null,'',location.pathname);await api('login',{token});}
- await refresh();
+ const fragment=new URLSearchParams(location.hash.slice(1)),token=fragment.get('login');googleNote=fragment.get('google');
+ if(token||googleNote)history.replaceState(null,'',location.pathname);
+ if(token){const r=await api('login',{token});if(r.googleLinked)googleNote='linked';}
+ await refresh();showGoogleNote();
 }catch(e){
- if(e.status===401||e.status===403){$('locked').hidden=false;$('workspace').hidden=true;tell(e.message,true);return;}
+ if(e.status===401||e.status===403){$('locked').hidden=false;$('workspace').hidden=true;tell(googleNote&&googleNote!=='ok'?'':e.message,!googleNote);showGoogleNote();return;}
  // Not a sign-in problem (busy server, network): keep the session and offer a retry.
  tell(e.status?e.message:'אין חיבור לשרת כרגע. בדקו את האינטרנט ונסו שוב.',true);const retry=text('button','ניסיון חוזר');retry.type='button';retry.id='load-retry';retry.addEventListener('click',()=>location.reload());$('status').append(' ',retry);
 }})();
