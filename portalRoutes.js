@@ -112,6 +112,12 @@ router.get('/app/api/meta/lead-source',endpoint(async(req,res)=>{
  if(req.query.pageId)return res.json(await forms.list(req.query.pageId));
  res.json({enabled:true,sources});
 }));
+// Meta data health for the connections screen: last Insights sync, Lead Ads imports, conversions sent.
+router.get('/app/api/meta/data-status',endpoint(async(req,res)=>{
+ const clientId=req.portal.clientId;
+ if(req.query.refresh==='1')await require('./metaInsights').safeAccountInsights(clientId,'last_7d',{force:true});
+ res.json({lastInsightsSync:await require('./metaInsights').lastSync(clientId),leadAds:await require('./metaLeadImport').status(clientId),conversions:await require('./metaCrmFeedback').status(clientId)});
+}));
 router.get('/app/api/meta/lead-source/pages',endpoint(async(req,res)=>{
  if(!require('./metaLeadImport').enabled())return res.sendStatus(404);
  res.json(await require('./metaLeadForms').pages());
