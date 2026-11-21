@@ -10,8 +10,8 @@ async function take(key,limit=30,seconds=60) {
 }
 function middleware(prefix,limit=30) {
  return async(req,res,next)=>{
-   try {if(!await take(prefix+':'+req.ip,limit)) return res.status(429).json({error:'Too many requests'});next();}
-   catch {res.status(503).json({error:'Temporarily unavailable'});}
+   try {if(!await take(prefix+':'+req.ip,limit)) return res.status(429).json({error:'יותר מדי פעולות בזמן קצר. נסו שוב בעוד דקה.'});next();}
+   catch {res.status(503).json({error:'השירות לא זמין לרגע. נסו שוב בעוד רגע.'});}
  };
 }
 module.exports={take,middleware};
