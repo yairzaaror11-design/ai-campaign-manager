@@ -10,7 +10,6 @@ const WRITE_INTENTS = new Set([
   'CREATE_BUNDLE',
   'ACTIVATE_BUNDLE',
   'CHANGE_BUDGET',
-  'DUPLICATE_CAMPAIGN',
   'PAUSE_CAMPAIGN',
   'RESUME_CAMPAIGN',
   'EDIT_CAMPAIGN'
@@ -18,10 +17,13 @@ const WRITE_INTENTS = new Set([
 
 // Buyer audiences (buyerAudiences.js): server-prepared only, kept out of the AI planners' intent list.
 const AUDIENCE_INTENTS = new Set(['SYNC_BUYER_AUDIENCE', 'CREATE_LOOKALIKE']);
+// Dashboard-only (budgetControl.js). Kept out of the planners' grammar: each extra enum value
+// grows the constrained-decoding schema and Gemini rejected the initial-plan schema (400) once it was added.
+const DASHBOARD_INTENTS = new Set(['DUPLICATE_CAMPAIGN']);
 
 function isWriteIntent(intent) {
   const key = String(intent || '').toUpperCase();
-  return WRITE_INTENTS.has(key) || AUDIENCE_INTENTS.has(key);
+  return WRITE_INTENTS.has(key) || AUDIENCE_INTENTS.has(key) || DASHBOARD_INTENTS.has(key);
 }
 
 function createActionPlan({

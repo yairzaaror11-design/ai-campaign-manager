@@ -26,12 +26,13 @@ function cacheIdentity(){
  const credential=provider==='gemini'?process.env.GEMINI_API_KEY:provider==='claude'?process.env.ANTHROPIC_API_KEY:null;
  if(!/^[a-f0-9]{40}$/i.test(release||'')||!model||!credential||!require('./db').configured())return null;
  const fingerprint=require('node:crypto').createHash('sha256').update(JSON.stringify([
-  release,provider,model,credential,process.env.DYNAMIC_CONVERSATION_ENABLED
+  release,provider,model,credential,process.env.GEMINI_MODEL,process.env.CLAUDE_MODEL,process.env.DYNAMIC_CONVERSATION_ENABLED
  ])).digest('hex');
  return{service:process.env.RENDER_SERVICE_ID||'default',fingerprint,provider,model};
 }
 function completePass(result,identity){
- const provider=result?.providers?.find?.(p=>p.provider===identity.provider&&p.model===identity.model);
+ const chosen=result?.plannerProvider||identity;
+ const provider=result?.providers?.find?.(p=>p.provider===chosen.provider&&p.model===chosen.model);
  const expected=[...cases,...require('./conversationRouter').PROBES].map(item=>item.id);
  return result?.status==='PASSED'&&provider?.status==='PASSED'&&Array.isArray(provider.cases)&&
   provider.cases.length===expected.length&&expected.every(id=>provider.cases.some(c=>c.id===id&&c.result==='PASSED'));
@@ -148,7 +149,9 @@ async function evaluate({decide=require('./taskPlanner').decide,route=require('.
   }
   entry.status=entry.cases.every(c=>c.result==='PASSED')?'PASSED':'FAILED';
  }
- state.status=state.providers.find(p=>p.provider===selected)?.status==='PASSED'?'PASSED':'FAILED';state.finishedAt=new Date().toISOString();
+ // Planner runs on the selected provider when it passes, else on any configured provider that passed every case.
+ const passed=state.providers.find(p=>p.provider===selected&&p.status==='PASSED')||state.providers.find(p=>p.status==='PASSED');
+ state.status=passed?'PASSED':'FAILED';state.plannerProvider=passed?{provider:passed.provider,model:passed.model}:null;state.finishedAt=new Date().toISOString();
  require('./logger').logger.info('Task manager model acceptance completed',{result:state.status,providers:state.providers.map(p=>({provider:p.provider,status:p.status,cases:p.cases}))});
  return status();
 }
@@ -166,4 +169,5 @@ async function waitUntilReady(timeoutMs=45000){
  try{await Promise.race([ensure(),new Promise(resolve=>{timer=setTimeout(resolve,timeoutMs);})]);return ready();}
  finally{clearTimeout(timer);}
 }
-module.exports={cases,ready,status,run,start,ensure,waitUntilReady};
+function plannerProvider(){return ready()&&state.plannerProvider?{...state.plannerProvider}:null;}
+module.exports={cases,ready,status,run,start,ensure,waitUntilReady,plannerProvider};

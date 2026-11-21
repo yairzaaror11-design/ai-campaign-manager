@@ -31,6 +31,7 @@ function businessContext(known={}){
 function initialFeedback(code){return{code,instruction:'No plan has been accepted. Return a complete valid ordered plan of 1..12 supported steps and one next operation against that plan. No external action has been performed by this planning attempt.'};}
 function repairableInitial(error){return ['INVALID_TASK_PLAN','INVALID_TASK_DECISION','TASK_PLAN_MISSING_OUTCOME','CAMPAIGN_PACKAGE_PLAN_LIMIT'].includes(error.message)||error instanceof SyntaxError;}
 async function decide(context,{planner,provider,model}={}){
+ if(!provider){const chosen=require('./taskEvaluation').plannerProvider();if(chosen){provider=chosen.provider;model=chosen.model;}}
  const input={...context,planningMode:require('./planningIntent').isDiscovery(context)?'DISCOVERY_BEFORE_CREATIVE':'REQUESTED_TASK',planningPhase:context.plan?.length?'CONTINUE_EXISTING_PLAN':'INITIAL_PLAN_REQUIRED'};
  if(planner)return planner(input);
  const call=async value=>{const result=await require('./aiService').processMessage(JSON.stringify(value),[],{planningOnly:true,taskPlanning:true,taskPlanningSchema:require('./taskPlanningSchema').responseSchema(value),provider,model});return JSON.parse(result.text.replace(/^```(?:json)?\s*|\s*```$/g,''));};
