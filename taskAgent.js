@@ -70,23 +70,24 @@ function replyFor(task){
   if(analysis)return require('./businessCase').format(analysis.result);
  }
  if(task.status==='WAITING_INPUT')return s.question;
- if(task.status==='WAITING_MODEL')return 'בדיקת התקינות של הסוכן טרם הושלמה בהצלחה. הבקשה נשמרה. כדי להמשיך בלי להקליד אותה שוב, כתבו ״המשך במשימה״ בעוד כמה דקות.';
+ if(task.status==='WAITING_MODEL')return 'הבקשה נשמרה, אבל אני עדיין לא מוכן לעבוד עליה. בעוד כמה דקות כתוב לי ״נמשיך״ ואמשיך מאותה נקודה.';
  if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nתעבור על מה שהכנתי ותגיד לי מה תרצה לשנות. אם הכול מתאים, כתוב ״מאשר את התוכן״. זה אישור לתוכן בלבד; פרסום והפעלת תקציב דורשים אישור נפרד.';
  const waiting=s.steps?.find(x=>x.status==='WAITING_APPROVAL');
  if(waiting){const a=waiting.result.approval;return require('./actionPlan').formatActionPlan(a.plan)+'\n\nכדי לאשר את הפעולה המדויקת, שלח: אשר '+meta.decrypt(a.codeCiphertext,task.client_id)+'\nהאישור תקף עד '+new Date(a.expiresAt).toLocaleString('he-IL',{timeZone:'Asia/Jerusalem',day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'})+'. האישור מתייחס רק לפעולה הזו.';}
  if(task.status==='COMPLETE')return 'השלמתי את כל השלבים בתוכנית שנבדקה. '+((s.steps||[]).some(x=>x.kind==='meta')?'הפעולות החיצוניות המסומנות כהושלמו אומתו מול Meta.':'התוצרים הוכנו ואושרו; לא בוצעה פעולה חיצונית.')+(s.steps.some(x=>x.result?.privateDraft)?' טיוטת דף הנחיתה נשמרה בדשבורד שלך ולא פורסמה.':'')+'\n'+(s.steps||[]).filter(x=>x.artifact).map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n');
  if(task.status==='CANCELLED')return 'המשך העבודה על המשימה בוטל והאישורים הממתינים בוטלו. פעולות שכבר בוצעו אינן מתבטלות אוטומטית.';
- if(task.status==='MANUAL_REVIEW')return 'המשימה הזו נעצרה, כי לא בטוח אם השלב האחרון הושלם. לא אחזור עליו כדי לא לבצע פעולה פעמיים.\nכדי להתחיל משהו חדש, כתוב: בטל את המשימה';
- if(task.status==='PAUSED')return 'עצרתי את המשימה. ההתקדמות נשמרה; אפשר לכתוב ״המשך במשימה״.';
+ if(task.status==='MANUAL_REVIEW')return 'בשלב האחרון לא קיבלתי מ־Meta תשובה ברורה אם הפעולה הושלמה, אז לא חזרתי עליה כדי שלא תיווצר כפילות. אפשר לראות מה נוצר בדשבורד, במסך פרסום.\nפשוט כתוב לי מה תרצה עכשיו, ואמשיך משם.';
+ if(task.status==='PAUSED')return 'עצרתי. ההתקדמות נשמרה, וכשתרצה כתוב לי ״נמשיך״.';
  if(task.status==='BLOCKED')return 'כדי להשלים את המשימה צריך לפתור את החלק הבא: '+(s.reason||'יכולת שלא זמינה כרגע')+'. שאר ההתקדמות נשמרה.';
  if(task.status==='HUMAN_PAUSED')return 'המענה האוטומטי והמשימה הושהו למענה אנושי.';
  if(s.lastError==='TASK_FORM_DRAFT_REQUIRED')return 'המודעה נשמרה, אבל עדיין חסר טופס המועמדות. צריך להשלים אותו לפני שאשלח הכול לבדיקה.';
  const prepared=(s.steps||[]).filter(x=>x.status==='PREPARED'&&x.artifact).map(x=>x.artifact.title).slice(0,3);
  const stage=['INVALID_TASK_JSON','TASK_STEP_FAILED'].includes(s.lastError)?'נתקעתי בתכנון השלב הבא.':s.lastError?.includes('CAMPAIGN_DRAFT')?'עדיין לא הצלחתי להשלים את הגדרות הקמפיין.':s.lastError?.includes('GRAPHIC')||s.lastError?.includes('IMAGE')?'נעצרתי בהכנת התמונה.':'לא הצלחתי להשלים את השלב הבא.';
- return stage+(prepared.length?' כבר מוכן ושמור: '+prepared.join(', ')+'.':' הבקשה שלך נשמרה.')+' אפשר לכתוב ״המשך במשימה״. פעולה שהתוצאה שלה לא ברורה לא תבוצע שוב אוטומטית.';
+ return stage+(prepared.length?' כבר מוכן ושמור: '+prepared.join(', ')+'.':' הבקשה שלך נשמרה.')+' כתוב לי ״נמשיך״ ואנסה שוב, או ספר לי מה לשנות.';
 }
 async function settle(task,lease,requestId){
- const reply=task.customReply||replyFor(task);
+ let reply=task.customReply||replyFor(task);
+ if(task.state?.closedStuck){reply=CLOSED_STUCK+'\n\n'+reply;delete task.state.closedStuck;}
  const contextReply=task.status==='WAITING_APPROVAL'?'הוכנה פעולה לבדיקה; נדרש אישור נפרד לפעולה זו.':reply;
  task.state.messages=[...(task.state.messages||[]),{role:'assistant',content:contextReply.slice(0,2000),...(contextReply.length>2000?{truncated:true}:{})}].slice(-12);
  await checkpoint(task,lease);
@@ -117,19 +118,22 @@ async function claim(clientId,{message,requestId,channel,taskRevision},dynamicRo
   if(taskRevision!==undefined&&(!Number.isInteger(taskRevision)||taskRevision!==task?.revision))throw Error('TASK_STALE');
   if(task?.lease_until&&new Date(task.lease_until)>new Date())return{cached:{handled:true,reply:'אני עדיין עובד על המשימה. ההתקדמות נשמרת; לא התחלתי עותק נוסף.',task:view(task),busy:true,externalActionsExecuted:false}};
   const replacing=!dynamicRouting&&!prior&&(newGoal(message)||changedDeliverable(message,task));let advisoryContext=null;
+  let closedStuck=false;
   if(replacing&&task){
    // Never discard uncertain external effects or override an in-flight lease.
-   let uncertain=task.status==='MANUAL_REVIEW'||task.state.steps.some(s=>s.status==='RUNNING'&&['image','meta'].includes(s.kind));
+   let uncertain=task.status==='MANUAL_REVIEW'||task.state.steps.some(s=>s.status==='RUNNING'&&s.kind==='meta');
    for(const step of task.state.steps){const id=step.result?.approval?.actionId;if(!id)continue;const attempt=(await tx('SELECT status FROM meta_execution_attempts WHERE client_id=$1 AND action_id=$2',[clientId,id])).rows[0];if(attempt&&attempt.status!=='VERIFIED')uncertain=true;}
-   if(uncertain)return{cached:{handled:true,reply:'אפשר לעבור לבקשה חדשה, אבל קודם צריך לברר את תוצאת הפעולה הקודמת כדי שלא לבצע אותה פעמיים. המשימה נשמרה לבדיקה.',task:view(task),externalActionsExecuted:false}};
+   // The uncertain Meta attempt stays recorded for reconciliation; closing the task only stops further steps.
+   closedStuck=uncertain;
    if(require('./planningIntent').directionOnly(task.request)&&!newGoal(message)&&changedDeliverable(message,task))advisoryContext={facts:task.state.facts||{},messages:(task.state.messages||[]).slice(-8)};
    for(const step of task.state.steps){const id=step.result?.approval?.actionId;if(!id)continue;await tx("UPDATE approvals SET status='CANCELLED' WHERE client_id=$1 AND action_id=$2 AND status='PENDING'",[clientId,id]);await tx("UPDATE action_plans SET status='CANCELLED' WHERE client_id=$1 AND id=$2 AND status='PROPOSED'",[clientId,id]);}
    await tx("UPDATE agent_tasks SET status='CANCELLED',lease_token=NULL,lease_until=NULL,revision=revision+1,updated_at=NOW() WHERE id=$1 AND client_id=$2",[task.id,clientId]);
    task=null;
   }
   if(!task){task={id:crypto.randomUUID(),client_id:clientId,request:message,status:'READY',revision:1,state:{steps:[],facts:advisoryContext?.facts||{},messages:advisoryContext?.messages||[],...(replacing?{newGoal:!advisoryContext,awaitingGoal:vagueGoal(message)}:{})}};await tx('INSERT INTO agent_tasks(id,client_id,request,state) VALUES($1,$2,$3,$4::jsonb)',[task.id,clientId,message,JSON.stringify(task.state)]);}
+  if(closedStuck&&task.state)task.state.closedStuck=true;
   if(!prior)task.state.messages=[...(task.state.messages||[]),{role:'user',content:message}].slice(-12);
-  if((task.state.steps||[]).some(s=>s.status==='RUNNING'&&['image','meta'].includes(s.kind)))task.status='MANUAL_REVIEW';
+  if((task.state.steps||[]).some(s=>s.status==='RUNNING'&&s.kind==='meta'))task.status='MANUAL_REVIEW';
   else for(const s of task.state.steps||[])if(s.status==='RUNNING')s.status='PENDING';
   const lease=crypto.randomUUID();
   await tx("UPDATE agent_tasks SET lease_token=$2,lease_until=NOW()+INTERVAL '5 minutes',state=$3::jsonb,status=$4 WHERE id=$1",[task.id,lease,JSON.stringify(task.state),task.status]);
@@ -196,7 +200,7 @@ async function rebaseForTurn(task,lease,requestId,message,kind){
  }
  return db.transaction(async tx=>{
   const locked=(await tx('SELECT * FROM agent_tasks WHERE id=$1 AND client_id=$2 AND lease_token=$3 AND lease_until>NOW() FOR UPDATE',[task.id,task.client_id,lease])).rows[0];if(!locked)throw Error('TASK_LEASE_LOST');
-  if(locked.status==='MANUAL_REVIEW'||locked.state.steps.some(s=>s.status==='RUNNING'&&['image','meta'].includes(s.kind)))throw Error('TASK_UNCERTAIN_SWITCH');
+  if(locked.status==='MANUAL_REVIEW'||locked.state.steps.some(s=>s.status==='RUNNING'&&s.kind==='meta'))throw Error('TASK_UNCERTAIN_SWITCH');
   for(const step of locked.state.steps){const id=step.result?.approval?.actionId;if(!id)continue;const attempt=(await tx('SELECT status FROM meta_execution_attempts WHERE client_id=$1 AND action_id=$2',[task.client_id,id])).rows[0];if(attempt&&attempt.status!=='VERIFIED')throw Error('TASK_UNCERTAIN_SWITCH');}
   for(const step of locked.state.steps){const id=step.result?.approval?.actionId;if(!id)continue;await tx("UPDATE approvals SET status='CANCELLED' WHERE client_id=$1 AND action_id=$2 AND status='PENDING'",[task.client_id,id]);await tx("UPDATE action_plans SET status='CANCELLED' WHERE client_id=$1 AND id=$2 AND status='PROPOSED'",[task.client_id,id]);}
   await tx("UPDATE agent_tasks SET status='CANCELLED',lease_token=NULL,lease_until=NULL,revision=revision+1,updated_at=NOW() WHERE id=$1 AND client_id=$2 AND lease_token=$3",[task.id,task.client_id,lease]);
@@ -208,16 +212,22 @@ function canPresentReview(task,message){
  if(task?.state?.pendingRouting&&require('./conversationRouter').resume(message))return false;
  return process.env.TASK_AGENT_ENABLED==='true'&&!!task&&['BLOCKED','ERROR','WAITING_MODEL','WAITING_REVIEW'].includes(task.status)&&/^(?:המשך במשימה|נמשיך|המשך|תמשיך|הצג את החבילה|תציג את החבילה|הצג את הקמפיין|תציג את הקמפיין|תראה לי מה הכנת)[.!?]*$/u.test(message.trim())&&reviewReady(task);
 }
+const CLOSED_STUCK='סגרתי את המשימה הקודמת שנתקעה (אם משהו כבר נוצר ב־Meta, תראה אותו בדשבורד). עוברים לבקשה החדשה:';
 async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={},options={}){
  text(message);text(requestId,200);if(!['PORTAL','WHATSAPP'].includes(channel))throw Error('INVALID_TASK_CHANNEL');
  if(String(meta.context.getStore())!==String(clientId))throw Error('TENANT_CONTEXT_REQUIRED');
  if((await require('./humanSupport').current(clientId))?.bot_paused)return{handled:true,reply:'המענה האוטומטי מושהה למענה אנושי.',externalActionsExecuted:false};
- if(/^(בטל את המשימה|בטלי את המשימה)$/.test(message.trim()))return await cancel(clientId)||{handled:true,reply:'אין משימה פתוחה לביטול.',externalActionsExecuted:false};
+ if(/^(?:בטל את המשימה|בטלי את המשימה|בטל|תבטל|תבטל אותה|תבטל את זה|סגור את המשימה|תסגור את המשימה|תסגור אותה|עזוב את זה|עזוב אותה|תעזוב את זה|נתחיל מחדש|תתחיל מחדש|בוא נתחיל מחדש)$/.test(message.trim()))return await cancel(clientId)||{handled:true,reply:'אין משימה פתוחה לביטול.',externalActionsExecuted:false};
  const claimed=await claim(clientId,{message:message.trim(),requestId,channel,taskRevision},!!options.dynamicRouting);if(claimed.cached)return claimed.cached;
  let {task,lease}=claimed;let semanticRevision=false;
  try{
   if(/^(מצב המשימה|מה מצב המשימה|איפה עומדים|מה כבר עשית)$/.test(message.trim())){const labels={DONE:'הושלם',PREPARED:'מוכן לבדיקה',WAITING_INPUT:'ממתין לפרט ממך',WAITING_APPROVAL:'ממתין לאישור פעולה',PENDING:'טרם בוצע',RUNNING:'בתהליך'};task.customReply='היעד: '+task.request+'\n'+task.state.steps.map(s=>s.label+': '+(labels[s.status]||s.status)).join('\n');return await settle(task,lease,requestId);}
-  if(task.status==='MANUAL_REVIEW')return await settle(task,lease,requestId);
+  if(task.status==='MANUAL_REVIEW'){
+   if(/^(?:המשך במשימה|נמשיך|המשך|תמשיך|מה קרה|מה המצב)$/.test(message.trim()))return await settle(task,lease,requestId);
+   task.customReply=CLOSED_STUCK;await settle(task,lease,requestId);await cancel(clientId);
+   const next=await send(clientId,{message,requestId:String(requestId).slice(0,190)+'~next',channel},options);
+   return{...next,reply:CLOSED_STUCK+'\n\n'+next.reply};
+  }
   if(task.status==='PAUSED'&&!options.dynamicRouting&&!/^(המשך במשימה|נמשיך|המשך|תמשיך)$/.test(message.trim()))return await settle(task,lease,requestId);
   if(/^(עצור|עצירה|עצור את המשימה)$/.test(message.trim())){task.status='PAUSED';return await settle(task,lease,requestId);}
   if(options.dynamicRouting){
@@ -465,7 +475,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   if(error.message==='TASK_UNCERTAIN_SWITCH'){task.status='MANUAL_REVIEW';return await settle(task,lease,requestId);}
   if(error.message==='TASK_HUMAN_PAUSED'){await db.query("UPDATE agent_tasks SET state=$4::jsonb,status='HUMAN_PAUSED',lease_token=NULL,lease_until=NULL,revision=revision+1 WHERE id=$1 AND client_id=$2 AND lease_token=$3",[task.id,clientId,lease,JSON.stringify(task.state)]);return{handled:true,reply:'המשימה הושהתה למענה אנושי. ההתקדמות נשמרה.',externalActionsExecuted:false};}
   if(error.message==='TASK_LEASE_LOST')return{handled:true,reply:'המשימה השתנתה בזמן העבודה. ההמשך לא בוצע.',externalActionsExecuted:false};
-  if(task.state.steps.some(s=>s.status==='RUNNING'&&['meta','image'].includes(s.kind)))task.status='MANUAL_REVIEW';else{for(const s of task.state.steps)if(s.status==='RUNNING')s.status='PENDING';task.status='ERROR';}
+  if(task.state.steps.some(s=>s.status==='RUNNING'&&s.kind==='meta'))task.status='MANUAL_REVIEW';else{for(const s of task.state.steps)if(s.status==='RUNNING')s.status='PENDING';task.status='ERROR';}
   task.state.lastError=error instanceof SyntaxError?'INVALID_TASK_JSON':/^[A-Z_]+$/.test(error.message)?error.message:'TASK_STEP_FAILED';
   task.state.errorDiagnostic={type:['SyntaxError','TypeError','ApiError','Error'].includes(error.name)?error.name:'Error',status:Number.isInteger(error.status)&&error.status>=400&&error.status<=599?error.status:null};
   try{return await settle(task,lease,requestId);}catch{return{handled:true,reply:'המשימה נעצרה. לא ניתן לאמת את שמירת התוצאה; נדרשת בדיקה לפני המשך.',externalActionsExecuted:false};}

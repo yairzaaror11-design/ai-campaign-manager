@@ -348,7 +348,7 @@ async function prepareCampaign(clientId, id, { channel = 'WHATSAPP', requestId, 
   if (blocked) return { handled: true, blocked, reply: notReady(blocked, item) };
   const tasks = require('./taskAgent');
   const active = await tasks.active(clientId);
-  if (active && active.id !== item.campaign_task_id) return { handled: true, blocked: 'TASK_OPEN', reply: 'יש כרגע משימה פתוחה אחרת אצל הסוכן. כדי לא לערבב ביניהן, סיים אותה או כתוב "בטל את המשימה", ואז בחר שוב "קמפיין לידים".' };
+  if (active && active.id !== item.campaign_task_id) return { handled: true, blocked: 'TASK_OPEN', reply: 'יש כרגע משימה פתוחה אחרת אצל הסוכן. כדי לא לערבב ביניהן, סיים אותה, או כתוב לי "תסגור אותה", ואז בחר שוב "קמפיין לידים".' };
   const meta = await connection(clientId);
   await useCoverPhoto(clientId, item).catch(() => null);
   const run = send || ((message) => tasks.send(clientId, { message, requestId: requestId || `catalog-campaign:${item.id}:${item.version}`, channel }, { dynamicRouting: process.env.DYNAMIC_CONVERSATION_ENABLED === 'true', deferPlanning: !tasks.enabled() }));
@@ -427,7 +427,7 @@ async function close(clientId, id, outcomeKey, { createApproval, connection = me
   const campaignId = await resolveCampaign(clientId, item).catch(() => null);
   if (!campaignId) {
     const openTask = item.campaign_task_id && (await require('./taskAgent').active(clientId).catch(() => null))?.id === item.campaign_task_id;
-    done.push(openTask ? '📣 טיוטת הקמפיין שלו עוד פתוחה אצל הסוכן ולא נוצרה ב־Meta. כדאי לכתוב "בטל את המשימה".' : 'לא היה לו קמפיין מקושר, אז אין מה לעצור ב־Meta.');
+    done.push(openTask ? '📣 טיוטת הקמפיין שלו עוד פתוחה אצל הסוכן ולא נוצרה ב־Meta. אם כבר לא צריך אותה, כתוב לי "תסגור אותה".' : 'לא היה לו קמפיין מקושר, אז אין מה לעצור ב־Meta.');
   } else {
     const meta = await connection(clientId);
     if (!meta.ok) done.push(`⚠️ לא יכולתי להכין עצירה של הקמפיין (${campaignId}) כי אין חיבור פעיל ל־Meta. כדי שלא תשלם על פרסום למשהו שכבר לא זמין, עצור אותו במנהל המודעות של Meta או כתוב "חבר את Meta" ואכין את העצירה.`);

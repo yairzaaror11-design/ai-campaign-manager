@@ -105,11 +105,11 @@ test('task safety: no invented facts, no unsupported tools, no false completion 
    const first=meta.context.run(String(c.id),()=>agent.send(c.id,{message:'תכין מודעה',requestId:'one',channel:'WHATSAPP'},{planner:async()=>{entered();await gate;return{plan:[{id:'i',kind:'collect',label:'פרט',dependsOn:[]}],next:{op:'ask',stepId:'i',question:'מה המוצר?'}};}}));
    await started;const second=await meta.context.run(String(c.id),()=>agent.send(c.id,{message:'תכין מודעה',requestId:'two',channel:'WHATSAPP'}));assert.equal(second.busy,true);release();await first;
   });
-  await t.test('expired lease with an uncertain image is put into review instead of being re-executed',async()=>{
+  await t.test('expired lease with an interrupted image is retried (images are safe to regenerate)',async()=>{
    const r=await attempt({op:'ask',stepId:'i',question:'מה המוצר?'},[{id:'i',kind:'collect',label:'פרט',dependsOn:[]}]);
    r.stored.state.steps=[{id:'image',kind:'image',label:'תמונה',dependsOn:[],status:'RUNNING'}];
    await h.db.query("UPDATE agent_tasks SET state=$2::jsonb,lease_token=$3,lease_until=NOW()-INTERVAL '1 second' WHERE id=$1",[r.stored.id,JSON.stringify(r.stored.state),crypto.randomUUID()]);
-   let planned=false;const result=await meta.context.run(String(r.client.id),()=>agent.send(r.client.id,{message:'המשך',requestId:'resume',channel:'WHATSAPP'},{planner:async()=>{planned=true;throw Error('Must not retry');}}));assert.equal(result.task.status,'MANUAL_REVIEW');assert.equal(planned,false);
+   const result=await meta.context.run(String(r.client.id),()=>agent.send(r.client.id,{message:'המשך',requestId:'resume',channel:'WHATSAPP'},{planner:async()=>({next:{op:'blocked',reason:'בדיקה'}})}));assert.notEqual(result.task.status,'MANUAL_REVIEW');
   });
   await t.test('human handover interrupts planning without generating an automatic follow-up',async()=>{
    const c=(await h.db.query('INSERT INTO clients(phone) VALUES($1) RETURNING *',['972500044098'])).rows[0];
