@@ -20,14 +20,25 @@ function isValidMetaSignature(req) {
     crypto.timingSafeEqual(received, expected);
 }
 
+// One callback URL serves WhatsApp and the Page (Lead Ads) subscription of the same app.
+// Meta sends hub.verify_token exactly as typed in the App Dashboard; either token is accepted.
+function verifyTokenMatches(received) {
+  if (typeof received !== 'string' || !received) return false;
+  return [process.env.META_WEBHOOK_VERIFY_TOKEN, process.env.WHATSAPP_VERIFY_TOKEN].filter(Boolean).some((token) => {
+    const a = crypto.createHash('sha256').update(received).digest();
+    const b = crypto.createHash('sha256').update(token).digest();
+    return crypto.timingSafeEqual(a, b);
+  });
+}
+
 router.get('/', (req, res) => {
   const verified =
     req.query['hub.mode'] === 'subscribe' &&
-    process.env.WHATSAPP_VERIFY_TOKEN &&
-    req.query['hub.verify_token'] === process.env.WHATSAPP_VERIFY_TOKEN;
+    verifyTokenMatches(req.query['hub.verify_token']) &&
+    typeof req.query['hub.challenge'] === 'string';
 
   return verified
-    ? res.status(200).send(req.query['hub.challenge'])
+    ? res.status(200).type('text/plain').send(req.query['hub.challenge'])
     : res.sendStatus(403);
 });
 
@@ -37,7 +48,11 @@ router.post('/', async (req, res) => {
     return res.sendStatus(401);
   }
 
-  if (req.body?.object === 'page' && require('./metaLeadImport').enabled()) {
+  if (req.body?.object === 'page') {
+    if (!require('./metaLeadImport').enabled()) {
+      logger.warn('Lead Ads event received while META_LEAD_IMPORT_ENABLED is off');
+      return res.status(200).send('EVENT_RECEIVED');
+    }
     try {
       await require('./metaLeadImport').enqueue(req.body);
       return res.status(200).send('EVENT_RECEIVED');
@@ -68,3 +83,5 @@ router.post('/', async (req, res) => {
 });
 
 module.exports = router;
+module.exports.isValidMetaSignature = isValidMetaSignature;
+module.exports.verifyTokenMatches = verifyTokenMatches;

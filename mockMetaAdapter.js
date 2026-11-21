@@ -1,6 +1,8 @@
 'use strict';
 const crypto = require('node:crypto');
 function createMockMetaAdapter() {
+  // Never in production: real campaigns go through actionExecutor -> metaWrite (Graph API).
+  if (process.env.NODE_ENV === 'production') throw Error('MOCK_META_FORBIDDEN_IN_PRODUCTION');
   const records = new Map(); // Test-only, in-memory: restart requires reconciliation.
   const id = () => crypto.randomUUID();
   return {
