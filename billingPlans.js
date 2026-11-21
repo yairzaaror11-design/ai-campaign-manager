@@ -2,25 +2,33 @@
 // SCORPIO AI plans and prices — the one place to change them.
 // Monthly only, a flat fee. Never a percentage of ad spend: the business pays
 // its ad budget directly to Meta, and that money never passes through us.
+// A feature is shown as active only while it really works. Anything behind a switch that is off,
+// or with no process behind it yet, is shown with "(בקרוב)". Never promise what does not run today.
+const SOON = ' (בקרוב)';
+const LIVE = {
+  // Short AI videos: off until VIDEO_ENABLED and a Higgsfield key are set.
+  video: () => require('./videoService').enabled(),
+  // A person reviewing campaigns and content: there is no such process in the product yet.
+  humanReview: () => false,
+  // Lead stages sent back to Meta (Conversion Leads): off unless META_CRM_FEEDBACK_ENABLED.
+  crmFeedback: () => process.env.META_CRM_FEEDBACK_ENABLED === 'true',
+  // The automatic weekly report: off unless WEEKLY_REPORTS_ENABLED. On-demand reports always work.
+  weeklyReport: () => process.env.WEEKLY_REPORTS_ENABLED === 'true',
+};
+const FEATURES = Object.freeze({
+  basic: ['קמפיינים ב־Meta', 'ניהול לידים', 'התראות על לידים חדשים', 'דוחות ביצועים לפי בקשה', { text: 'דוח שבועי אוטומטי', live: LIVE.weeklyReport }],
+  growth: ['כל מה שבבסיס', 'תוכן אורגני שוטף', { text: 'סרטוני AI', live: LIVE.video }, 'המלצה יומית', { text: 'החזרת מכירות ל־Meta לשיפור הקמפיינים', live: LIVE.crmFeedback }],
+  premium: ['כל מה שבצמיחה', { text: 'בדיקה אנושית של הקמפיינים והתוכן', live: LIVE.humanReview }, 'יום צילום בעסק פעם ברבעון'],
+});
+function isLive(f) { try { return f.live(); } catch { return false; } }
+function features(key) {
+  return Object.freeze((FEATURES[key] || []).map((f) => (typeof f === 'string' ? f : isLive(f) ? f.text : f.text + SOON)));
+}
+const define = (key, name, priceIls) => Object.freeze({ key, name, priceIls, get features() { return features(key); } });
 const PLANS = Object.freeze({
-  basic: Object.freeze({
-    key: 'basic',
-    name: 'בסיס',
-    priceIls: 199,
-    features: Object.freeze(['קמפיינים ב־Meta', 'ניהול לידים', 'התראות על לידים חדשים', 'דוחות ביצועים']),
-  }),
-  growth: Object.freeze({
-    key: 'growth',
-    name: 'צמיחה',
-    priceIls: 449,
-    features: Object.freeze(['כל מה שבבסיס', 'תוכן אורגני שוטף', 'סרטוני AI', 'המלצה יומית', 'החזרת מכירות ל־Meta לשיפור הקמפיינים']),
-  }),
-  premium: Object.freeze({
-    key: 'premium',
-    name: 'ליווי',
-    priceIls: 1290,
-    features: Object.freeze(['כל מה שבצמיחה', 'בדיקה אנושית של הקמפיינים והתוכן', 'יום צילום בעסק פעם ברבעון']),
-  }),
+  basic: define('basic', 'בסיס', 199),
+  growth: define('growth', 'צמיחה', 449),
+  premium: define('premium', 'ליווי', 1290),
 });
 
 const TRIAL_DAYS = 14;
@@ -40,4 +48,4 @@ function priceText(key) { const p = plan(key); return p ? `₪${p.priceIls.toLoc
 // "צמיחה (₪449 לחודש)"
 function label(key) { const p = plan(key); return p ? `${p.name} (${priceText(key)})` : ''; }
 
-module.exports = { PLANS, TRIAL_DAYS, TRIAL_REMINDER_DAYS, CURRENCY, AD_BUDGET_NOTE, NOT_ENABLED_NOTE, CANCEL_HOW, REFUND_POLICY, plan, list, priceMinor, priceText, label };
+module.exports = { PLANS, SOON, features, TRIAL_DAYS, TRIAL_REMINDER_DAYS, CURRENCY, AD_BUDGET_NOTE, NOT_ENABLED_NOTE, CANCEL_HOW, REFUND_POLICY, plan, list, priceMinor, priceText, label };

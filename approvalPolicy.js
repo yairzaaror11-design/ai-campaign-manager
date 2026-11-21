@@ -14,9 +14,9 @@ function canonical(value) {
 }
 const planHash=plan=>crypto.createHash('sha256').update(canonical(plan)).digest('hex');
 const parameterKeys={
- CREATE_LEAD_FORM:['name','pageId','locale','privacyPolicyUrl','questions'],
+ CREATE_LEAD_FORM:['name','pageId','locale','privacyPolicyUrl','questions','formType','thankYou'],
  UPLOAD_IMAGE:['mediaId'],
- CREATE_BUNDLE:['name','objective','specialAdCategories','dailyBudget','dailyBudgetMinor','currency','pageId','link','message','headline','imageHash','formId','instagramUserId','adSets','variants'],
+ CREATE_BUNDLE:['name','objective','specialAdCategories','dailyBudget','dailyBudgetMinor','currency','pageId','link','message','headline','imageHash','formId','instagramUserId','adSets','variants','ads'],
  ACTIVATE_BUNDLE:['adsetIds','adIds'],
  CREATE_CAMPAIGN:['name','objective','specialAdCategories'],
  CREATE_ADSET:['name','campaignId','dailyBudget','dailyBudgetMinor','currency','billingEvent','optimizationGoal','bidStrategy','targeting','promotedObject','startTime','endTime'],
@@ -24,7 +24,7 @@ const parameterKeys={
  CREATE_AD:['name','adsetId','creativeId'],
  CHANGE_BUDGET:['dailyBudget','dailyBudgetMinor','currency'],
  DUPLICATE_CAMPAIGN:['dailyBudget','dailyBudgetMinor','currency'],
- PAUSE_CAMPAIGN:[],RESUME_CAMPAIGN:[],EDIT_CAMPAIGN:['name'],
+ PAUSE_CAMPAIGN:[],PAUSE_AD:[],RESUME_CAMPAIGN:[],EDIT_CAMPAIGN:['name'],
  SYNC_BUYER_AUDIENCE:['name','snapshotId','digest','buyerCount','audienceId'],
  CREATE_LOOKALIKE:['name','originAudienceId']
 };
@@ -35,7 +35,10 @@ function strictPlan(plan) {
   if(!/^act_\d+$/.test(plan.target?.accountId || '')) throw Error('ACCOUNT_REQUIRED');
   if(!parameterKeys[plan.intent] || Object.keys(plan.parameters || {}).some(k=>!parameterKeys[plan.intent].includes(k))) throw Error('UNSUPPORTED_ACTION_PARAMETERS');
   for(const k of ['accountId','campaignId','adsetId']) if(plan.target[k]!==undefined&&typeof plan.target[k]!=='string') throw Error('INVALID_TARGET_TYPE');
-  if(Object.keys(plan.target).some(k=>!['accountId','accountName','campaignId','campaignName','adsetId'].includes(k))) throw Error('UNSUPPORTED_TARGET');
+  if(Object.keys(plan.target).some(k=>!['accountId','accountName','campaignId','campaignName','adsetId','adId','adName'].includes(k))) throw Error('UNSUPPORTED_TARGET');
+  // One ad, inside one campaign: only the guard's "pause this ad" proposal targets an ad.
+  if((plan.target.adId!==undefined||plan.intent==='PAUSE_AD')&&(plan.intent!=='PAUSE_AD'||typeof plan.target.adId!=='string'||!/^\d+$/.test(plan.target.adId)||!/^\d+$/.test(plan.target.campaignId||''))) throw Error('INVALID_AD_TARGET');
+  if(plan.target.adName!==undefined&&(typeof plan.target.adName!=='string'||plan.target.adName.length>400)) throw Error('INVALID_AD_TARGET');
   // Budget lives on the ad set (not the campaign) for campaigns SCORPIO creates.
   if(plan.target.adsetId!==undefined&&(!['CHANGE_BUDGET','DUPLICATE_CAMPAIGN'].includes(plan.intent)||!/^\d+$/.test(plan.target.adsetId)||!/^\d+$/.test(plan.target.campaignId||''))) throw Error('INVALID_ADSET_TARGET');
   for(const k of ['campaignId','adsetId','creativeId','pageId','formId','instagramUserId']) if(plan.parameters[k]!==undefined && !/^\d+$/.test(plan.parameters[k])) throw Error('INVALID_OBJECT_ID');
@@ -51,6 +54,9 @@ function strictPlan(plan) {
     if(p.formId&&(p.objective!=='OUTCOME_LEADS'||p.adSets?.some(set=>set.optimizationGoal!=='LEAD_GENERATION'||set.promotedObject?.page_id!==p.pageId)))throw Error('FORM_DELIVERY_MISMATCH');
     strictPlan({...plan,intent:'CREATE_CAMPAIGN',parameters:{name:p.name,objective:p.objective,specialAdCategories:p.specialAdCategories}});
     strictPlan({...plan,intent:'CREATE_CREATIVE',parameters:{name:p.name,pageId:p.pageId,link:p.link,message:p.message,headline:p.headline,imageHash:p.imageHash,...(p.formId?{formId:p.formId}:{}),...(p.instagramUserId?{instagramUserId:p.instagramUserId}:{})}});
+    // 2..5 different ads: each one its own image and its own copy, all checked as full creatives.
+    require('./mediaBuying').checkBundleAds(p);
+    for(const a of p.ads||[])strictPlan({...plan,intent:'CREATE_CREATIVE',parameters:{name:p.name,pageId:p.pageId,link:p.link,message:a.message,headline:a.headline,imageHash:a.imageHash,...(p.formId?{formId:p.formId}:{}),...(p.instagramUserId?{instagramUserId:p.instagramUserId}:{})}});
     if(p.variants!==undefined){
       // Up to two extra copy angles, each a separate ad with the same approved image.
       if(!Array.isArray(p.variants)||p.variants.length>2) throw Error('INVALID_AD_VARIANTS');
@@ -81,6 +87,7 @@ function strictPlan(plan) {
     if(!p.startTime || !Number.isFinite(Date.parse(p.startTime))) throw Error('START_TIME_REQUIRED');
     if(p.endTime && (!Number.isFinite(Date.parse(p.endTime)) || Date.parse(p.endTime)<=Date.parse(p.startTime))) throw Error('INVALID_END_TIME');
     if(p.targeting.age_min!==undefined && (!Number.isInteger(p.targeting.age_min)||p.targeting.age_min<18)) throw Error('ADULT_TARGETING_REQUIRED');
+    require('./mediaBuying').checkAdvantageTargeting(p.targeting);
   }
   if(plan.intent==='CREATE_CREATIVE') {
     const p=plan.parameters;
@@ -157,6 +164,11 @@ async function preparePlan(clientId,input) {
       }
     }
   }
+  if(plan.intent==='PAUSE_AD') {
+    const ad=await meta.graph('/'+plan.target.adId,connection.token,{fields:'id,account_id,campaign_id,name'});
+    if('act_'+ad.account_id!==connection.meta_ad_account_id||String(ad.campaign_id)!==String(plan.target.campaignId)) throw Error('TENANT_ACCOUNT_MISMATCH');
+    plan.target.adName=String(ad.name||'').slice(0,400);
+  }
   if(plan.intent==='ACTIVATE_BUNDLE') {
     plan.review.adSets=[];
     for(const id of plan.parameters.adsetIds || []) {
@@ -182,6 +194,13 @@ async function preparePlan(clientId,input) {
     if(plan.intent==='CREATE_BUNDLE') for(const set of plan.parameters.adSets || []) {set.currency=account.currency;set.dailyBudgetMinor=minorUnits(set.dailyBudget,account.currency);}
   }
   if(['CREATE_BUNDLE','CREATE_CAMPAIGN'].includes(plan.intent)) await applySpecialAdCategories(clientId,plan);
+  if(plan.intent==='CREATE_BUNDLE'){
+    // Media-buyer defaults for small budgets (mediaBuying.js): one ad set, Advantage+ audience
+    // with the location as the hard limit, automatic placements. Applied before the hash.
+    const buying=require('./mediaBuying'),issue=buying.singleAdSetIssue(plan);
+    if(issue) throw issue;
+    buying.applyBundleDefaults(plan);
+  }
   // Buyer audiences: exclude existing customers from new ad sets (no-op unless enabled and created).
   await require('./buyerAudiences').applyExclusion(clientId,plan,connection.meta_ad_account_id);
   strictPlan(plan);

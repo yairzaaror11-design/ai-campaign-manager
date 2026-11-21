@@ -71,7 +71,7 @@ function replyFor(task){
  }
  if(task.status==='WAITING_INPUT')return s.question;
  if(task.status==='WAITING_MODEL')return 'הבקשה נשמרה, אבל אני עדיין לא מוכן לעבוד עליה. בעוד כמה דקות כתוב לי ״נמשיך״ ואמשיך מאותה נקודה.';
- if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nתעבור על מה שהכנתי ותגיד לי מה תרצה לשנות. אם הכול מתאים, כתוב ״מאשר את התוכן״. זה אישור לתוכן בלבד; פרסום והפעלת תקציב דורשים אישור נפרד.';
+ if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nתעבור על מה שהכנתי ותגיד לי מה לשנות, או אשר את התוכן. זה אישור לתוכן בלבד; פרסום והוצאת כסף דורשים אישור נפרד.';
  // A closed task answers as closed, even if a step was still waiting for approval.
  if(task.status==='CANCELLED')return 'סגרתי את המשימה, והאישורים שחיכו לך בוטלו. מה שכבר בוצע נשאר כמו שהוא.';
  const waiting=s.steps?.find(x=>x.status==='WAITING_APPROVAL');
@@ -88,11 +88,12 @@ function replyFor(task){
 }
 async function settle(task,lease,requestId){
  let reply=task.customReply||replyFor(task);
+ if(task.replyPrefix)reply=task.replyPrefix+'\n\n'+reply;
  if(task.state?.closedStuck){reply=CLOSED_STUCK+'\n\n'+reply;delete task.state.closedStuck;}
  const contextReply=task.status==='WAITING_APPROVAL'?'הוכנה פעולה לבדיקה; נדרש אישור נפרד לפעולה זו.':reply;
  task.state.messages=[...(task.state.messages||[]),{role:'assistant',content:contextReply.slice(0,2000),...(contextReply.length>2000?{truncated:true}:{})}].slice(-12);
  await checkpoint(task,lease);
- const result={handled:true,reply,mediaIds:task.newMedia||[],task:view(task),externalActionsExecuted:view(task).externalActionsExecuted};
+ const result={handled:true,reply,mediaIds:task.newMedia||[],task:view(task),externalActionsExecuted:view(task).externalActionsExecuted,...(task.notice?{notice:true}:{}),...(task.replyChoices?{choices:task.replyChoices}:{})};
  await db.transaction(async tx=>{
   const row=await tx('SELECT lease_token FROM agent_tasks WHERE id=$1 AND client_id=$2 FOR UPDATE',[task.id,task.client_id]);if(row.rows[0]?.lease_token!==lease)throw Error('TASK_LEASE_LOST');
   const storedResult=task.status==='WAITING_APPROVAL'?{...result,reply:undefined,replyCiphertext:meta.encrypt(result.reply,task.client_id)}:result;
@@ -194,8 +195,12 @@ async function estateLicense(clientId){
 }
 function addLicenseLine(task,line,number){
  let changed=false;
- for(const st of task.state.steps)if(st.status==='PREPARED'&&st.kind==='draft'&&st.artifact&&!String(st.artifact.content||'').includes(number)){
-  const a={...st.artifact};delete a.hash;a.content=(String(a.content||'')+'\n'+line).slice(0,6000);a.hash=hash(a);st.artifact=a;changed=true;
+ for(const st of task.state.steps)if(st.status==='PREPARED'&&st.kind==='draft'&&st.artifact&&!adCopy(st.artifact).includes(number)){
+  const a={...st.artifact};delete a.hash;
+  // A campaign draft sends adContent to Meta: the line goes there too, and into the shown copy right after it.
+  if(typeof a.adContent==='string'&&a.content.startsWith(a.adContent)){const ad=(a.adContent+'\n'+line).slice(0,6000);a.content=(ad+a.content.slice(a.adContent.length)).slice(0,6000);a.adContent=ad;}
+  else a.content=(String(a.content||'')+'\n'+line).slice(0,6000);
+  a.hash=hash(a);st.artifact=a;changed=true;
  }
  return changed;
 }
@@ -204,8 +209,32 @@ async function industryPlaybook(clientId){
  const d=await require('./verticalProfiles').detect(clientId).catch(()=>({key:'generic'}));
  return{industry:d.key,...require('./expertPlaybook').industry(d.key)};
 }
+// Ad-copy compliance (adCompliance.js) on the prepared copy, checked when the owner approves content.
+function adCopy(artifact){
+ if(artifact.campaignDraft)return [artifact.adContent,artifact.campaignDraft.headline,artifact.campaignDraft.cta].join('\n');
+ let t=String(artifact.content||'');
+ if(artifact.formDraft){const i=t.lastIndexOf('\n\n'+artifact.formDraft.title+' — טיוטת טופס');if(i>=0)t=t.slice(0,i);}
+ return t;
+}
+async function complianceFindings(clientId,task,license){
+ const ac=require('./adCompliance'),drafts=task.state.steps.filter(s=>s.status==='PREPARED'&&s.kind==='draft'&&s.artifact);
+ if(!drafts.length)return[];
+ const vertical=await require('./verticalProfiles').detect(clientId).catch(()=>null);
+ const profile=await require('./marketingStore').load(clientId).catch(()=>null);
+ const known=profile?require('./conversationFacts').all(profile):{};
+ // Prices the owner gave: anywhere in the request, their messages or the saved business facts.
+ const sources=[task.request,...(task.state.messages||[]).filter(m=>m.role==='user').map(m=>m.content),JSON.stringify(task.state.facts||{}),JSON.stringify(known)].join(' ').replace(/(?<=\d)[,.](?=\d{3})/g,'');
+ const findings=[];
+ for(const step of drafts){
+  const text=adCopy(step.artifact);
+  const priceGiven=ac.prices(text).every(n=>sources.includes(n));
+  for(const f of ac.check(text,{industry:vertical?.key,businessType:known.businessType,priceGiven,licenseNumber:license?.number}))if(!findings.some(x=>x.code===f.code))findings.push(f);
+ }
+ return findings;
+}
+const AUTO_FIX=/^(?:לתקן לבד|תתקן לבד|תקן לבד|תתקני לבד|תקני לבד|כן,?\s*(?:לתקן|תתקן|תתקני)(?: לבד)?)[.!]*$/u;
 function prepareReview(task){
- delete task.state.reviewIssue;delete task.state.lastError;delete task.state.reason;
+ delete task.state.reviewIssue;delete task.state.lastError;delete task.state.reason;delete task.state.complianceFix;delete task.state.complianceFeedback;
  task.state.reviewHash=hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash]));task.status='WAITING_REVIEW';
 }
 async function rebaseForTurn(task,lease,requestId,message,kind){
@@ -289,7 +318,9 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   if(options.deferPlanning){if(!['MANUAL_REVIEW','PAUSED','HUMAN_PAUSED'].includes(task.status))task.status='WAITING_MODEL';return await settle(task,lease,requestId);}
   // A paused task resumes only on a new explicit user message, never by a timer.
   await reconcile(task);if(task.status==='MANUAL_REVIEW')return await settle(task,lease,requestId);
-  const revisionRequested=semanticRevision||/^(?:שנה|שני|תשנה|תשני|תקן|תקני|תתקן|תתקני|עדכן|עדכני|תעדכן|תעדכני|קצר|קצרי|תוסיף|תוסיפי|במקום|בעצם|לא אהבתי)(?:\s|$)/.test(message.trim());
+  const autoFix=task.status==='WAITING_REVIEW'&&!!task.state.complianceFix&&AUTO_FIX.test(message.trim());
+  if(autoFix){task.state.complianceFeedback=task.state.complianceFix;delete task.state.complianceFix;}
+  const revisionRequested=autoFix||semanticRevision||/^(?:שנה|שני|תשנה|תשני|תקן|תקני|תתקן|תתקני|עדכן|עדכני|תעדכן|תעדכני|קצר|קצרי|תוסיף|תוסיפי|במקום|בעצם|לא אהבתי)(?:\s|$)/.test(message.trim());
   if(revisionRequested){
    if(task.state.steps.some(s=>s.kind==='meta'&&s.status==='DONE')){task.status='BLOCKED';task.state.reason='כבר בוצעה פעולה בחשבון; נדרשת תוכנית עדכון נפרדת כדי שלא ליצור עותק או לשנות פעולה שכבר אושרה';return await settle(task,lease,requestId);}
    for(const step of task.state.steps){
@@ -331,8 +362,16 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
  if(task.status==='WAITING_REVIEW'&&/^(מאשר את התוכן|מאשרת את התוכן|מאשר את החבילה|מאשרת את החבילה)$/.test(message.trim())){
    if(task.state.reviewHash!==hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash])))throw Error('TASK_REVIEW_CHANGED');
    const lic=await estateLicense(clientId);
-   if(lic&&!lic.number){task.state.awaitingLicense=true;task.customReply='רגע לפני: '+lic.spec.question;return await settle(task,lease,requestId);}
+   if(lic&&!lic.number){task.state.awaitingLicense=true;task.customReply='רגע לפני: '+lic.spec.question;task.notice=true;return await settle(task,lease,requestId);}
    if(lic&&addLicenseLine(task,lic.spec.adLine(lic.number),lic.number)){prepareReview(task);task.customReply='הוספתי למודעה את מספר הרישיון, כמו שהחוק מחייב:\n\n'+replyFor(task);return await settle(task,lease,requestId);}
+   // Legal/policy problems stop the approval; warnings are mentioned once and do not block.
+   const findings=await complianceFindings(clientId,task,lic),ac=require('./adCompliance');
+   if(ac.blocking(findings).length){
+    task.state.complianceFix=ac.blocking(findings).map(f=>({code:f.code,severity:f.severity,match:f.match,suggestion:f.suggestion}));
+    task.customReply=ac.ownerMessage(findings);task.notice=true;task.replyChoices=[{title:'לתקן לבד',text:'לתקן לבד'},{title:'אשנה בעצמי',text:'אני רוצה לשנות את נוסח המודעה'}];
+    return await settle(task,lease,requestId);
+   }
+   if(findings.length)task.replyPrefix=ac.ownerMessage(findings);
    for(const step of task.state.steps)if(step.status==='PREPARED'){
     if(step.artifact.destination==='landing_page'){
      await checkpoint(task,lease);
@@ -357,6 +396,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    if(initialRepairs&&!task.state.steps.length)context.plannerFeedback=planner.initialFeedback(task.state.lastError);
    if(decisionFeedback)context.plannerFeedback=decisionFeedback;
    else if(task.state.reviewIssue)context.plannerFeedback=require('./taskDraftReview').feedback(task.state.reviewIssue);
+   if(!context.plannerFeedback&&task.state.complianceFeedback)context.plannerFeedback=require('./adCompliance').fixInstruction(task.state.complianceFeedback);
    if(!context.plannerFeedback&&task.state.steps.some(s=>s.kind==='draft'&&s.status==='PREPARED')){
     const missing=require('./taskDraftReview').issue(task);
     if(['TASK_FORM_DRAFT_REQUIRED','TASK_CAMPAIGN_DRAFT_REQUIRED'].includes(missing))context.plannerFeedback=require('./taskDraftReview').feedback(missing);
@@ -417,7 +457,9 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     if(task.state.revising&&hash(facts)!==hash(task.state.facts)){for(const dependent of task.state.steps)if(dependent.kind==='draft'){dependent.status='PENDING';delete dependent.artifact;}if(task.state.steps.some(s=>s.kind==='image'&&s.result?.mediaId)){for(const imageStep of task.state.steps)if(imageStep.kind==='image'&&imageStep.result?.mediaId)imageStep.status='STALE';task.status='BLOCKED';task.state.reason='פרטי המשימה השתנו אחרי יצירת תמונה; יש לבדוק ולהכין מחדש את התמונה לפני שימוש בה';task.state.facts=facts;return await settle(task,lease,requestId);}}
     task.state.facts=facts;step.status='DONE';
    }else if(n.op==='draft'){
-    const artifact={title:text(n.title,160),content:text(n.content,6000),reviewed:false};
+    // A revision may echo the previous artifact; drop backend-rendered settings/form blocks before re-rendering them.
+    const echoed=String(n.content||'').split('\n\nטיוטת הגדרות קמפיין — לא הופעל פרסום')[0].replace(/\n*[^\n]*— טיוטת טופס, טרם נוצר ב־Meta(?:\n\d+\.[^\n]*)*/g,'').trimEnd();
+    const artifact={title:text(n.title,160),content:text(n.campaignDraft!==undefined||n.formDraft!==undefined?echoed||n.content:n.content,6000),reviewed:false};
     if(n.campaignDraft!==undefined){artifact.adContent=artifact.content;artifact.campaignDraft=require('./campaignPackage').checked(n.campaignDraft);artifact.content+=require('./campaignPackage').render(artifact.campaignDraft);}
     if(n.formDraft!==undefined){
      artifact.formDraft=require('./taskDraftReview').formDraft(n.formDraft);
@@ -429,7 +471,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
      artifact.destination='landing_page';artifact.payload=payload;
      artifact.content=[payload.businessName,payload.title,payload.body,payload.cta,'טיוטה פרטית לדף נחיתה. אישור התוכן לא מפרסם אותה.'].join('\n\n');
     }
-    artifact.hash=hash(artifact);step.artifact=artifact;step.status='PREPARED';
+    artifact.hash=hash(artifact);step.artifact=artifact;step.status='PREPARED';delete task.state.complianceFeedback;
     if(task.state.steps.reduce((sum,s)=>sum+(s.artifact?.content.length||0),0)>18000)throw Error('TASK_ARTIFACT_LIMIT');
    }else if(n.op==='read'){
     if(!planner.READ_TOOLS.includes(n.tool)||!n.args||typeof n.args!=='object'||JSON.stringify(n.args).length>2000)throw Error('TASK_READ_TOOL_REJECTED');
@@ -457,7 +499,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     let output;
     // A failed createGraphic stores no media: the step may be retried under a fresh attempt id
     // (the per-event dedupe would otherwise refuse it); only a concurrent in-flight job stays uncertain.
-    try{output=await require('./whatsappDelivery').messageContext.run({eventId:'task:'+task.id+':'+step.id+(step.imageAttempts?':'+step.imageAttempts:'')},()=>require('./graphicService').createGraphic(clientId,prompt,{...(options.imageOptions||{}),referenceImages}));}
+    try{output=await require('./whatsappDelivery').messageContext.run({eventId:'task:'+task.id+':'+step.id+(step.imageAttempts?':'+step.imageAttempts:'')},()=>require('./graphicService').createGraphic(clientId,prompt,{...(n.imageText?{imageText:n.imageText}:{}),...(options.imageOptions||{}),referenceImages}));}
     catch(error){if(error?.message!=='GRAPHIC_ALREADY_ATTEMPTED'){step.status='PENDING';step.imageAttempts=(step.imageAttempts||0)+1;}throw error;}
     if(!output?.id)throw Error('TASK_IMAGE_NOT_VERIFIED');
     step.result={mediaId:output.id,kind:'image',verified:true};step.artifact={title:step.label,content:'התמונה שנוצרה נשלחה כאן לבדיקה.',mediaId:output.id,...(n.imageText?{imageText:n.imageText}:{}),reviewed:false,hash:hash({mediaId:output.id,imageText:n.imageText||null})};step.status='PREPARED';task.newMedia=[...(task.newMedia||[]),output.id];
@@ -472,6 +514,8 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
       if(!copy?.artifact.reviewed||p.message!==copy.artifact.adContent||p.headline!==copy.artifact.campaignDraft.headline||!upload||p.imageHash!==upload.result.id)throw Error('CAMPAIGN_CONTENT_NOT_REVIEWED');
      }
     }
+    // Several different ads: every image must be one this task uploaded from reviewed media.
+    if(step.intent==='CREATE_BUNDLE'&&Array.isArray(n.proposal?.parameters?.ads)&&n.proposal.parameters.ads.some(ad=>!task.state.steps.some(s=>s.kind==='meta'&&s.intent==='UPLOAD_IMAGE'&&s.status==='DONE'&&s.result?.id&&s.result.id===ad?.imageHash)))throw Error('CAMPAIGN_IMAGE_NOT_REVIEWED');
     // An image upload only needs the reviewed media id; extra model-written fields
     // (names, captions) would be refused by the approval policy.
     if(step.intent==='UPLOAD_IMAGE'&&n.proposal?.parameters&&typeof n.proposal.parameters==='object')n.proposal.parameters={mediaId:n.proposal.parameters.mediaId};

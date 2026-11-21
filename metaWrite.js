@@ -10,7 +10,7 @@ async function post(plan,path,data) {
   if(process.env.META_WRITES_ENABLED!=='true') throw Error('TENANT_WRITES_DISABLED');
   if(process.env.READ_ONLY!=='false') throw Error('READ_ONLY_BLOCK');
   const permit=require('./metaExecution').assertPermit(plan);
-  for(const id of [plan.target.campaignId,plan.target.adsetId,plan.parameters.campaignId,plan.parameters.adsetId,plan.parameters.creativeId].filter(Boolean)) await assertOwned(id,permit);
+  for(const id of [plan.target.campaignId,plan.target.adsetId,plan.target.adId,plan.parameters.campaignId,plan.parameters.adsetId,plan.parameters.creativeId].filter(Boolean)) await assertOwned(id,permit);
   if(['CREATE_CREATIVE','CREATE_BUNDLE'].includes(plan.intent)) {
     const pages=await meta.graph('/me/accounts',permit.token,{fields:'id',limit:100});
     if(!pages.data?.some(p=>p.id===plan.parameters.pageId)) throw Error('PAGE_NOT_GRANTED');
@@ -48,11 +48,8 @@ async function uploadImage(plan) {
  return {id:image.hash,kind:'image'};
 }
 async function createLeadForm(plan){
- const p=require('./metaLeadForms').validate(plan.parameters);
- return post(plan,'/'+p.pageId+'/leadgen_forms',{name:p.name,locale:p.locale,privacy_policy:{url:p.privacyPolicyUrl},questions:p.questions,
-  // Higher intent: the person reviews and confirms answers before submitting (fewer accidental/junk leads).
-  is_optimized_for_quality:true,
-  thank_you_page:{title:p.locale==='HE_IL'?'תודה! קיבלנו את הפרטים':'Thanks, we got your details',body:p.locale==='HE_IL'?'נחזור אליך בהקדם, בדרך כלל בתוך כמה דקות בשעות הפעילות.':'We will get back to you shortly.',button_type:'NONE'}});
+ const body=require('./metaLeadForms').formBody(plan.parameters);
+ return post(plan,'/'+plan.parameters.pageId+'/leadgen_forms',body);
 }
 // Graph API bodies (Marketing API, verified against developers.facebook.com, 2026-11):
 // * campaigns: special_ad_categories is required; when any category is declared,
@@ -81,9 +78,9 @@ function adsetBody(set,campaignId){
   start_time:set.startTime,end_time:set.endTime,status:'PAUSED'};
 }
 // Lead-form ads: Meta's lead-ads guide says link_data.link "can only be https://fb.me/".
-function creativeBody(p,{name=p.name,message=p.message,headline=p.headline}={}){
+function creativeBody(p,{name=p.name,message=p.message,headline=p.headline,imageHash=p.imageHash}={}){
  return {name,degrees_of_freedom_spec:NO_ENHANCEMENTS,object_story_spec:{page_id:p.pageId,...(p.instagramUserId?{instagram_user_id:p.instagramUserId}:{}),
-  link_data:{link:p.formId?'https://fb.me/':p.link,message,name:headline,image_hash:p.imageHash,...(p.formId?{call_to_action:{type:'SIGN_UP',value:{lead_gen_form_id:p.formId}}}:{})}}};
+  link_data:{link:p.formId?'https://fb.me/':p.link,message,name:headline,image_hash:imageHash,...(p.formId?{call_to_action:{type:'SIGN_UP',value:{lead_gen_form_id:p.formId}}}:{})}}};
 }
 async function createCampaign(plan) {
  return post(plan,'/'+plan.target.accountId+'/campaigns',campaignBody(plan));
@@ -123,19 +120,22 @@ async function duplicateCampaign(plan) {
  return {id,objects:{campaignId:id,adsetIds,adIds}};
 }
 const pauseCampaign=plan=>post(plan,'/'+plan.target.campaignId,{status:'PAUSED'});
+// One losing ad only (campaign guard). The ad's campaign was checked when the plan was prepared.
+const pauseAd=plan=>post(plan,'/'+plan.target.adId,{status:'PAUSED'});
 const resumeCampaign=plan=>post(plan,'/'+plan.target.campaignId,{status:'ACTIVE'});
 const editCampaign=plan=>post(plan,'/'+plan.target.campaignId,{name:plan.parameters.name});
+// One campaign, its ad sets, and 1..5 ads per ad set (`ads`: different image + copy each; or the
+// legacy single ad plus copy-only `variants`). Every object is created PAUSED.
 async function createBundle(plan) {
  const p=plan.parameters;
  const campaign=await createCampaign(plan);
  if(!/^\d+$/.test(campaign.id || '')) throw Error('CAMPAIGN_RESULT_UNCERTAIN');
- const creative=await createCreative(plan);
- if(!/^\d+$/.test(creative.id || '')) throw Error('CREATIVE_RESULT_UNCERTAIN');
- const creatives=[{id:creative.id,headline:p.headline}];
- for(const [i,v] of (p.variants||[]).entries()){
-  const extra=await post(plan,'/'+plan.target.accountId+'/adcreatives',creativeBody(p,{name:p.name+' — גרסה '+(i+2),message:v.message,headline:v.headline}));
-  if(!/^\d+$/.test(extra.id || '')) throw Error('CREATIVE_RESULT_UNCERTAIN');
-  creatives.push({id:extra.id,headline:v.headline});
+ const ads=require('./mediaBuying').bundleAds(p),creatives=[];
+ for(const [i,a] of ads.entries()){
+  const name=i===0?p.name:p.name+(p.ads?' — מודעה ':' — גרסה ')+(i+1);
+  const made=i===0&&!p.ads?await createCreative(plan):await post(plan,'/'+plan.target.accountId+'/adcreatives',creativeBody(p,{name,message:a.message,headline:a.headline,imageHash:a.imageHash}));
+  if(!/^\d+$/.test(made.id || '')) throw Error('CREATIVE_RESULT_UNCERTAIN');
+  creatives.push({id:made.id,headline:a.headline});
  }
  const adsetIds=[],adIds=[];
  for(const set of p.adSets) {
@@ -148,7 +148,7 @@ async function createBundle(plan) {
     adIds.push(ad.id);
    }
  }
- return {id:campaign.id,objects:{campaignId:campaign.id,creativeId:creative.id,creativeIds:creatives.map(c=>c.id),adsetIds,adIds}};
+ return {id:campaign.id,objects:{campaignId:campaign.id,creativeId:creatives[0].id,creativeIds:creatives.map(c=>c.id),adsetIds,adIds}};
 }
 async function activateBundle(plan) {
  if(process.env.META_WRITES_ENABLED!=='true'||process.env.READ_ONLY!=='false') throw Error('TENANT_WRITES_DISABLED');
@@ -208,4 +208,4 @@ async function createLookalike(plan){
  if(!/^\d+$/.test(r?.id||''))throw Error('AUDIENCE_RESULT_UNCERTAIN');
  return{id:r.id,objects:{audienceId:r.id}};
 }
-module.exports={campaignBody,adsetBody,creativeBody,AUDIENCE_SCHEMA,lookalikeSpec,syncBuyerAudience,createLookalike,NO_ENHANCEMENTS,ENHANCEMENT_FEATURES,createLeadForm,createBundle,activateBundle,uploadImage,createCampaign,createAdSet,createCreative,createAd,changeBudget,duplicateCampaign,pauseCampaign,resumeCampaign,editCampaign};
+module.exports={campaignBody,adsetBody,creativeBody,AUDIENCE_SCHEMA,lookalikeSpec,syncBuyerAudience,createLookalike,NO_ENHANCEMENTS,ENHANCEMENT_FEATURES,createLeadForm,createBundle,activateBundle,uploadImage,createCampaign,createAdSet,createCreative,createAd,changeBudget,duplicateCampaign,pauseCampaign,pauseAd,resumeCampaign,editCampaign};
