@@ -6,7 +6,7 @@ function text(tag,value,cls){const e=document.createElement(tag);e.textContent=v
 function csrf(){return document.cookie.split('; ').find(x=>x.startsWith('cb_csrf='))?.split('=')[1]||'';}
 async function api(path,body,method=body?'POST':'GET'){
  const response=await fetch('/app/api/'+path,{method,credentials:'same-origin',headers:body?{'Content-Type':'application/json','X-CSRF-Token':csrf()}:undefined,body:body?JSON.stringify(body):undefined});
- const data=await response.json().catch(()=>({error:'לא ניתן להשלים את הבקשה כרגע.'}));if(!response.ok)throw Error(data.error||'הפעולה לא הושלמה.');return data;
+ const data=await response.json().catch(()=>({error:'לא ניתן להשלים את הבקשה כרגע.'}));if(!response.ok){const error=Error(response.status===429?'יותר מדי פעולות בזמן קצר. נסו שוב בעוד דקה.':response.status>=500?'השרת לא ענה כרגע. נסו שוב בעוד רגע.':data.error||'הפעולה לא הושלמה.');error.status=response.status;throw error;}return data;
 }
 function field(container,label,value){const e=text('div','','metric');e.append(text('strong',label),text('span',String(value??'עדיין לא נקבע')));container.append(e);}
 function openPanel(name){document.querySelectorAll('[data-view]').forEach(e=>e.hidden=e.dataset.view!==name);document.dispatchEvent(new CustomEvent('portal:navigate',{detail:name}));}
@@ -34,6 +34,8 @@ async function refresh(){
  const c=state.crm.counts;$('lead-count').textContent=Object.values(c).reduce((a,b)=>a+b,0)+' לידים';
  $('status').textContent='';document.dispatchEvent(new CustomEvent('portal:refresh',{detail:state}));
 }
+// Where a lead came from, in plain Hebrew (never the raw source code).
+function leadSourceLabel(source){const s=String(source||'');return {meta_lead_ads:'טופס לידים ב־Meta',whatsapp_manual:'נוסף בוואטסאפ',manual:'הוספה ידנית',landing_page:'עמוד מכירה',crm:'הוספה ידנית',form:'טופס'}[s]||(/^landing/.test(s)?'עמוד מכירה':/^webhook/.test(s)?'טופס באתר':/^whatsapp/.test(s)?'וואטסאפ':s?'מקור אחר':'');}
 // Israeli local numbers (05x...) become international (9725x...), like the WhatsApp lead alert.
 function waNumber(phone){let d=String(phone||'').replace(/\D/g,'');if(/^0\d{8,9}$/.test(d))d='972'+d.slice(1);return /^\d{8,15}$/.test(d)?d:null;}
 async function loadLeads(){
@@ -42,7 +44,7 @@ async function loadLeads(){
  if(!data.leads.length)list.append(text('p','עוד אין לידים. אפשר להוסיף ליד ידנית או לחבר טופס לידים.'));
  if(data.speed?.leads){const pct=data.speed.fastShare==null?'':' · '+Math.round(data.speed.fastShare*100)+'% תוך 15 דקות';list.append(text('p','⏱ זמן תגובה ממוצע ב־30 הימים האחרונים: '+data.speed.label+pct,'lead-speed'));}
  for(const lead of data.leads){
-  const card=text('article','','card lead'),details=text('div','');details.append(text('h3',lead.name),text('p',[lead.phone,lead.email].filter(Boolean).join(' · ')),text('p','מקור: '+({meta_lead_ads:'טופס לידים ב־Meta',whatsapp_manual:'נוסף בוואטסאפ',manual:'הוספה ידנית',landing_page:'עמוד מכירה'}[lead.source]||(/^landing/.test(lead.source)?'עמוד מכירה':lead.source))),text('p',lead.note));
+  const card=text('article','','card lead'),details=text('div','');details.append(text('h3',lead.name),text('p',[lead.phone,lead.email].filter(Boolean).join(' · ')),text('p','מקור: '+leadSourceLabel(lead.source)),text('p',lead.note));
   card.id='lead-'+lead.id;card.tabIndex=-1;
   {const conv=lc?.conversations?.find(c=>c.lead_id===lead.id);if(conv&&dash?.conciergeBlock)details.append(dash.conciergeBlock(lead,conv,loadLeads));}
   const select=document.createElement('select');select.setAttribute('aria-label','מצב הטיפול ב-'+lead.name);
@@ -74,7 +76,11 @@ $('report').addEventListener('click',()=>run($('report'),async()=>{tell('מכי�
  const fragment=new URLSearchParams(location.hash.slice(1)),token=fragment.get('login');
  if(token){history.replaceState(null,'',location.pathname);await api('login',{token});}
  await refresh();
-}catch(e){$('locked').hidden=false;$('workspace').hidden=true;tell(e.message,true);}})();
+}catch(e){
+ if(e.status===401||e.status===403){$('locked').hidden=false;$('workspace').hidden=true;tell(e.message,true);return;}
+ // Not a sign-in problem (busy server, network): keep the session and offer a retry.
+ tell(e.status?e.message:'אין חיבור לשרת כרגע. בדקו את האינטרנט ונסו שוב.',true);const retry=text('button','ניסיון חוזר');retry.type='button';retry.id='load-retry';retry.addEventListener('click',()=>location.reload());$('status').append(' ',retry);
+}})();
 
 $('landing-create').addEventListener('click',()=>run($('landing-create'),async()=>{if(!await window.ScorpioUI.confirm('פרסום דף הנחיתה','הדף יעלה לאוויר עם הנוסח של הקמפיין וטופס לידים. לפרסם?','אישור פרסום'))return;const r=await api('landing',{confirmPublish:true});const a=document.createElement('a');a.textContent='דף הנחיתה שלך מוכן';a.href=r.url;a.target='_blank';a.rel='noopener noreferrer';$('landing-link').replaceChildren(a);tell('דף הנחיתה באוויר 🎉 כל ליד ממנו ייכנס לכאן.');}));
 

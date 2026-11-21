@@ -10,7 +10,8 @@
     "test:live": "node --test tests/live/*.test.js",
     "preflight": "node scripts/preflight.js",
     "worker:messages": "node messageWorker.js",
-    "test:live": "node --test tests/live/*.live.test.js"
+    "test:live": "node --test tests/live/*.live.test.js",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.10.0",
@@ -28,6 +29,7 @@
   },
   "packageManager": "npm@10.9.2",
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.11"
+    "@electric-sql/pglite": "^0.5.11",
+    "@playwright/test": "^1.65.1"
   }
 }
