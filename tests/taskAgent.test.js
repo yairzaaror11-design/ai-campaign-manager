@@ -74,7 +74,7 @@ test('bot task persists goal, asks only missing details, prepares a package, get
    await send('תכין שוב מודעה וטופס','cancel-1');await send('נציגי שירות בחיפה','cancel-2');
    const pendingCancel=await send('מאשר את החבילה','cancel-3'),code=pendingCancel.reply.match(/אשר (\d{6})/)[1];
    const consumed=await require('../approvalEngine').consumeApprovalForClient(a.id,code);assert.equal(consumed.ok,true);
-   await agent.cancel(a.id);const before=writes;
+   const closed=await agent.cancel(a.id);assert.match(closed.reply,/סגרתי את המשימה/);assert.doesNotMatch(closed.reply,/אשר \d{6}/);const before=writes;
    const result=await meta.context.run(String(a.id),()=>require('../actionExecutor').executeApprovedForClient(a.id,consumed.approval.actionPlan));
    assert.equal(result.ok,false);assert.equal(writes,before);assert.equal((await agent.current(a.id)).status,'CANCELLED');
   });

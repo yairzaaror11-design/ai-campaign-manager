@@ -72,10 +72,11 @@ function replyFor(task){
  if(task.status==='WAITING_INPUT')return s.question;
  if(task.status==='WAITING_MODEL')return 'הבקשה נשמרה, אבל אני עדיין לא מוכן לעבוד עליה. בעוד כמה דקות כתוב לי ״נמשיך״ ואמשיך מאותה נקודה.';
  if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nתעבור על מה שהכנתי ותגיד לי מה תרצה לשנות. אם הכול מתאים, כתוב ״מאשר את התוכן״. זה אישור לתוכן בלבד; פרסום והפעלת תקציב דורשים אישור נפרד.';
+ // A closed task answers as closed, even if a step was still waiting for approval.
+ if(task.status==='CANCELLED')return 'סגרתי את המשימה, והאישורים שחיכו לך בוטלו. מה שכבר בוצע נשאר כמו שהוא.';
  const waiting=s.steps?.find(x=>x.status==='WAITING_APPROVAL');
  if(waiting){const a=waiting.result.approval;return require('./actionPlan').formatActionPlan(a.plan)+'\n\nכדי לאשר את הפעולה המדויקת, שלח: אשר '+meta.decrypt(a.codeCiphertext,task.client_id)+'\nהאישור תקף עד '+new Date(a.expiresAt).toLocaleString('he-IL',{timeZone:'Asia/Jerusalem',day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'})+'. האישור מתייחס רק לפעולה הזו.';}
  if(task.status==='COMPLETE')return 'השלמתי את כל השלבים בתוכנית שנבדקה. '+((s.steps||[]).some(x=>x.kind==='meta')?'הפעולות החיצוניות המסומנות כהושלמו אומתו מול Meta.':'התוצרים הוכנו ואושרו; לא בוצעה פעולה חיצונית.')+(s.steps.some(x=>x.result?.privateDraft)?' טיוטת דף הנחיתה נשמרה בדשבורד שלך ולא פורסמה.':'')+'\n'+(s.steps||[]).filter(x=>x.artifact).map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n');
- if(task.status==='CANCELLED')return 'המשך העבודה על המשימה בוטל והאישורים הממתינים בוטלו. פעולות שכבר בוצעו אינן מתבטלות אוטומטית.';
  if(task.status==='MANUAL_REVIEW')return 'בשלב האחרון לא קיבלתי מ־Meta תשובה ברורה אם הפעולה הושלמה, אז לא חזרתי עליה כדי שלא תיווצר כפילות. אפשר לראות מה נוצר בדשבורד, במסך פרסום.\nפשוט כתוב לי מה תרצה עכשיו, ואמשיך משם.';
  if(task.status==='PAUSED')return 'עצרתי. ההתקדמות נשמרה, וכשתרצה כתוב לי ״נמשיך״.';
  if(task.status==='BLOCKED')return 'כדי להשלים את המשימה צריך לפתור את החלק הבא: '+(s.reason||'יכולת שלא זמינה כרגע')+'. שאר ההתקדמות נשמרה.';
