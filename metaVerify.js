@@ -12,7 +12,9 @@ async function verifyAction(plan,written) {
   if(!/^\d+$/.test(String(id)))return{verified:false};
   const {form}=await require('./metaLeadForms').inspect(meta.context.getStore(),plan.parameters.pageId,String(id));
   const p=plan.parameters,questions=form.questions?.data||form.questions;
-  const matching=Array.isArray(questions)&&questions.length===p.questions.length&&p.questions.every((q,i)=>q.type===questions[i].type&&(q.type!=='CUSTOM'||q.key===questions[i].key&&q.label===questions[i].label));
+  // Multiple-choice options are compared when Meta returns them (same values, same order).
+  const options=(q,got)=>!q.options||!Array.isArray(got.options)||JSON.stringify(got.options.map(o=>o.value))===JSON.stringify(q.options);
+  const matching=Array.isArray(questions)&&questions.length===p.questions.length&&p.questions.every((q,i)=>q.type===questions[i].type&&(q.type!=='CUSTOM'||q.key===questions[i].key&&q.label===questions[i].label&&options(q,questions[i])));
   return{verified:!!(['ACTIVE','DRAFT'].includes(form.status)&&form.name===p.name&&form.locale===p.locale&&form.privacy_policy_url===p.privacyPolicyUrl&&matching)};
  }
  if(['CREATE_BUNDLE','ACTIVATE_BUNDLE'].includes(plan.intent)) {
@@ -26,16 +28,21 @@ async function verifyAction(plan,written) {
    if(plan.intent==='CREATE_BUNDLE') {
      const campaign=await meta.graph('/'+objects.campaignId,c.token,{fields:'id,name,objective'});
      if(campaign.name!==plan.parameters.name||campaign.objective!==plan.parameters.objective) return {verified:false};
-     const creativeIds=objects.creativeIds||[objects.creativeId];
-     if(creativeIds[0]!==objects.creativeId||creativeIds.length!==1+(plan.parameters.variants||[]).length||objects.adIds.length!==objects.adsetIds.length*creativeIds.length) return {verified:false};
-     for(const creativeId of creativeIds){
+     const creativeIds=objects.creativeIds||[objects.creativeId],ads=require('./mediaBuying').bundleAds(plan.parameters);
+     if(creativeIds[0]!==objects.creativeId||creativeIds.length!==ads.length||objects.adsetIds.length!==plan.parameters.adSets.length||objects.adIds.length!==objects.adsetIds.length*creativeIds.length) return {verified:false};
+     for(const [i,creativeId] of creativeIds.entries()){
        const creative=await meta.graph('/'+creativeId,c.token,{fields:'id,account_id,object_story_spec'});
-       if(plan.parameters.formId&&creative.object_story_spec?.link_data?.call_to_action?.value?.lead_gen_form_id!==plan.parameters.formId)return{verified:false};
+       const link=creative.object_story_spec?.link_data;
+       if(plan.parameters.formId&&link?.call_to_action?.value?.lead_gen_form_id!==plan.parameters.formId)return{verified:false};
        if('act_'+creative.account_id!==plan.target.accountId) return {verified:false};
+       // Several different ads: each creative must carry its own approved image and headline.
+       if(plan.parameters.ads&&(link?.image_hash!==ads[i].imageHash||link?.name!==ads[i].headline)) return {verified:false};
      }
      for(let i=0;i<objects.adsetIds.length;i++) {
-       const set=await meta.graph('/'+objects.adsetIds[i],c.token,{fields:'campaign_id,daily_budget'});
-       if(set.campaign_id!==objects.campaignId||String(set.daily_budget)!==String(plan.parameters.adSets[i].dailyBudgetMinor)) return {verified:false};
+       const wanted=plan.parameters.adSets[i],advantage=require('./mediaBuying').advantageOn(wanted.targeting);
+       const set=await meta.graph('/'+objects.adsetIds[i],c.token,{fields:advantage?'campaign_id,daily_budget,targeting':'campaign_id,daily_budget'});
+       if(set.campaign_id!==objects.campaignId||String(set.daily_budget)!==String(wanted.dailyBudgetMinor)) return {verified:false};
+       if(advantage){let t=set.targeting;if(typeof t==='string')try{t=JSON.parse(t);}catch{t=null;}if(!require('./mediaBuying').advantageOn(t)) return {verified:false};}
        for(let j=0;j<creativeIds.length;j++){
          const ad=await meta.graph('/'+objects.adIds[i*creativeIds.length+j],c.token,{fields:'adset_id,creative'});
          if(ad.adset_id!==objects.adsetIds[i]||ad.creative?.id!==creativeIds[j]) return {verified:false};
@@ -43,6 +50,11 @@ async function verifyAction(plan,written) {
      }
    }
    return {verified:true};
+ }
+ if(plan.intent==='PAUSE_AD') {
+   const c=await meta.credentials(meta.context.getStore());
+   const ad=await meta.graph('/'+plan.target.adId,c.token,{fields:'id,account_id,campaign_id,status'});
+   return {verified:String(ad.id)===plan.target.adId&&'act_'+ad.account_id===plan.target.accountId&&String(ad.campaign_id)===plan.target.campaignId&&ad.status==='PAUSED'};
  }
  if(plan.intent==='DUPLICATE_CAMPAIGN') {
    const o=written.objects;if(!o||!/^\d+$/.test(String(o.campaignId))||o.campaignId===plan.target.campaignId) return {verified:false};

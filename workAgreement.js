@@ -28,7 +28,7 @@ const PRESETS = {
 
 // ---------- F3: approval lifetime by what the action does ----------
 function actionClass(plan) {
-  if (plan?.intent === 'PAUSE_CAMPAIGN') return 'PROTECTIVE';
+  if (['PAUSE_CAMPAIGN', 'PAUSE_AD'].includes(plan?.intent)) return 'PROTECTIVE';
   if (plan?.intent === 'CHANGE_BUDGET') {
     const next = Number(plan.parameters?.dailyBudgetMinor), cur = Number(plan.review?.currentDailyBudgetMinor);
     return Number.isFinite(next) && Number.isFinite(cur) && cur > 0 && next < cur ? 'PROTECTIVE' : 'SPENDING';

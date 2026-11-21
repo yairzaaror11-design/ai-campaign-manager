@@ -3,21 +3,21 @@ const db=require('./db');
 const policy=require('./approvalPolicy');
 const meta=require('./metaConnection');
 const write=require('./metaWrite');
-const handlers={CREATE_LEAD_FORM:write.createLeadForm,CREATE_BUNDLE:write.createBundle,ACTIVATE_BUNDLE:write.activateBundle,UPLOAD_IMAGE:write.uploadImage,CREATE_CAMPAIGN:write.createCampaign,CREATE_ADSET:write.createAdSet,CREATE_CREATIVE:write.createCreative,CREATE_AD:write.createAd,CHANGE_BUDGET:write.changeBudget,DUPLICATE_CAMPAIGN:write.duplicateCampaign,PAUSE_CAMPAIGN:write.pauseCampaign,RESUME_CAMPAIGN:write.resumeCampaign,EDIT_CAMPAIGN:write.editCampaign,SYNC_BUYER_AUDIENCE:write.syncBuyerAudience,CREATE_LOOKALIKE:write.createLookalike};
+const handlers={CREATE_LEAD_FORM:write.createLeadForm,CREATE_BUNDLE:write.createBundle,ACTIVATE_BUNDLE:write.activateBundle,UPLOAD_IMAGE:write.uploadImage,CREATE_CAMPAIGN:write.createCampaign,CREATE_ADSET:write.createAdSet,CREATE_CREATIVE:write.createCreative,CREATE_AD:write.createAd,CHANGE_BUDGET:write.changeBudget,DUPLICATE_CAMPAIGN:write.duplicateCampaign,PAUSE_CAMPAIGN:write.pauseCampaign,PAUSE_AD:write.pauseAd,RESUME_CAMPAIGN:write.resumeCampaign,EDIT_CAMPAIGN:write.editCampaign,SYNC_BUYER_AUDIENCE:write.syncBuyerAudience,CREATE_LOOKALIKE:write.createLookalike};
 async function executeApprovedAction(phone,plan){if(process.env.READ_ONLY!=='false'||process.env.META_WRITES_ENABLED!=='true')return executeApprovedForClient(null,plan);const client=await require('./clientStore').getOrCreateClient(phone);return executeApprovedForClient(client.id,plan);}
 // What makes two plans "the same change": intent, target object and the parameters the owner sees.
-function fingerprint(plan){const t=plan.target||{},p={...(plan.parameters||{})};delete p.currency;return policy.planHash({intent:plan.intent,campaignId:t.campaignId||null,adsetId:t.adsetId||null,parameters:p});}
+function fingerprint(plan){const t=plan.target||{},p={...(plan.parameters||{})};delete p.currency;return policy.planHash({intent:plan.intent,campaignId:t.campaignId||null,adsetId:t.adsetId||null,...(t.adId?{adId:t.adId}:{}),parameters:p});}
 // Actions that create a budget or turn spend on: a repeat could charge twice.
 const MONEY=['CREATE_BUNDLE','CREATE_ADSET','ACTIVATE_BUNDLE','RESUME_CAMPAIGN','CHANGE_BUDGET','DUPLICATE_CAMPAIGN'];
 async function duplicateOf(clientId,plan){
-  if(!MONEY.includes(plan.intent)&&plan.intent!=='PAUSE_CAMPAIGN')return null;
+  if(!MONEY.includes(plan.intent)&&!['PAUSE_CAMPAIGN','PAUSE_AD'].includes(plan.intent))return null;
   const rows=(await db.query(`SELECT id,intent,payload,status,updated_at FROM action_plans WHERE client_id=$1 AND id<>$2 AND updated_at>NOW()-INTERVAL '1 day'
     AND status IN ('APPROVED','MANUAL_REVIEW','VERIFIED') ORDER BY updated_at DESC LIMIT 50`,[clientId,plan.id])).rows;
   const mine=fingerprint(plan),campaign=plan.target?.campaignId;
   for(const r of rows){
     const recent=Date.now()-new Date(r.updated_at).getTime()<30*60000;
     // Re-trying a pause whose first attempt is uncertain is safe (it cannot cost money); everything else stops.
-    if(r.intent===plan.intent&&fingerprint(r.payload)===mine&&(r.status==='APPROVED'||recent&&r.status==='VERIFIED'||r.status==='MANUAL_REVIEW'&&plan.intent!=='PAUSE_CAMPAIGN'))
+    if(r.intent===plan.intent&&fingerprint(r.payload)===mine&&(r.status==='APPROVED'||recent&&r.status==='VERIFIED'||r.status==='MANUAL_REVIEW'&&!['PAUSE_CAMPAIGN','PAUSE_AD'].includes(plan.intent)))
       return r.status==='VERIFIED'?'עצרתי: בדיוק אותה פעולה כבר בוצעה ואומתה לפני כמה דקות. כדי לא לבצע (ולחייב) פעמיים, לא ביצעתי אותה שוב.'
         :r.status==='APPROVED'?'עצרתי: אותה פעולה בדיוק נמצאת עכשיו בביצוע. לא אריץ אותה פעמיים.'
         :'עצרתי: ניסיון קודם של אותה פעולה לא הסתיים בוודאות. כדי לא לחייב פעמיים אני לא מנסה שוב לפני שבודקים ב־Meta מה קרה.';

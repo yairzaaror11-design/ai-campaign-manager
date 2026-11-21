@@ -65,6 +65,18 @@ function validateActionPlan(plan) {
     if (!plan.target?.accountId || !plan.parameters?.pageId) errors.push('Missing creative account/page');
   }
 
+  if (plan.intent === 'PAUSE_AD' && !/^\d+$/.test(String(plan.target?.adId || ''))) errors.push('Missing ad ID');
+
+  // CREATE_BUNDLE with several different ads: each needs its own image and its own copy.
+  if (plan.intent === 'CREATE_BUNDLE' && plan.parameters?.ads !== undefined) {
+    const ads = plan.parameters.ads;
+    if (!Array.isArray(ads) || ads.length < 2 || ads.length > 5) errors.push('A bundle needs 2-5 ads');
+    else ads.forEach((a, i) => {
+      if (!a?.imageHash) errors.push(`Ad ${i + 1} is missing its image`);
+      if (!a?.headline || !a?.message) errors.push(`Ad ${i + 1} is missing its copy`);
+    });
+  }
+
   if (plan.intent === 'CREATE_AD') {
     if (!plan.target?.accountId) errors.push('Missing account ID');
     if (!plan.parameters?.adsetId) errors.push('Missing ad set ID');
@@ -83,7 +95,7 @@ function validateActionPlan(plan) {
   }
 
   if (
-    ['PAUSE_CAMPAIGN', 'RESUME_CAMPAIGN', 'EDIT_CAMPAIGN'].includes(plan.intent) &&
+    ['PAUSE_CAMPAIGN', 'PAUSE_AD', 'RESUME_CAMPAIGN', 'EDIT_CAMPAIGN'].includes(plan.intent) &&
     !plan.target?.campaignId
   ) {
     errors.push('Missing campaign ID');

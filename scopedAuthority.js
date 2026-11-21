@@ -196,7 +196,7 @@ function agreementDecision(row,plan,ctx){
  if(policy.planHash(p)!==row.policy_hash||String(p.clientId)!==String(plan?.tenantId))return{ok:false,why:'NO_AGREEMENT'};
  if(plan.review?.currency&&plan.review.currency!==p.currency)return{ok:false,why:'CURRENCY'};
  const a=p.allow,maxDaily=Math.round(p.maxDailyPerCampaign*unit(p.currency)),ceiling=add=>ctx.skipCeiling?{ok:true}:withinCeiling(p,ctx,add);
- if(plan.intent==='PAUSE_CAMPAIGN')return a.pauseLosing?{ok:true,why:'PROTECTIVE'}:{ok:false,why:'NOT_ALLOWED'};
+ if(['PAUSE_CAMPAIGN','PAUSE_AD'].includes(plan.intent))return a.pauseLosing?{ok:true,why:'PROTECTIVE'}:{ok:false,why:'NOT_ALLOWED'};
  if(plan.intent==='CHANGE_BUDGET'){
   const next=plan.parameters?.dailyBudgetMinor,cur=Number(plan.review?.currentDailyBudgetMinor);
   if(!Number.isSafeInteger(next)||!Number.isFinite(cur)||cur<=0)return{ok:false,why:'BUDGET_UNKNOWN'};
