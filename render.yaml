@@ -116,6 +116,15 @@ services:
         sync: false
       - key: META_LEAD_IMPORT_ENABLED
         sync: false
+      # Meta data flows (docs/META-DATA-FLOWS.md). Verify token typed in App Dashboard -> Webhooks (Page object).
+      - key: META_WEBHOOK_VERIFY_TOKEN
+        sync: false
+      # Conversion Leads: lead stages back to Meta for Lead Ads leads (off by default).
+      - key: META_CRM_FEEDBACK_ENABLED
+        sync: false
+      # Website Lead/Purchase to the business pixel via Conversions API (on unless "false").
+      - key: META_CAPI_ENABLED
+        sync: false
       - key: META_MANAGEMENT_LOGIN_CONFIG_ID
         sync: false
       # Short ad videos through Higgsfield; off until a key is set and approved.
