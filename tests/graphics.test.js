@@ -23,9 +23,9 @@ test('generated graphics are tenant-scoped, attempt-once, reusable as media and 
  assert.equal((await delivery.runOne({transport:async()=>{sent++;return {messages:[{id:'wamid.graphic'}]};}})).status,'SENT');assert.equal(sent,1);
  await assert.rejects(run(a,'graphic-failed',()=>graphics.createGraphic(a,'Failed provider request',{...adapter,generateImage:async()=>{throw Error('provider unavailable');}})));
  await assert.rejects(run(a,'graphic-failed',()=>graphics.createGraphic(a,'Retry same event',adapter)),/GRAPHIC_ALREADY_ATTEMPTED/);assert.equal(generated,1);
- process.env.GRAPHICS_ATTEMPT_LIMIT='2';
+ process.env.GRAPHICS_MONTHLY_LIMIT='2';
  await assert.rejects(run(a,'graphic-over-limit',()=>graphics.createGraphic(a,'Over pilot limit',adapter)),/GRAPHIC_PILOT_LIMIT/);assert.equal(generated,1);
- delete process.env.GRAPHICS_ATTEMPT_LIMIT;
+ delete process.env.GRAPHICS_MONTHLY_LIMIT;
  await db.query('DELETE FROM clients WHERE id=$1',[a]);assert.equal((await db.query('SELECT * FROM graphic_jobs WHERE client_id=$1',[a])).rows.length,0);
  } finally {process.env.GRAPHICS_ENABLED=previous.graphics;process.env.WHATSAPP_SEND_ENABLED=previous.sends;await harness.close();}
 });

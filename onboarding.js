@@ -316,6 +316,8 @@ function followupFor(day, pr) {
     if (!pr.steps.find((s) => s.id === 'campaign').done) return { text: f.noCampaign, buttons: [{ title: copy.followupCampaign, text: 'המשך ליצירת הקמפיין' }] };
     return { text: f.ok };
   }
+  if (day === 7) return { text: f.any, buttons: [{ title: 'דוח עסקי', text: 'דוח עסקי' }, { title: 'מה עשית השבוע', text: 'מה עשית השבוע' }] };
+  if (day === 12) return { text: f.any, buttons: [{ title: 'יותר לידים', text: 'יותר לידים' }, { title: 'לידים טובים יותר', text: 'לידים טובים יותר' }, { title: 'פחות עבודה ידנית', text: 'פחות עבודה ידנית' }] };
   return { text: f.any };
 }
 async function runDue({ now = new Date(), send } = {}) {

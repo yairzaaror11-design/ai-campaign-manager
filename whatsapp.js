@@ -31,6 +31,8 @@ function splitMessage(text,max=3800){
 }
 async function sendWhatsAppMessage(to,text,options={}) {
  const delivery=require('./whatsappDelivery');
+ // Measure (never block) messages that break the agent's writing rules.
+ require('./agentProfile').audit('whatsapp',options.leadingText||text,{allowCommand:/אשר\s+\d{6}/.test(String(text))});
  const enqueueText=async body=>{let result;for(const part of splitMessage(body))result=await delivery.enqueue(to,delivery.textPayload(part));return result;};
  if(options.leadingText)await enqueueText(options.leadingText);
  if(options.interactivePayload)return delivery.enqueue(to,options.interactivePayload);
