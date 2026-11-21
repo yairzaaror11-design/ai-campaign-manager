@@ -28,6 +28,9 @@ test('WhatsApp router: a new owner says hi, taps a button, and onboarding contin
     await text('משרד תיווך בגבעתיים');
     assert.match(out.at(-1).text, /מה הכי חשוב לקדם עכשיו/);
     assert.equal((await db.query('SELECT step FROM onboarding_state WHERE client_id=$1', [id])).rows[0].step, 'SELL');
+    // A template quick-reply tap (type 'button') is handled like the words on the button.
+    await handle({ from: me, id: 'wamid.' + crypto.randomUUID(), type: 'button', timestamp: ts(), button: { text: 'דירה למכירה', payload: 'tpl' } });
+    assert.equal((await db.query('SELECT step FROM onboarding_state WHERE client_id=$1', [id])).rows[0].step, 'GOAL');
     await text('החזר למצב הקודם');
     assert.equal(out.at(-1).text, copy.undoListEmpty);
   } finally {
