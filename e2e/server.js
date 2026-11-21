@@ -27,6 +27,7 @@ if (!fs.existsSync(keyFile) || !fs.existsSync(certFile)) {
 process.env.PORT = String(PORT);
 process.env.APP_PUBLIC_URL = `https://localhost:${PORT}/`;
 process.env.LOG_LEVEL = process.env.LOG_LEVEL || 'warn';
+process.env.RATE_LIMIT_SCALE = '50'; // all test browsers share one IP; production ignores this
 
 // index.js calls app.listen(); serve the same app over HTTPS instead.
 const express = require('express');
@@ -35,7 +36,6 @@ express.application.listen = function listen(port, host, callback) {
 };
 
 async function seed() {
-  const db = require('../db');
   const clients = require('../clientStore');
   const facts = require('../conversationFacts');
   const store = require('../marketingStore');
@@ -43,29 +43,34 @@ async function seed() {
   const portal = require('../portalStore');
   const crypto = require('crypto');
 
-  // An established business (most screens) and a brand-new one (onboarding).
-  const main = await clients.getOrCreateClient('972500000101', 'E2E');
+  // Two identical established businesses (desktop and mobile projects run in parallel and must
+  // not change each other's data) and a brand-new one (onboarding).
+  const established = async (phone) => {
+    const client = await clients.getOrCreateClient(phone, 'E2E');
+    await store.update(client.id, crypto.randomUUID(), (p) => {
+      for (const [field, value] of Object.entries({
+        businessName: 'משרד תיווך לדוגמה', businessType: 'תיווך נדל"ן', businessGoal: 'לידים של מוכרי דירות',
+        product: 'תיווך במכירת דירה', audience: 'בעלי דירות בתל אביב', geography: 'תל אביב', serviceArea: 'תל אביב'
+      })) facts.write(p, field, value);
+      return { handled: true, changed: true };
+    });
+    await portal.register(client.id, { name: 'יעל', email: 'owner@example.test', acceptPrivacy: true });
+    for (const [name, phone] of [['דני כהן', '0501111111'], ['רונית לוי', '0502222222']]) {
+      await crm.create(client.id, { name, phone, note: 'ליד לדוגמה', source: 'manual', sourceEventId: crypto.randomUUID() });
+    }
+    return client;
+  };
+  const main = await established('972500000101');
+  const second = await established('972500000303');
   const fresh = await clients.getOrCreateClient('972500000202', 'E2E new');
-  await store.update(main.id, crypto.randomUUID(), (p) => {
-    for (const [field, value] of Object.entries({
-      businessName: 'משרד תיווך לדוגמה', businessType: 'תיווך נדל"ן', businessGoal: 'לידים של מוכרי דירות',
-      product: 'תיווך במכירת דירה', audience: 'בעלי דירות בתל אביב', geography: 'תל אביב', serviceArea: 'תל אביב'
-    })) facts.write(p, field, value);
-    return { handled: true, changed: true };
-  });
-  await portal.register(main.id, { name: 'יעל', email: 'owner@example.test', acceptPrivacy: true });
-  for (const [name, phone] of [['דני כהן', '0501111111'], ['רונית לוי', '0502222222']]) {
-    await crm.create(main.id, { name, phone, note: 'ליד לדוגמה', source: 'manual', sourceEventId: crypto.randomUUID() });
-  }
-  await db.query("INSERT INTO tenant_audit(client_id,event,result) VALUES($1,'E2E_SEED','DONE')", [main.id]);
-  return { main: main.id, fresh: fresh.id };
+  return { main: main.id, second: second.id, fresh: fresh.id };
 }
 
 (async () => {
   await require('../scripts/dev-local').startLocal({ dataDir });
   const ids = await seed();
   const portal = require('../portalStore');
-  // Local-only helper: GET /ticket?who=main|fresh&screen=leads -> one-time login URL.
+  // Local-only helper: GET /ticket?who=main|second|fresh&screen=leads -> one-time login URL.
   http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://127.0.0.1');
@@ -75,5 +80,6 @@ async function seed() {
       if (!id) { res.writeHead(400).end(); return; }
       res.writeHead(200, { 'Content-Type': 'text/plain' }).end(await portal.createTicket(id, url.searchParams.get('screen') || null));
     } catch (error) { res.writeHead(500).end(String(error.message)); }
-  }).listen(PORT + 1, '127.0.0.1', () => console.log(`[e2e] ready on https://localhost:${PORT} (tickets on 127.0.0.1:${PORT + 1})`));
+  }).listen(PORT + 1, '127.0.0.1', () => console.log(`[e2e] ready on https://localhost:${PORT} (tickets on 127.0.0.1:${PORT + 1})`))
+    .unref(); // the process ends with the app server (SIGTERM/SIGINT shutdown)
 })().catch((error) => { console.error('[e2e] failed to start:', error); process.exit(1); });

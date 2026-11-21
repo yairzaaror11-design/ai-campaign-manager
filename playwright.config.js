@@ -21,8 +21,8 @@ module.exports = defineConfig({
     trace: 'retain-on-failure'
   },
   projects: [
-    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1366, height: 800 } } },
-    { name: 'mobile', use: { ...devices['Pixel 7'], viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } }
+    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1366, height: 800 }, who: 'main' } },
+    { name: 'mobile', use: { ...devices['Pixel 7'], viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, who: 'second' } }
   ],
   webServer: {
     command: 'node e2e/server.js',

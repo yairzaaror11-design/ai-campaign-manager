@@ -1,5 +1,5 @@
 'use strict';
-// Logs in once per seeded business (main / fresh) and saves the session cookies, so tests
+// Logs in once per seeded business (main = desktop, second = mobile, fresh = new business) and saves the session cookies, so tests
 // never race each other on one-time links (issuing a link revokes the previous one).
 const fs = require('fs');
 const path = require('path');
@@ -9,7 +9,7 @@ const PORT = Number(process.env.E2E_PORT || 3443);
 module.exports = async () => {
   const dir = path.join(__dirname, '.auth');
   fs.mkdirSync(dir, { recursive: true });
-  for (const who of ['main', 'fresh']) {
+  for (const who of ['main', 'second', 'fresh']) {
     const link = await (await fetch(`http://127.0.0.1:${PORT + 1}/ticket?who=${who}`)).text();
     const token = link.split('#login=')[1];
     const ctx = await request.newContext({ baseURL: `https://localhost:${PORT}`, ignoreHTTPSErrors: true });

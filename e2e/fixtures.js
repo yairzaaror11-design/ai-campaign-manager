@@ -13,13 +13,17 @@ const test = base.test.extend({
   storageState: async ({ who }, use) => use(path.join(__dirname, '.auth', who + '.json')),
   problems: async ({ page }, use) => {
     const problems = [];
-    page.on('console', (m) => { if (m.type() === 'error') problems.push('console: ' + m.text()); });
-    page.on('pageerror', (e) => problems.push('pageerror: ' + e.message));
-    page.on('response', (r) => { if (r.status() >= 400) problems.push(`http ${r.status()}: ${r.request().method()} ${new URL(r.url()).pathname}`); });
+    const allowed = [];
+    // A test that deliberately triggers a server refusal declares it; everything else is a failure.
+    Object.defineProperty(problems, 'allow', { value: (re) => allowed.push(re), enumerable: false });
+    const record = (p) => { if (!allowed.some((re) => re.test(p)) && !(allowed.length && /Failed to load resource/.test(p))) problems.push(p); };
+    page.on('console', (m) => { if (m.type() === 'error') record('console: ' + m.text()); });
+    page.on('pageerror', (e) => record('pageerror: ' + e.message));
+    page.on('response', (r) => { if (r.status() >= 400) record(`http ${r.status()}: ${r.request().method()} ${new URL(r.url()).pathname}`); });
     page.on('requestfailed', (r) => {
       const why = r.failure()?.errorText || '';
       // Navigating away cancels in-flight requests; that is not a failure.
-      if (!/ERR_ABORTED|NS_BINDING_ABORTED|cancelled/i.test(why)) problems.push(`requestfailed: ${r.method()} ${r.url()} ${why}`);
+      if (!/ERR_ABORTED|NS_BINDING_ABORTED|cancelled/i.test(why)) record(`requestfailed: ${r.method()} ${r.url()} ${why}`);
     });
     await use(problems);
   }
