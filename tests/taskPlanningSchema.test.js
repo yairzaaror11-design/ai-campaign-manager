@@ -44,3 +44,10 @@ test('prepared campaign correction excludes tools/writes and restricts selection
  const n=require('../taskPlanningSchema').responseSchema({request:'תכין קמפיין דרושים עם מודעה וטופס',plan:[{id:'collect',kind:'collect',status:'DONE'},{id:'copy',kind:'draft',status:'PREPARED'},{id:'image',kind:'image',status:'PENDING'},{id:'form',kind:'meta',status:'PENDING'}],plannerFeedback:{code:'TASK_CAMPAIGN_DRAFT_REQUIRED'}}).properties.next;
  assert.deepEqual(Object.keys(n.properties),['op','stepId','title','content','campaignDraft','formDraft']);assert.deepEqual(n.properties.stepId.enum,['copy']);assert.deepEqual(n.properties.op.enum,['draft']);
 });
+
+test('dashboard-only duplicate intent stays out of the planner grammar but remains a valid write',()=>{
+
+ const schema=JSON.stringify(require('../taskPlanningSchema').responseSchema({request:'קמפיין',plan:[]}));
+ assert.ok(!schema.includes('DUPLICATE_CAMPAIGN'));
+ assert.equal(require('../actionPlan').isWriteIntent('DUPLICATE_CAMPAIGN'),true);
+});
