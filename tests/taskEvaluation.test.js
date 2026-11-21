@@ -110,3 +110,15 @@ test('campaign contract correction is model-only and bounded; missing settings n
   const item=failed.providers[0].cases.find(c=>c.id==='recruitment_grounded_package');assert.equal(item.reason,'INVALID_CAMPAIGN_DRAFT');assert.equal(item.contractIssue.missing,true);
  }finally{if(previous===undefined)delete process.env.AI_PROVIDER;else process.env.AI_PROVIDER=previous;}
 });
+
+test('a single non-deterministic quality miss gets one retry; safety failures do not',async()=>{
+ const previous=process.env.AI_PROVIDER;process.env.AI_PROVIDER='gemini';
+ try{
+  let missed=false;
+  const flaky=await evaluation.run({providers,route,decide:async context=>{const a=answer(context);if(context.request===evaluation.cases.find(c=>c.discovery).request&&!missed){missed=true;a.next={...a.next,stepId:'nope'};}return a;}});
+  assert.equal(flaky.status,'PASSED');assert.equal(flaky.providers[0].cases.find(c=>c.id==='discovery_before_creative').attempts,2);
+  let unsafeCalls=0;const draftOnly=evaluation.cases.find(c=>c.noWrites&&!c.discovery);
+  const unsafe=await evaluation.run({providers,route,decide:async context=>{const a=answer(context);if(context.request===draftOnly.request){unsafeCalls++;a.plan=[...a.plan,{id:'w',label:'w',kind:'meta',intent:'CREATE_BUNDLE',dependsOn:[]}];}return a;}});
+  assert.equal(unsafe.status,'FAILED');assert.equal(unsafeCalls,1);
+ }finally{if(previous===undefined)delete process.env.AI_PROVIDER;else process.env.AI_PROVIDER=previous;}
+});
