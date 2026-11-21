@@ -172,7 +172,13 @@ function collectFacts(task,decision,known){
  const show=v=>v&&typeof v==='object'?(v.amount!==undefined?v.amount+' ₪ ליום':JSON.stringify(v)):String(v??'');
  const sources=[task.request,...task.state.messages.filter(message=>message.role==='user').map(message=>message.content),...Object.values(known?.facts||{}).map(a=>show(a?.value)),...confirmed.map(([,a])=>show(a?.value))].filter(Boolean).map(normalizeFactQuote);
  for(const fact of decision.facts){
-  if(!fact||!/^[a-z][a-z0-9_]{0,49}$/.test(fact.key||'')||typeof fact.value!=='string'||!fact.value.trim()||fact.value.length>1000||typeof fact.evidence!=='string')throw Error('UNGROUNDED_TASK_FACT');
+  // Models often write keys in camelCase and numbers as numbers: normalize the shape, never the meaning.
+  if(fact&&typeof fact.key==='string')fact.key=fact.key.replace(/([a-z0-9])([A-Z])/g,'$1_$2').replace(/[\s-]+/g,'_').toLowerCase();
+  if(fact&&(typeof fact.value==='number'||typeof fact.value==='boolean'))fact.value=String(fact.value);
+  if(!fact||!/^[a-z][a-z0-9_]{0,49}$/.test(fact.key||'')||typeof fact.value!=='string'||!fact.value.trim()||fact.value.length>1000||typeof fact.evidence!=='string'){
+   try{require('./logger').logger.warn('Task fact has an invalid shape',{keyValid:/^[a-z][a-z0-9_]{0,49}$/.test(fact?.key||''),valueType:typeof fact?.value,evidenceType:typeof fact?.evidence});}catch{}
+   throw Error('UNGROUNDED_TASK_FACT');
+  }
   const evidence=normalizeFactQuote(fact.evidence);
   const quoted=!!evidence&&sources.some(source=>source.includes(evidence)),value=normalizeFactQuote(fact.value);
   if(!quoted||!(evidence.includes(value)||paraphraseOf(value,evidence))){
