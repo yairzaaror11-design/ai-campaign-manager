@@ -159,7 +159,10 @@ function normalizeFactQuote(value){
 function collectFacts(task,decision,known){
  if(!Array.isArray(decision.facts)||decision.facts.length>12||!Array.isArray(decision.knownFields||[]))throw Error('INVALID_TASK_FACTS');
  const facts={...task.state.facts};
- const sources=[task.request,...task.state.messages.filter(message=>message.role==='user').map(message=>message.content)].map(normalizeFactQuote);
+ // Owner-confirmed business facts (and onboarding settings for the first campaign) are valid evidence too.
+ const confirmed=Object.entries(known?.confirmedForFirstCampaign||{}).filter(([k])=>k!=='rule');
+ const show=v=>v&&typeof v==='object'?(v.amount!==undefined?v.amount+' ₪ ליום':JSON.stringify(v)):String(v??'');
+ const sources=[task.request,...task.state.messages.filter(message=>message.role==='user').map(message=>message.content),...Object.values(known?.facts||{}).map(a=>show(a?.value)),...confirmed.map(([,a])=>show(a?.value))].filter(Boolean).map(normalizeFactQuote);
  for(const fact of decision.facts){
   if(!fact||!/^[a-z][a-z0-9_]{0,49}$/.test(fact.key||'')||typeof fact.value!=='string'||!fact.value.trim()||fact.value.length>1000||typeof fact.evidence!=='string')throw Error('UNGROUNDED_TASK_FACT');
   const evidence=normalizeFactQuote(fact.evidence);
@@ -167,15 +170,16 @@ function collectFacts(task,decision,known){
   facts[fact.key]={value:fact.value,evidence:fact.evidence};
  }
  for(const field of decision.knownFields||[]){
-  if(!known.facts?.[field]?.value)throw Error('UNKNOWN_TASK_FACT');
-  facts[field]={value:known.facts[field].value,source:'known_business'};
+  const source=known.facts?.[field]?.value?known.facts[field]:field!=='rule'&&known.confirmedForFirstCampaign?.[field]?.value!==undefined?known.confirmedForFirstCampaign[field]:null;
+  if(!source)throw Error('UNKNOWN_TASK_FACT');
+  facts[field]={value:source.value,source:'known_business'};
  }
  if(!decision.facts.length&&!decision.knownFields?.length||JSON.stringify(facts).length>10000)throw Error('INVALID_TASK_FACTS');
  return facts;
 }
 const FACT_REPAIR={
  code:'UNGROUNDED_TASK_FACT',
- instruction:'Collect failed before saving facts. Copy each evidence quote and its value directly from the original request or a USER message, preserving every character and space. Keep price qualifiers such as starting from. Omit unsupported details. If a necessary detail is missing, ask one focused question using the same collect step.'
+ instruction:'Collect failed before saving facts. Copy each evidence quote and its value directly from the original request or a USER message, preserving every character and space. Keep price qualifiers such as starting from. For business facts or first-campaign settings the owner already confirmed (knownBusiness.facts / knownBusiness.confirmedForFirstCampaign), list the field name in knownFields instead of quoting it. Omit unsupported details. If a necessary detail is missing, ask one focused question using the same collect step.'
 };
 function contextFor(task,known){
  return{request:task.request,planningMode:task.state.planningMode,requiredOutcomes:requiredOutcomes(task.request,task.state.planningMode),lastError:task.state.lastError||null,pendingQuestion:task.state.question||null,plan:task.state.steps.map(s=>({...s,result:s.result?.approval?{awaitingExactApproval:true}:safe(s.result,1500)})),facts:task.state.facts,messages:task.state.messages.slice(-6),knownBusiness:known,readTools:planner.READ_TOOLS,professionalReadSchemas:require('./gemini').functionDeclarations.filter(t=>['get_professional_skills','analyze_business_case'].includes(t.name)),writeSchema:require('./gemini').functionDeclarations.find(t=>t.name==='propose_action').parameters,notes:'Only DONE is completed. PREPARED drafts await local review; WAITING_APPROVAL Meta actions have not executed.'};
