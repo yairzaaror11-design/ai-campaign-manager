@@ -18,7 +18,9 @@ function setEnv() {
   Object.assign(process.env, { APP_PUBLIC_URL: 'https://test.example', META_APP_ID: process.env.META_APP_ID || '123', META_APP_SECRET: 'test', META_LOGIN_CONFIG_ID: '456', META_TOKEN_ENCRYPTION_KEY: process.env.META_TOKEN_ENCRYPTION_KEY || crypto.randomBytes(32).toString('base64'), APPROVAL_HMAC_KEY: process.env.APPROVAL_HMAC_KEY || crypto.randomBytes(32).toString('hex'), READ_ONLY: 'false', META_WRITES_ENABLED: 'true', WHATSAPP_SEND_ENABLED: 'false' });
 }
 function restoreEnv() { for (const k of Object.keys(process.env)) if (!(k in env)) delete process.env[k]; Object.assign(process.env, env); }
-async function ownerWithMeta(db, phone, account) {
+async function ownerWithMeta(db, _phone, account) {
+  // CI shares one database: every run gets its own phone.
+  const phone = '9725' + String(require('node:crypto').randomInt(10000000, 99999999));
   const meta = require('../metaConnection');
   const id = (await db.query('INSERT INTO clients(phone,meta_ad_account_id) VALUES($1,$2) RETURNING id', [phone, 'act_' + account])).rows[0].id;
   await db.query("INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,app_id,expires_at) VALUES($1,$2,$3,$4,NOW()+INTERVAL '1 hour')", [id, 'u' + phone, meta.encrypt('test-token', id), process.env.META_APP_ID]);
