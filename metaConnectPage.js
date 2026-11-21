@@ -15,6 +15,7 @@ ${!done&&!failed?'<button id="connect" type="button">המשך לפייסבוק</
 <p class="status" id="status" role="status" aria-live="polite"></p>
 <section class="recovery" id="recovery" ${failed?'':'hidden'}><p>חזרו ל־WhatsApp ושלחו לבוט:</p><strong class="command">${escape(request)}</strong><button type="button" class="secondary" id="copy">העתקת ההודעה לבוט</button></section>
 ${done||failed?`<a class="back" id="back" href="${escape(whatsappLink())}">חזור לוואטסאפ</a>`:''}
+${done||failed?'<p class="status"><a href="/app/integrations">או חזור לדשבורד ← חיבורים</a></p>':''}
 <noscript><p>כדי להמשיך נדרש JavaScript בדפדפן. אפשר לפתוח את הקישור ב־Safari או ב־Chrome.</p></noscript></article></main><footer>SCORPIO AI · חיבור העסק בצורה מאובטחת<br><a href="/privacy">פרטיות</a></footer><script nonce="${nonce}">
 const status=document.getElementById('status'),button=document.getElementById('connect'),recovery=document.getElementById('recovery'),copy=document.getElementById('copy');
 const invite=location.hash.slice(1);history.replaceState(null,'',location.pathname+location.search);

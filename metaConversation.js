@@ -156,6 +156,11 @@ async function invite(clientId,eventId){
  catch(error){await recordStatus(clientId,'CONNECTION_FAILED',{lastError:safeError(error)});return{handled:true,reply:'לא הצלחתי ליצור קישור כרגע. אפשר להמשיך בטיוטה ולנסות חיבור בהמשך.'};}
 }
 async function handle(clientId,text,analysis,eventId){
+ // "תן הרשאה": a one-time link that asks Meta again for exactly the missing permissions.
+ if(text==='תן הרשאה'||text==='/meta-permissions'){
+  try{const url=await meta.createInvite(clientId,{rerequest:true});return{handled:true,reply:'כדי להשלים את ההרשאות החסרות, פתח את הקישור (תקף ל־10 דקות). Meta תבקש רק את מה שחסר, ואז חוזרים לכאן:\n'+url};}
+  catch{return{handled:true,reply:'לא הצלחתי ליצור קישור כרגע. נסה שוב בעוד רגע.'};}
+ }
  if(text==='חבר הרשאת יצירת קמפיינים'){
   try{const url=await meta.createInvite(clientId,{management:true});return{handled:true,reply:'כדי ליצור קמפיינים, אשר את הרשאות החשבון במסך הרשמי של Meta. לאחר מכן חזור לכאן לכתוב ״המשך ליצירת הקמפיין״.\n'+url,historyReply:'נשלח קישור אישי לקבלת הרשאת ניהול ב־Meta. הקישור אינו נשמר בהיסטוריה.'};}
   catch(error){return{handled:true,reply:error.message==='MANAGEMENT_LOGIN_CONFIG_REQUIRED'?'הרשאת הניהול עדיין לא הוגדרה באפליקציית Meta של המערכת. התוכנית שלך שמורה; לאחר שמפעיל המערכת ישלים את ההגדרה נוכל לחבר אותה כאן.':'לא הצלחתי ליצור קישור הרשאה. התוכנית שמורה; אפשר לנסות שוב בהמשך.'};}

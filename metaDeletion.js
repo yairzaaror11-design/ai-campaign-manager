@@ -54,7 +54,9 @@ router.post('/deauthorize',require('./rateLimit').middleware('meta-deauthorize',
  try {
   const signed=verifySignedRequest(req.body.signed_request);
   const clients=await db.query('SELECT id FROM clients WHERE meta_user_id=$1',[signed.user_id]);
-  for(const client of clients.rows) await require('./metaConnection').disconnect(client.id);
+  // Deauthorize callback (the user removed the app in Facebook): stop every Meta job for
+  // the business and tell the owner in WhatsApp; the chosen assets stay for a reconnect.
+  for(const client of clients.rows) await require('./metaAuth').markRevoked(client.id,'DEAUTHORIZED');
   res.sendStatus(200);
  } catch {res.sendStatus(400);}
 });

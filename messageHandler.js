@@ -305,6 +305,7 @@ async function routeText(from, text, prefix = '') {
         return; // No post-deletion message may recreate the client or outbox row.
       }
       else if (text === '/meta-renew') { await meta.renew(client.id); reply='הרשאת Meta חודשה. לא בוצע שינוי בקמפיינים.'; }
+      else if (text === '/meta-permissions') reply = 'קישור אישי להשלמת ההרשאות החסרות ב־Meta (תקף ל־10 דקות): ' + await meta.createInvite(client.id,{rerequest:true});
       else if (text === '/meta-connect') reply = 'קישור אישי לחיבור חשבון הפרסום (תקף ל־10 דקות, אל תעביר אותו לאחרים): ' + await meta.createInvite(client.id);
       else if (text === '/meta-accounts') {const list=(await meta.accounts(client.id)).data||[];reply=list.length?'*חשבונות הפרסום שלך:*\n'+list.slice(0,20).map((a,i)=>(i+1)+'. '+(a.name||'ללא שם')+(a.account_status===1?'':' (לא פעיל)')).join('\n')+'\n\nכדי להחליף חשבון, כתוב ״החשבונות שלי״ ובחר מהרשימה.':'לא מצאתי חשבונות פרסום בחיבור הנוכחי. כדי לחבר מחדש, כתוב ״חבר את חשבון המודעות״.';}
       else if (/^\/meta-select act_\d+$/.test(text)) { const a=await meta.selectAccount(client.id,text.split(' ')[1]); reply = '✅ עברתי לחשבון ״'+(a?.name||'החשבון שבחרת')+'״.\nמעכשיו כל הקמפיינים והדוחות יהיו בחשבון הזה. אפשר לכתוב ״אני רוצה קמפיין״.'; }
