@@ -8,7 +8,9 @@ const MAX_ATTEMPTS = 5;
 const backoffSeconds = attempts => Math.min(900, 5 * Math.pow(2, Math.min(8, attempts - 1)));
 
 async function runOne(targetLifecycleId = null) {
-  if (process.env.MOCK_META_ENABLED !== 'true' || process.env.READ_ONLY !== 'true') return { status: 'DISABLED' };
+  // The durable mock Meta adapter is for isolated test environments only: never in production,
+  // never when writes are allowed (also enforced by runtimeConfig at web start; this covers worker.js).
+  if (process.env.NODE_ENV === 'production' || process.env.MOCK_META_ENABLED !== 'true' || process.env.READ_ONLY !== 'true') return { status: 'DISABLED' };
   const claimed = await transaction(async tx => {
     const r = await tx(`SELECT id,client_id,lifecycle_id,kind,status,attempts FROM workflow_jobs
       WHERE status IN ('PENDING','LEASED','RECONCILE') AND available_at <= NOW() AND (locked_until IS NULL OR locked_until < NOW()) AND ($1::uuid IS NULL OR lifecycle_id=$1::uuid)
