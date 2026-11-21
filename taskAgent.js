@@ -185,6 +185,20 @@ function reviewReady(task){
  if(steps.some(s=>['STALE','RUNNING','WAITING_APPROVAL'].includes(s.status))||require('./taskDraftReview').issue(task))return false;
  return steps.some(s=>s.status==='PREPARED'&&s.artifact&&!s.artifact.reviewed)&&!steps.some(s=>s.kind!=='meta'&&['PENDING','WAITING_INPUT'].includes(s.status)&&dependenciesReady(task,s));
 }
+// Real-estate ads must show the broker license (Israeli law). Checked before content approval.
+async function estateLicense(clientId){
+ const v=require('./verticalProfiles');const d=await v.detect(clientId).catch(()=>null);
+ if(d?.key!=='real_estate')return null;
+ const p=await require('./marketingStore').load(clientId).catch(()=>null);
+ return{number:p?.brokerLicense||null,spec:v.get('real_estate').license};
+}
+function addLicenseLine(task,line,number){
+ let changed=false;
+ for(const st of task.state.steps)if(st.status==='PREPARED'&&st.kind==='draft'&&st.artifact&&!String(st.artifact.content||'').includes(number)){
+  const a={...st.artifact};delete a.hash;a.content=(String(a.content||'')+'\n'+line).slice(0,6000);a.hash=hash(a);st.artifact=a;changed=true;
+ }
+ return changed;
+}
 function prepareReview(task){
  delete task.state.reviewIssue;delete task.state.lastError;delete task.state.reason;
  task.state.reviewHash=hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash]));task.status='WAITING_REVIEW';
@@ -300,8 +314,20 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
    task.status='RUNNING';task.state.reviewIssue=require('./taskDraftReview').issue(task);task.state.revising=true;delete task.state.reviewHash;
   }
   if(task.status==='WAITING_REVIEW'&&/^(כן|לא|מאשר|מאשרת|אוקיי)$/.test(message.trim()))return await settle(task,lease,requestId);
-  if(task.status==='WAITING_REVIEW'&&/^(מאשר את התוכן|מאשרת את התוכן|מאשר את החבילה|מאשרת את החבילה)$/.test(message.trim())){
+  if(task.status==='WAITING_REVIEW'&&task.state.awaitingLicense){
+   const m=message.replace(/[\s-]/g,'').match(/^\D*(\d{3,10})\D*$/);
+   const lic=m&&await estateLicense(clientId);
+   if(lic&&lic.spec.pattern.test(m[1])){
+    await require('./marketingStore').update(clientId,null,p=>{p.brokerLicense=m[1];return{handled:false,changed:true,audit:'BROKER_LICENSE_SET'};});
+    delete task.state.awaitingLicense;addLicenseLine(task,lic.spec.adLine(m[1]),m[1]);prepareReview(task);
+    task.customReply='שמרתי ✓ הוספתי למודעה: '+lic.spec.adLine(m[1])+'\n\n'+replyFor(task);return await settle(task,lease,requestId);
+   }
+  }
+ if(task.status==='WAITING_REVIEW'&&/^(מאשר את התוכן|מאשרת את התוכן|מאשר את החבילה|מאשרת את החבילה)$/.test(message.trim())){
    if(task.state.reviewHash!==hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash])))throw Error('TASK_REVIEW_CHANGED');
+   const lic=await estateLicense(clientId);
+   if(lic&&!lic.number){task.state.awaitingLicense=true;task.customReply='רגע לפני: '+lic.spec.question;return await settle(task,lease,requestId);}
+   if(lic&&addLicenseLine(task,lic.spec.adLine(lic.number),lic.number)){prepareReview(task);task.customReply='הוספתי למודעה את מספר הרישיון, כמו שהחוק מחייב:\n\n'+replyFor(task);return await settle(task,lease,requestId);}
    for(const step of task.state.steps)if(step.status==='PREPARED'){
     if(step.artifact.destination==='landing_page'){
      await checkpoint(task,lease);
