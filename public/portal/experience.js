@@ -30,9 +30,11 @@ window.ScorpioExperience = (() => {
   verify?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const b = verify.querySelector('button[type=submit]'); b.disabled = true;
-    try { await post('login/code/verify', { phone, code: verify.elements.code.value.trim() }); location.replace(location.pathname); }
+    try { const r = await post('login/code/verify', { phone, code: verify.elements.code.value.trim() }); if (r.googleLinked) { history.replaceState(null, '', location.pathname + '#google=linked'); location.reload(); } else location.replace(location.pathname); }
     catch (error) { say(error.message, true); } finally { b.disabled = false; }
   });
+  // Sign-in with Google: the button shows only when the server has Google sign-in configured.
+  fetch('/app/auth/google/config', { credentials: 'same-origin' }).then((r) => r.json()).then((c) => { if (c.enabled && $('google-login')) $('google-login').hidden = false; }).catch(() => {});
   $('code-again')?.addEventListener('click', () => { verify.hidden = true; request.hidden = false; request.elements.phone.focus(); });
 
   // ---------- experience data (after sign-in) ----------
