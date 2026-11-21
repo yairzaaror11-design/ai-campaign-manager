@@ -10,7 +10,11 @@ const enabled = () => process.env.CAMPAIGN_GUARD_ENABLED !== 'false';
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const SYMBOL = { ILS: '₪', USD: '$', EUR: '€' };
 const money = (v, cur) => Math.round(v) + ' ' + (SYMBOL[cur] || cur || '');
-const RULES = { learningHours: 72, minImpressions: 3000, wasteMinSpend: 150, wasteCplMultiple: 2.5, winnerMinLeads: 5, winnerCplRatio: 0.7, winnerMinAgeDays: 7, fatigueFrequency: 3.5, fatigueCtrDrop: 0.7, alertCooldownDays: 3, burnBudgetShare: 0.75, burnMinSpend: 20, highCplMultiple: 3, highCplMinSpend: 50, middayHour: 12, intradaySlots: [12, 16], intradayCooldownHours: 20 };
+// Professional pacing (media_buying_playbook.md §2, §4): no performance judgement in the first 72 hours
+// after launch or after the last major change (new ad, ad set edit); ads are judged on a 7-day window;
+// an ad that alone spent >=2x the target cost per lead without a lead is proposed for pausing (only when
+// other ads in its ad set keep delivering); 7-day frequency above 4 = creative fatigue.
+const RULES = { learningHours: 72, adWindowDays: 7, adKillCplMultiple: 2, minImpressions: 3000, wasteMinSpend: 150, wasteCplMultiple: 2.5, winnerMinLeads: 5, winnerCplRatio: 0.7, winnerMinAgeDays: 7, fatigueFrequency: 4, fatigueCtrDrop: 0.7, alertCooldownDays: 3, burnBudgetShare: 0.75, burnMinSpend: 20, highCplMultiple: 3, highCplMinSpend: 50, middayHour: 12, intradaySlots: [12, 16], intradayCooldownHours: 20 };
 const INTRADAY_KINDS = ['SPEND_CAP', 'BURN_NO_LEADS', 'HIGH_CPL'];
 const LEAD_ACTIONS = ['lead', 'onsite_conversion.lead_grouped', 'leadgen_grouped', 'offsite_conversion.fb_pixel_lead', 'onsite_conversion.messaging_conversation_started_7d'];
 function leadsOf(row) {
@@ -18,6 +22,25 @@ function leadsOf(row) {
   return counts.length ? Math.max(...counts) : 0;
 }
 const ACCOUNT_STATUS = { 2: 'חשבון הפרסום הושבת על ידי Meta', 3: 'יש חוב פתוח בחשבון הפרסום (התשלום לא עבר)', 7: 'חשבון הפרסום בבדיקה של Meta', 8: 'יש תשלום שממתין לסגירה', 9: 'חשבון הפרסום בתקופת חסד בגלל תשלום' };
+
+// Hours since the campaign last started learning: launch, or its last major change, whichever is later.
+function settledHours(c, now) {
+  const times = [c.created_time, c.lastMajorChange].map((t) => (t ? Date.parse(t) : NaN)).filter(Number.isFinite);
+  return times.length ? (now - Math.max(...times)) / 36e5 : 1e9;
+}
+const settled = (c, now) => settledHours(c, now) >= RULES.learningHours;
+
+// One losing ad inside an otherwise delivering ad set (7-day window). Returns the worst one or null.
+function losingAd(c, target, now) {
+  if (!target || !Array.isArray(c.ads)) return null;
+  const live = c.ads.filter((a) => (a.effective_status || 'ACTIVE') === 'ACTIVE');
+  const losers = live.filter((a) => {
+    const age = a.created_time ? (now - new Date(a.created_time)) / 36e5 : 1e9;
+    const others = live.filter((o) => o.id !== a.id && String(o.adset_id) === String(a.adset_id) && num(o.d7?.impressions) > 0);
+    return age >= RULES.learningHours && others.length > 0 && leadsOf(a.d7) === 0 && num(a.d7?.spend) >= target * RULES.adKillCplMultiple;
+  });
+  return losers.sort((x, y) => num(y.d7?.spend) - num(x.d7?.spend))[0] || null;
+}
 
 // Pure decision: what does a professional media buyer flag right now?
 function evaluate({ account = {}, campaigns = [], now = new Date() }) {
@@ -27,6 +50,8 @@ function evaluate({ account = {}, campaigns = [], now = new Date() }) {
     return findings;
   }
   const cpl30 = account.leads30 > 0 ? account.spend30 / account.leads30 : null;
+  // The owner's target cost per lead when known, otherwise the account's own 30-day average.
+  const target = num(account.targetCpl) > 0 ? num(account.targetCpl) : cpl30;
   for (const c of campaigns) {
     const name = String(c.name || 'הקמפיין').slice(0, 40);
     const ageHours = c.created_time ? (now - new Date(c.created_time)) / 36e5 : 1e9;
@@ -34,12 +59,20 @@ function evaluate({ account = {}, campaigns = [], now = new Date() }) {
       findings.push({ kind: 'DELIVERY', campaignId: c.id, priority: 1, text: `⚠️ הקמפיין "${name}" ${c.effective_status === 'DISAPPROVED' ? 'נדחה על ידי Meta' : 'נתקע ולא מציג מודעות'}.\nבינתיים הוא לא מביא פניות. כתוב לי "מה הבעיה בקמפיין ${name}" ואבדוק מה צריך לתקן.`, choices: [{ title: 'תבדוק מה הבעיה', text: `מה הבעיה בקמפיין ${name}` }] });
       continue;
     }
-    if (c.effective_status !== 'ACTIVE' || ageHours < RULES.learningHours) continue;
+    if (c.effective_status !== 'ACTIVE' || !settled(c, now)) continue;
     const d7 = c.d7 || {}, d3 = c.d3 || {}, d30 = c.d30 || {};
     const spend7 = num(d7.spend), leads7 = Math.max(leadsOf(d7), num(c.crmLeads7)), imp7 = num(d7.impressions);
     const wasteAt = Math.max(RULES.wasteMinSpend, cpl30 ? cpl30 * RULES.wasteCplMultiple : 0);
     if (leads7 === 0 && spend7 >= wasteAt && imp7 >= RULES.minImpressions) {
       findings.push({ kind: 'WASTE', campaignId: c.id, campaignName: name, priority: 2, pause: true, text: `💸 הקמפיין "${name}" הוציא ${money(spend7, cur)} בשבוע האחרון ועוד לא הביא אף פנייה.\nמנהל קמפיינים היה עוצר אותו עכשיו ובודק את המודעה או את ההצעה, לפני שממשיכים לשלם.` + (cpl30 ? `\nלהשוואה: בחודש האחרון פנייה עלתה לך בממוצע ${money(cpl30, cur)}.` : '') });
+      continue;
+    }
+    const ad = losingAd(c, target, now);
+    if (ad) {
+      const adName = String(ad.name || 'מודעה').slice(0, 40), adSpend = num(ad.d7?.spend);
+      findings.push({ kind: 'AD_NO_LEADS', campaignId: c.id, campaignName: name, adId: String(ad.id), adName, priority: 2.5, pause: true,
+        pauseSummary: `השהיית המודעה "${adName}" בקמפיין "${name}" שהוציאה כסף בלי פניות`,
+        text: `✂️ בקמפיין "${name}" יש מודעה אחת שלא עובדת: "${adName}" הוציאה ${money(adSpend, cur)} בשבוע האחרון ועוד לא הביאה אף פנייה.\nזה פי ${Math.floor(adSpend / target)} ממחיר פנייה ${num(account.targetCpl) > 0 ? 'שהגדרת' : 'הממוצע שלך'} (${money(target, cur)}), ושאר המודעות בקמפיין כן מקבלות חשיפה.\nמנהל קמפיינים היה עוצר רק את המודעה הזו, כדי שהתקציב יעבור למודעות שעובדות. הקמפיין עצמו ממשיך לרוץ.` });
       continue;
     }
     const cpl7 = leads7 ? spend7 / leads7 : null;
@@ -49,8 +82,9 @@ function evaluate({ account = {}, campaigns = [], now = new Date() }) {
       continue;
     }
     const freq = num(d7.frequency), ctr3 = num(d3.ctr), ctr30 = num(d30.ctr);
-    if (freq >= RULES.fatigueFrequency && ctr30 > 0 && ctr3 > 0 && ctr3 <= ctr30 * RULES.fatigueCtrDrop && num(d3.impressions) >= 2000) {
-      findings.push({ kind: 'FATIGUE', campaignId: c.id, priority: 4, text: `🔁 המודעות בקמפיין "${name}" מתחילות להישחק: אותם אנשים ראו אותן בממוצע ${freq.toFixed(1)} פעמים, ופחות לוחצים (ירידה של ${Math.round((1 - ctr3 / ctr30) * 100)}%).\nבדרך כלל זה הזמן להוסיף מודעה חדשה עם זווית אחרת, לפני שהמחיר לפנייה עולה.`, choices: [{ title: 'תכין מודעה חדשה', text: `תכין לי מודעה חדשה עם זווית אחרת לקמפיין ${name}` }, { title: 'לא עכשיו', text: 'לא עכשיו' }] });
+    if (freq > RULES.fatigueFrequency) {
+      const drop = ctr30 > 0 && ctr3 > 0 && ctr3 <= ctr30 * RULES.fatigueCtrDrop ? Math.round((1 - ctr3 / ctr30) * 100) : null;
+      findings.push({ kind: 'FATIGUE', campaignId: c.id, priority: 4, text: `🔁 המודעות בקמפיין "${name}" מתחילות להישחק: בשבוע האחרון אותם אנשים ראו אותן בממוצע ${freq.toFixed(1)} פעמים` + (drop ? `, ופחות לוחצים (ירידה של ${drop}%)` : '') + `.\nבדרך כלל זה הזמן להוסיף מודעה חדשה עם זווית אחרת, לפני שהמחיר לפנייה עולה.`, choices: [{ title: 'תכין מודעה חדשה', text: `תכין לי מודעה חדשה עם זווית אחרת לקמפיין ${name}` }, { title: 'לא עכשיו', text: 'לא עכשיו' }] });
     }
   }
   return findings.sort((a, b) => a.priority - b.priority);
@@ -76,8 +110,29 @@ async function load(clientId) {
     account.leads30 = all30.reduce((t, r) => t + leadsOf(r), 0);
     const crm = (await db.query(`SELECT campaign_id, COUNT(*)::int AS n FROM crm_leads WHERE client_id=$1 AND campaign_id IS NOT NULL AND created_at>NOW()-INTERVAL '7 days' GROUP BY campaign_id`, [clientId])).rows;
     const crmBy = Object.fromEntries(crm.map((r) => [String(r.campaign_id), r.n]));
-    return { account, accountId: acc, campaigns: list.map((x) => ({ ...x, d3: byPreset.last_3d[x.id], d7: byPreset.last_7d[x.id], d30: byPreset.last_30d[x.id], crmLeads7: crmBy[x.id] || 0 })) };
+    const structure = await loadAds(acc, read);
+    return { account, accountId: acc, campaigns: list.map((x) => ({ ...x, d3: byPreset.last_3d[x.id], d7: byPreset.last_7d[x.id], d30: byPreset.last_30d[x.id], crmLeads7: crmBy[x.id] || 0, ...(structure[x.id] || {}) })) };
   });
+}
+
+// Ad-level 7-day numbers and each campaign's last major change (an ad set edit or a newly added ad:
+// both restart Meta's learning). Read-only.
+async function loadAds(acc, read) {
+  const active = JSON.stringify(['ACTIVE']);
+  const sets = (await read('/' + acc + '/adsets', { fields: 'id,campaign_id,created_time,updated_time', effective_status: active, limit: 200 })).data || [];
+  const ads = (await read('/' + acc + '/ads', { fields: 'id,name,adset_id,campaign_id,effective_status,created_time', effective_status: active, limit: 200 })).data || [];
+  const rows = (await read('/' + acc + '/insights', { level: 'ad', fields: 'ad_id,adset_id,campaign_id,spend,impressions,frequency,actions', date_preset: 'last_' + RULES.adWindowDays + 'd', limit: 200 })).data || [];
+  const d7 = Object.fromEntries(rows.map((r) => [String(r.ad_id), r]));
+  const out = {};
+  const entry = (cid) => (out[cid] ||= { ads: [] });
+  const latest = (cid, t) => { const v = Date.parse(t || ''); if (!Number.isFinite(v)) return; const o = entry(cid); if (!o.lastMajorChange || v > Date.parse(o.lastMajorChange)) o.lastMajorChange = new Date(v).toISOString(); };
+  for (const s of sets) latest(String(s.campaign_id), s.updated_time);
+  for (const a of ads) {
+    const cid = String(a.campaign_id);
+    entry(cid).ads.push({ id: String(a.id), name: a.name, adset_id: String(a.adset_id), effective_status: a.effective_status, created_time: a.created_time, d7: d7[String(a.id)] });
+    latest(cid, a.created_time);
+  }
+  return out;
 }
 
 async function recentlyAlerted(clientId, f) {
@@ -92,7 +147,11 @@ async function send(client, finding, accountId) {
     if (finding.pause) {
       const { createActionPlan, formatActionPlan } = require('./actionPlan');
       // Work agreement: if the owner allowed "לעצור קמפיין שמפסיד כסף", the agent pauses and reports; otherwise it asks.
-      const outcome = await require('./workAgreement').proposeOrAct(client.id, createActionPlan({ intent: 'PAUSE_CAMPAIGN', summary: finding.pauseSummary || `השהיית הקמפיין "${finding.campaignName}" שמוציא כסף בלי פניות`, target: { accountId, campaignId: finding.campaignId } }), { reason: String(finding.text || '').split('\n')[0].slice(0, 300) });
+      // An ad-level finding pauses that one ad; everything else pauses the campaign.
+      const plan = finding.adId
+        ? createActionPlan({ intent: 'PAUSE_AD', summary: finding.pauseSummary, target: { accountId, campaignId: finding.campaignId, adId: finding.adId } })
+        : createActionPlan({ intent: 'PAUSE_CAMPAIGN', summary: finding.pauseSummary || `השהיית הקמפיין "${finding.campaignName}" שמוציא כסף בלי פניות`, target: { accountId, campaignId: finding.campaignId } });
+      const outcome = await require('./workAgreement').proposeOrAct(client.id, plan, { reason: String(finding.text || '').split('\n')[0].slice(0, 300) });
       actionId = outcome.autonomous ? outcome.actionId : outcome.approval.actionId;
       await db.query('INSERT INTO campaign_guard_alerts(client_id,campaign_id,kind,action_id) VALUES($1,$2,$3,$4)', [client.id, String(finding.campaignId), finding.kind, actionId]);
       if (outcome.autonomous) { await require('./whatsapp').safeSend(client.phone, finding.text + '\n\n' + outcome.text); return outcome.ok ? 'PAUSED_BY_AGREEMENT' : 'AGREEMENT_ACTION_FAILED'; }
@@ -163,7 +222,8 @@ function evaluateToday({ account = {}, campaigns = [], cap = null, now = new Dat
   for (const c of campaigns) {
     const spend = num(c.today?.spend), leads = Math.max(leadsOf(c.today), num(c.crmLeadsToday)), budget = num(c.dailyBudget);
     total += spend;
-    if (c.effective_status !== 'ACTIVE') continue;
+    // The owner's spend cap is always checked; performance alerts wait out the 72 hours of learning.
+    if (c.effective_status !== 'ACTIVE' || !settled(c, now)) continue;
     const name = String(c.name || 'הקמפיין').slice(0, 40);
     if (midday && leads === 0 && budget > 0 && spend >= budget * RULES.burnBudgetShare && spend >= RULES.burnMinSpend) {
       findings.push({ kind: 'BURN_NO_LEADS', campaignId: c.id, campaignName: name, priority: 1, pause: true,
@@ -192,19 +252,22 @@ async function loadToday(clientId) {
     if (!c.meta_ad_account_id) return null;
     const acc = c.meta_ad_account_id, read = (path, params) => meta.tenantRead(path, params);
     const account = await read('/' + acc, { fields: 'account_status,currency' });
-    const list = (await read('/' + acc + '/campaigns', { fields: 'id,name,effective_status,daily_budget', effective_status: JSON.stringify(['ACTIVE']), limit: 50 })).data || [];
+    const list = (await read('/' + acc + '/campaigns', { fields: 'id,name,effective_status,daily_budget,created_time', effective_status: JSON.stringify(['ACTIVE']), limit: 50 })).data || [];
     if (!list.length) return { account, accountId: acc, campaigns: [] };
     // SCORPIO sets budgets on the ad sets; campaign budgets (CBO) win when present.
-    const sets = (await read('/' + acc + '/adsets', { fields: 'campaign_id,daily_budget', effective_status: JSON.stringify(['ACTIVE']), limit: 200 })).data || [];
-    const setBudget = {};
-    for (const s of sets) setBudget[s.campaign_id] = (setBudget[s.campaign_id] || 0) + num(s.daily_budget);
+    const sets = (await read('/' + acc + '/adsets', { fields: 'campaign_id,daily_budget,updated_time', effective_status: JSON.stringify(['ACTIVE']), limit: 200 })).data || [];
+    const setBudget = {}, changed = {};
+    for (const s of sets) {
+      setBudget[s.campaign_id] = (setBudget[s.campaign_id] || 0) + num(s.daily_budget);
+      if (s.updated_time && (!changed[s.campaign_id] || Date.parse(s.updated_time) > Date.parse(changed[s.campaign_id]))) changed[s.campaign_id] = s.updated_time;
+    }
     const rows = (await read('/' + acc + '/insights', { level: 'campaign', fields: 'campaign_id,spend,actions', date_preset: 'today', limit: 100 })).data || [];
     const today = Object.fromEntries(rows.map((r) => [String(r.campaign_id), r]));
     const month = ((await read('/' + acc + '/insights', { fields: 'spend,actions', date_preset: 'last_30d' })).data || [])[0] || {};
     account.spend30 = num(month.spend); account.leads30 = leadsOf(month);
     const crm = (await db.query(`SELECT campaign_id, COUNT(*)::int AS n FROM crm_leads WHERE client_id=$1 AND campaign_id IS NOT NULL AND created_at>=date_trunc('day', NOW() AT TIME ZONE 'Asia/Jerusalem') AT TIME ZONE 'Asia/Jerusalem' GROUP BY campaign_id`, [clientId])).rows;
     const crmBy = Object.fromEntries(crm.map((r) => [String(r.campaign_id), r.n]));
-    return { account, accountId: acc, campaigns: list.map((x) => ({ ...x, dailyBudget: (num(x.daily_budget) || setBudget[x.id] || 0) / 100, today: today[x.id], crmLeadsToday: crmBy[x.id] || 0 })) };
+    return { account, accountId: acc, campaigns: list.map((x) => ({ ...x, lastMajorChange: changed[x.id], dailyBudget: (num(x.daily_budget) || setBudget[x.id] || 0) / 100, today: today[x.id], crmLeadsToday: crmBy[x.id] || 0 })) };
   });
 }
 
@@ -253,4 +316,4 @@ async function ownsApproval(clientId, actionId) {
   return (await db.query('SELECT 1 FROM campaign_guard_alerts WHERE client_id=$1 AND action_id=$2', [clientId, String(actionId)])).rows.length > 0;
 }
 
-module.exports = { enabled, evaluate, evaluateToday, runDue, runIntraday, ownsApproval, leadsOf, RULES };
+module.exports = { enabled, evaluate, evaluateToday, runDue, runIntraday, ownsApproval, leadsOf, settledHours, losingAd, load, loadToday, RULES };

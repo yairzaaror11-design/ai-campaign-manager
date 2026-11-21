@@ -467,6 +467,8 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
       if(!copy?.artifact.reviewed||p.message!==copy.artifact.adContent||p.headline!==copy.artifact.campaignDraft.headline||!upload||p.imageHash!==upload.result.id)throw Error('CAMPAIGN_CONTENT_NOT_REVIEWED');
      }
     }
+    // Several different ads: every image must be one this task uploaded from reviewed media.
+    if(step.intent==='CREATE_BUNDLE'&&Array.isArray(n.proposal?.parameters?.ads)&&n.proposal.parameters.ads.some(ad=>!task.state.steps.some(s=>s.kind==='meta'&&s.intent==='UPLOAD_IMAGE'&&s.status==='DONE'&&s.result?.id&&s.result.id===ad?.imageHash)))throw Error('CAMPAIGN_IMAGE_NOT_REVIEWED');
     // An image upload only needs the reviewed media id; extra model-written fields
     // (names, captions) would be refused by the approval policy.
     if(step.intent==='UPLOAD_IMAGE'&&n.proposal?.parameters&&typeof n.proposal.parameters==='object')n.proposal.parameters={mediaId:n.proposal.parameters.mediaId};
