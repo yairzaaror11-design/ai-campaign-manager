@@ -230,7 +230,9 @@ function addLicenseLine(task,line,number){
 // The senior-marketer playbook for this kind of business (first campaign, questions worth asking, angles, rules).
 async function industryPlaybook(clientId){
  const d=await require('./verticalProfiles').detect(clientId).catch(()=>({key:'generic'}));
- return{industry:d.key,...require('./expertPlaybook').industry(d.key)};
+ const license=d.key==='real_estate'?(await require('./marketingStore').load(clientId).catch(()=>null))?.brokerLicense||null:null;
+ // A license already on file is added to every ad by the backend: never ask for it again.
+ return{industry:d.key,...require('./expertPlaybook').industry(d.key),...(license?{brokerLicenseOnFile:license,licenseRule:'The broker license is on file and the backend adds it to every ad. Do not ask for it.'}:{})};
 }
 // Ad-copy compliance (adCompliance.js) on the prepared copy, checked when the owner approves content.
 function adCopy(artifact){

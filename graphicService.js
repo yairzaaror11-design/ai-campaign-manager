@@ -63,9 +63,19 @@ async function generateOpenAI(prompt,options={}){
  void require('./usageLedger').record({provider:'openai',model,kind:'image',units:1,inputTokens:u.input_tokens,outputTokens:u.output_tokens});
  return checkedImage(Buffer.from(b64,'base64'),'image/png');
 }
+const openaiReady=()=>!!process.env.OPENAI_API_KEY&&/^gpt-image-[a-z0-9.-]+$/.test(openaiModel());
 async function generate(prompt,options={}) {
  if(!graphicsConfigured()) throw Error('GRAPHICS_CONFIGURATION_REQUIRED');
  if(graphicsProvider()==='openai')return generateOpenAI(prompt,options);
+ try{return await generateGemini(prompt,options);}
+ catch(error){
+  // Billing, quota or outage at Gemini: use OpenAI images when they are configured.
+  if(error?.message!=='GRAPHIC_PROVIDER_FAILED'||![402,403,429,500,502,503,504,null].includes(error.status??null)||!openaiReady())throw error;
+  require('./logger').logger.warn('Image provider failed; using fallback',{primary:'gemini',fallback:'openai',status:error.status});
+  return generateOpenAI(prompt,options);
+ }
+}
+async function generateGemini(prompt,options={}) {
  const parts=[{text:promptFor(prompt,options)+' Return an image.'}];
  for(const image of references(options))parts.push({inlineData:{mimeType:image.mimeType,data:image.buffer.toString('base64')}});
  let part;
@@ -75,7 +85,7 @@ async function generate(prompt,options={}) {
   try {response=(await axios.post('https://generativelanguage.googleapis.com/v1beta/models/'+process.env.GEMINI_IMAGE_MODEL+':generateContent',{
   contents:[{role:'user',parts}],
   generationConfig:{responseModalities:['IMAGE'],maxOutputTokens:8192,thinkingConfig:{thinkingLevel:'MINIMAL'},imageConfig:{aspectRatio:'1:1',imageSize:'1K'}}
-  },{headers:{'x-goog-api-key':process.env.GEMINI_API_KEY},timeout:90000,maxRedirects:0,maxContentLength:8*1024*1024})).data;}catch(e){providerFailed('gemini',process.env.GEMINI_IMAGE_MODEL,e);throw Error('GRAPHIC_PROVIDER_FAILED');}
+  },{headers:{'x-goog-api-key':process.env.GEMINI_API_KEY},timeout:90000,maxRedirects:0,maxContentLength:8*1024*1024})).data;}catch(e){providerFailed('gemini',process.env.GEMINI_IMAGE_MODEL,e);const err=Error('GRAPHIC_PROVIDER_FAILED');err.status=Number(e?.response?.status)||null;throw err;}
   const found=response?.candidates?.[0]?.content?.parts?.find(p=>p.inlineData?.data)?.inlineData;
   if(found&&['image/png','image/jpeg'].includes(found.mimeType))part=found;
   else noImage('gemini',process.env.GEMINI_IMAGE_MODEL,{attempt,finishReason:String(response?.candidates?.[0]?.finishReason||'NO_IMAGE_PART').slice(0,60),blockReason:String(response?.promptFeedback?.blockReason||'').slice(0,60)});
