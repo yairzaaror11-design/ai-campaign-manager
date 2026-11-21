@@ -72,7 +72,12 @@ test('model acceptance gates the selected provider and rejects unsafe or contrad
    assert.equal(failed.status,'FAILED');assert.equal(evaluation.ready(),false);
   }
   const unavailable=await evaluation.run({route,providers:[{provider:'claude',model:'synthetic-test',configured:true}],decide:async context=>answer(context)});
-  assert.equal(unavailable.status,'FAILED');
+  assert.equal(unavailable.status,'PASSED');assert.deepEqual(unavailable.plannerProvider,{provider:'claude',model:'synthetic-test'});
+  assert.deepEqual(evaluation.plannerProvider(),{provider:'claude',model:'synthetic-test'});
+  const mixed=await evaluation.run({route,providers:[{provider:'gemini',model:'g',configured:true},{provider:'claude',model:'c',configured:true}],decide:async(context,o)=>{if(o?.provider==='gemini'){const e=Error('schema rejected');e.status=400;throw e;}return answer(context);}});
+  assert.equal(mixed.status,'PASSED');assert.equal(mixed.plannerProvider.provider,'claude');
+  const none=await evaluation.run({route,providers:[{provider:'gemini',model:'g',configured:true}],decide:async()=>{throw Error('schema rejected');}});
+  assert.equal(none.status,'FAILED');assert.equal(evaluation.plannerProvider(),null);
   const sanitized=await evaluation.run({providers,route,decide:async()=>{throw Error('private provider response');}});
   assert.equal(JSON.stringify(sanitized).includes('private provider'),false);
  }finally{if(previous===undefined)delete process.env.AI_PROVIDER;else process.env.AI_PROVIDER=previous;}
