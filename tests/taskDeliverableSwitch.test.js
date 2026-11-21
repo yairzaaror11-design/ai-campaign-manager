@@ -33,7 +33,7 @@ test('a standalone recruitment request replaces the old property plan and repair
   const failed=await send('תעדכן את הנוסח','invalid-next',async()=>{failedCalls++;return{next:{op:'meta',stepId:'missing',proposal:{}}};});
   assert.equal(failedCalls,2);assert.equal(failed.task.status,'ERROR');
   await h.db.query("UPDATE agent_tasks SET status='MANUAL_REVIEW' WHERE id=$1",[stored.id]);
-  const blocked=await send('תכין לי קמפיין לדירה באילת','uncertain-new',async()=>{throw Error('MUST_NOT_PLAN');});assert.equal(blocked.task.id,stored.id);assert.match(blocked.reply,/לברר את תוצאת הפעולה/);
+  const blocked=await send('תכין לי קמפיין לדירה באילת','uncertain-new',async()=>({plan:[{id:'d',kind:'collect',label:'פרטים',dependsOn:[]}],next:{op:'ask',stepId:'d',question:'מה המחיר?'}}));assert.notEqual(blocked.task.id,stored.id);assert.match(blocked.reply,/סגרתי את המשימה הקודמת שנתקעה/);
  }finally{
   if(client)await h.db.query('DELETE FROM clients WHERE id=$1',[client.id]);await h.close();
   for(const k of Object.keys(process.env))if(!(k in env))delete process.env[k];Object.assign(process.env,env);

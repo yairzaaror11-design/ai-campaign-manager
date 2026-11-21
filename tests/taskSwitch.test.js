@@ -46,10 +46,14 @@ test('a new goal escapes a stalled conversation, revokes only its old approvals 
   assert.equal((await h.db.query('SELECT count(*)::int AS n FROM meta_execution_attempts')).rows[0].n,0);
   const followup=await send('אפשר כותרת אחרת?','revision');assert.equal(followup.task.id,next.task.id);
   await h.db.query("UPDATE agent_tasks SET status='MANUAL_REVIEW' WHERE id=$1",[next.task.id]);
-  const blocked=await send('אני רוצה לקדם מוצר אחר','uncertain',{deferPlanning:true});assert.equal(blocked.task.id,next.task.id);assert.match(blocked.reply,/לברר את תוצאת הפעולה/);
+  const blocked=await send('אני רוצה לקדם מוצר אחר','uncertain',{deferPlanning:true});assert.notEqual(blocked.task.id,next.task.id);assert.match(blocked.reply,/סגרתי את המשימה הקודמת שנתקעה/);
+  assert.equal((await h.db.query('SELECT status FROM agent_tasks WHERE id=$1',[next.task.id])).rows[0].status,'CANCELLED');
+  await h.db.query("UPDATE agent_tasks SET status='CANCELLED' WHERE id=$1",[blocked.task.id]);
   await h.db.query("UPDATE agent_tasks SET status='WAITING_MODEL',state=$2::jsonb WHERE id=$1",[next.task.id,JSON.stringify({steps:[{id:'create',kind:'meta',status:'WAITING_APPROVAL',result:{approval:{actionId:'old-approval'}}}],facts:{},messages:[]})]);
   await h.db.query("INSERT INTO meta_execution_attempts(action_id,client_id,status) VALUES('old-approval',$1,'MANUAL_REVIEW')",[client.id]);
-  const uncertain=await send('אני רוצה לקדם מוצר אחר','uncertain-attempt',{deferPlanning:true});assert.equal(uncertain.task.id,next.task.id);assert.match(uncertain.reply,/לברר את תוצאת הפעולה/);
+  const uncertain=await send('אני רוצה לקדם מוצר אחר','uncertain-attempt',{deferPlanning:true});assert.notEqual(uncertain.task.id,next.task.id);assert.match(uncertain.reply,/סגרתי את המשימה הקודמת שנתקעה/);
+  assert.equal((await h.db.query("SELECT status FROM meta_execution_attempts WHERE action_id='old-approval'")).rows[0].status,'MANUAL_REVIEW');
+  await h.db.query("UPDATE agent_tasks SET status='CANCELLED' WHERE client_id=$1 AND id<>$2",[client.id,next.task.id]);
   await h.db.query("UPDATE agent_tasks SET status='READY',lease_token=$2,lease_until=NOW()+INTERVAL '1 minute' WHERE id=$1",[next.task.id,crypto.randomUUID()]);
   assert.equal((await send('אני רוצה לקדם מוצר אחר','busy')).busy,true);
  }finally{await h.close();for(const key of Object.keys(process.env))if(!(key in env))delete process.env[key];Object.assign(process.env,env);}

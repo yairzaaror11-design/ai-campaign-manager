@@ -153,7 +153,7 @@ async function prepareFunnelCampaign(clientId, key, { channel = 'WHATSAPP', requ
   if (brief.blocked === 'LICENSE_MISSING') return { handled: true, blocked: brief.blocked, reply: 'כל מודעת נדל"ן חייבת להציג מספר רישיון תיווך. כתוב: רישיון תיווך ואחריו המספר (למשל: רישיון תיווך 3141592), ואז נכין את הקמפיין.' };
   const tasks = require('./taskAgent');
   const active = await tasks.active(clientId);
-  if (active) return { handled: true, blocked: 'TASK_OPEN', reply: 'יש כרגע משימה פתוחה אחרת אצל הסוכן. כדי לא לערבב ביניהן, סיים אותה או כתוב "בטל את המשימה", ואז בחר שוב את סוג הקמפיין.' };
+  if (active) return { handled: true, blocked: 'TASK_OPEN', reply: 'יש כרגע משימה פתוחה אחרת אצל הסוכן. כדי לא לערבב ביניהן, סיים אותה, או כתוב לי "תסגור אותה", ואז בחר שוב את סוג הקמפיין.' };
   const run = send || ((message) => tasks.send(clientId, { message, requestId: requestId || `growth-funnel:${key}:${Date.now()}`, channel }, { dynamicRouting: process.env.DYNAMIC_CONVERSATION_ENABLED === 'true', deferPlanning: !tasks.enabled() }));
   const result = await run(brief.text);
   const taskId = result?.task?.id || (await tasks.active(clientId))?.id || null;
