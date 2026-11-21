@@ -12,8 +12,10 @@ const FORMATS={
  '9:16':{width:1080,height:1920,imageTop:0.0625,textTop:0.55,textBottom:0.74,logoTop:0.155,safeTop:0.14,safeBottom:0.25},
 };
 const RLM='‏';
-const FONT_DIR=path.join(path.dirname(require.resolve('@fontsource/heebo/package.json')),'files');
-const FONT_FILES=['hebrew','latin'].flatMap(subset=>[700,800].map(weight=>path.join(FONT_DIR,`heebo-${subset}-${weight}-normal.woff`)));
+// Full Heebo TTFs (Hebrew + Latin + digits + ₪ in one file). Split web subsets left Linux with no Hebrew glyphs.
+const FONT_DIR=path.dirname(require.resolve('@expo-google-fonts/heebo/package.json'));
+const FONT_BY_WEIGHT={700:path.join(FONT_DIR,'700Bold','Heebo_700Bold.ttf'),800:path.join(FONT_DIR,'800ExtraBold','Heebo_800ExtraBold.ttf')};
+const FONT_FILES=Object.values(FONT_BY_WEIGHT);
 const DEFAULT_ACCENT='#FFC83D';
 let sharpModule,fontsReady;
 
@@ -26,8 +28,7 @@ function sharp(){
  }
  return sharpModule;
 }
-// libvips registers every fontfile it is given for the life of the process; Hebrew letters come from
-// the hebrew subset and digits/Latin from the latin subset, so both are registered before any layout.
+// Each render also names its fontfile, so layout never depends on fontconfig fallback.
 async function loadFonts(){
  fontsReady??=(async()=>{for(const fontfile of FONT_FILES)await sharp()({text:{text:'.',font:'Heebo',fontfile}}).png().toBuffer();})().catch(e=>{fontsReady=null;throw e;});
  return fontsReady;
@@ -62,7 +63,7 @@ const contrastOn=hex=>luminance(hex)>0.4?'#111111':'#FFFFFF';
 
 async function textImage(text,{weight,size,color,width}){
  const markup=`<span foreground="${color}">${RLM}${escape(text)}</span>`;
- const {data,info}=await sharp()({text:{text:markup,font:`Heebo ${weight===800?'ExtraBold':'Bold'} ${size}`,width,align:'centre',wrap:'word',rgba:true,dpi:72,spacing:Math.round(size*0.12)}}).png().toBuffer({resolveWithObject:true});
+ const {data,info}=await sharp()({text:{text:markup,font:`Heebo ${weight===800?'ExtraBold':'Bold'} ${size}`,fontfile:FONT_BY_WEIGHT[weight===800?800:700],width,align:'centre',wrap:'word',rgba:true,dpi:72,spacing:Math.round(size*0.12)}}).png().toBuffer({resolveWithObject:true});
  return{input:data,width:info.width,height:info.height};
 }
 async function ctaPill(text,{size,accent,maxWidth}){

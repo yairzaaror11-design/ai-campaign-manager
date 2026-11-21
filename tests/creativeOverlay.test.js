@@ -37,12 +37,14 @@ test('overlay renders each Meta format at its exact size with the Hebrew text in
 test('Hebrew with numbers and ₪ is laid out right-to-left: the first word is on the right',async()=>{
  await overlay.loadFonts();
  const ink=async text=>{
-  const {data,info}=await sharp({text:{text:'‏'+text,font:'Heebo ExtraBold 60',rgba:true,dpi:72}}).raw().toBuffer({resolveWithObject:true});
+  const {data,info}=await sharp({text:{text:'‏'+text,font:'Heebo ExtraBold 60',fontfile:overlay.FONT_FILES[1],rgba:true,dpi:72}}).raw().toBuffer({resolveWithObject:true});
   return{info,alphaAt:x=>{let s=0;for(let y=0;y<info.height;y++)s+=data[(y*info.width+x)*4+3];return s;}};
  };
  // "4" alone is narrow; in RTL the leading "4" must sit at the far right of the line, ₪ at the far left.
  const full=await ink(TEXT.headline),shekel=await ink('₪'),four=await ink('4');
- assert.ok(full.info.width>shekel.info.width+four.info.width);
+ // The Hebrew words must actually render (Linux once dropped them silently): far wider than '4' + '₪'.
+ const word=await ink('חדרים');assert.ok(word.info.width>100,'Hebrew glyphs render');
+ assert.ok(full.info.width>shekel.info.width+four.info.width+2*word.info.width,'whole line renders');
  const columns=Array.from({length:full.info.width},(_,x)=>full.alphaAt(x)>0);
  const left=columns.indexOf(true),right=columns.lastIndexOf(true);
  // The leftmost glyph is ₪ (wide, about as wide as its own render); the rightmost is the digit 4.

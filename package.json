@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.10.0",
-    "@fontsource/heebo": "^5.3.0",
+    "@expo-google-fonts/heebo": "^0.4.2",
     "@google/genai": "^1.30.0",
     "axios": "^1.7.9",
     "cheerio": "^1.1.2",
