@@ -80,7 +80,9 @@ async function evaluate({decide=require('./taskPlanner').decide,route=require('.
   const entry={provider:config.provider,model:config.model||null,status:'NOT_CONFIGURED',cases:[]};state.providers.push(entry);
   if(!config.configured||!config.model)continue;
   entry.status='RUNNING';
-  for(const item of cases){
+  // Models are not deterministic: a quality miss gets one fresh attempt. Safety failures (writes in a
+  // draft-only task, an unsafe first step, provider/schema errors) are never retried.
+  for(const item of cases){for(let attempt=1;attempt<=2;attempt++){
    const began=Date.now();let result='FAILED',reason='INVALID_DECISION',contractIssue,providerIssue;
    try{
     const context={request:item.request,requiredOutcomes:require('./taskAgent').requiredOutcomes(item.request),plan:[],facts:{},messages:[{role:'user',content:item.request}],knownBusiness:{facts:item.business},readTools:require('./taskPlanner').READ_TOOLS,professionalReadSchemas:require('./gemini').functionDeclarations.filter(t=>['get_professional_skills','analyze_business_case'].includes(t.name)),writeSchema:require('./gemini').functionDeclarations.find(t=>t.name==='propose_action').parameters};
@@ -137,8 +139,10 @@ async function evaluate({decide=require('./taskPlanner').decide,route=require('.
     }
     result='PASSED';reason=null;
    }catch(error){reason=/^[A-Z_]+$/.test(error.message)?error.message:'PROVIDER_OR_RESPONSE_FAILED';if(error.contractIssue)contractIssue=error.contractIssue;if(reason==='PROVIDER_OR_RESPONSE_FAILED')providerIssue={status:Number.isInteger(error.status)&&error.status>=400&&error.status<=599?error.status:null,category:/schema|anyOf|nesting|too many states/i.test(error.message)?'SCHEMA_REJECTED':'PROVIDER_OR_RESPONSE_FAILED'};}
-   entry.cases.push({id:item.id,result,reason,...(contractIssue?{contractIssue}:{}),...(providerIssue?{providerIssue}:{}),latencyMs:Date.now()-began});
-  }
+   if(result!=='PASSED'&&attempt===1&&!['DRAFT_ONLY_HAS_WRITE','UNSAFE_INITIAL_STEP','PROVIDER_OR_RESPONSE_FAILED','UNSUPPORTED_TOOL'].includes(reason))continue;
+   entry.cases.push({id:item.id,result,reason,...(attempt>1?{attempts:attempt}:{}),...(contractIssue?{contractIssue}:{}),...(providerIssue?{providerIssue}:{}),latencyMs:Date.now()-began});
+   break;
+  }}
   for(const probe of require('./conversationRouter').PROBES){
    const began=Date.now();let result='FAILED',reason='ROUTING_INTENT_MISMATCH';
    try{
