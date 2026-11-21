@@ -11,6 +11,7 @@ const MEDIA_BUYING = `MEDIA BUYING (small budgets, ₪50–₪300/day)
 - Judge after enough data: wait 48–72 hours after launch and judge ads on 7-day windows. Pause an ad that spent about 2× the target cost per lead with no lead. Scale a winner gradually and only after a stable week. Frequency above ~4 or falling click rate means refresh the creative.
 - Forms: short (name, phone, one or two qualifying questions). Prefer "higher intent" when lead quality matters. A privacy-policy link is required.
 - Tracking: record every lead's stage (contacted, meeting, deal) and value; this is what lets us report cost per deal and later optimize for quality.
+- Expected costs: no reliable public Israeli cost-per-lead benchmarks exist. Recommend a 2-week test budget, then report the business's own cost per lead and decide together. Never promise a number of leads.
 - Every new campaign is created paused; activation and any spend change need the owner's explicit approval with the daily and monthly amount.`;
 
 const COPY = `AD COPY
