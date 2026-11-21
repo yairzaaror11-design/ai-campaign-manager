@@ -26,7 +26,7 @@ test('WhatsApp router: a new owner says hi, taps a button, and onboarding contin
     await handle({ from: me, id: 'wamid.' + crypto.randomUUID(), type: 'interactive', timestamp: ts(), interactive: { type: 'button_reply', button_reply: { id: `cb:${nonce}:0`, title: copy.noLinkButton } } });
     assert.equal(out.at(-1).text, copy.describeInstead);
     await text('משרד תיווך בגבעתיים');
-    assert.match(out.at(-1).text, /שאלה 1 מתוך 3/);
+    assert.match(out.at(-1).text, /מה הכי חשוב לקדם עכשיו/);
     assert.equal((await db.query('SELECT step FROM onboarding_state WHERE client_id=$1', [id])).rows[0].step, 'SELL');
     await text('החזר למצב הקודם');
     assert.equal(out.at(-1).text, copy.undoListEmpty);
