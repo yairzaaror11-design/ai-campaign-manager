@@ -156,6 +156,14 @@ async function reconcile(task){
 function normalizeFactQuote(value){
  return value.normalize('NFC').replace(/\s+/gu,' ').trim();
 }
+// A value may restate the quoted words with Hebrew prefixes or a different order ("בחולון" → "חולון",
+// "שרוצים למכור דירה" → "מוכרי דירות"): most of its words must still come from the owner's quote.
+function paraphraseOf(value,evidence){
+ const words=t=>t.split(/[\s,.;:!?״"'׳־\-()]+/u).filter(w=>w.length>1).map(w=>w.replace(/^[והבלמשכ]{1,2}(?=\S{3,})/u,''));
+ const v=words(value),e=words(evidence);if(!v.length)return false;
+ const hit=w=>e.some(x=>x===w||x.length>2&&w.length>2&&(x.startsWith(w.slice(0,3))&&Math.abs(x.length-w.length)<=3));
+ return v.filter(hit).length/v.length>=0.6;
+}
 function collectFacts(task,decision,known){
  if(!Array.isArray(decision.facts)||decision.facts.length>12||!Array.isArray(decision.knownFields||[]))throw Error('INVALID_TASK_FACTS');
  const facts={...task.state.facts};
@@ -166,7 +174,12 @@ function collectFacts(task,decision,known){
  for(const fact of decision.facts){
   if(!fact||!/^[a-z][a-z0-9_]{0,49}$/.test(fact.key||'')||typeof fact.value!=='string'||!fact.value.trim()||fact.value.length>1000||typeof fact.evidence!=='string')throw Error('UNGROUNDED_TASK_FACT');
   const evidence=normalizeFactQuote(fact.evidence);
-  if(!evidence||!sources.some(source=>source.includes(evidence))||!evidence.includes(normalizeFactQuote(fact.value)))throw Error('UNGROUNDED_TASK_FACT');
+  const quoted=!!evidence&&sources.some(source=>source.includes(evidence)),value=normalizeFactQuote(fact.value);
+  if(!quoted||!(evidence.includes(value)||paraphraseOf(value,evidence))){
+   // Diagnostics without content: which check failed, for which field.
+   try{require('./logger').logger.warn('Task fact not grounded',{key:fact.key,quoted,valueInEvidence:evidence.includes(value),valueLength:value.length,evidenceLength:evidence.length});}catch{}
+   throw Error('UNGROUNDED_TASK_FACT');
+  }
   facts[fact.key]={value:fact.value,evidence:fact.evidence};
  }
  for(const field of decision.knownFields||[]){
