@@ -1,0 +1,12 @@
+CREATE TABLE landing_pages (
+ id UUID PRIMARY KEY,
+ client_id BIGINT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+ slug TEXT UNIQUE NOT NULL,
+ payload JSONB NOT NULL,
+ status TEXT NOT NULL DEFAULT 'DRAFT' CHECK(status IN ('DRAFT','PUBLISHED','ARCHIVED')),
+ revision INTEGER NOT NULL DEFAULT 1,
+ published_at TIMESTAMPTZ,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX landing_client ON landing_pages(client_id,updated_at DESC);

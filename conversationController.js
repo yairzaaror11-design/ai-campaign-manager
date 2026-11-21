@@ -1,0 +1,62 @@
+'use strict';
+// Sole owner of pilot customer conversation. Infrastructure adapters do not own goals.
+const db=require('./db'),tasks=require('./taskAgent');
+async function owns(clientId){
+ if(process.env.UNIFIED_CONVERSATION_ENABLED!=='true')return false;
+ if(process.env.TASK_AGENT_PILOT_ONLY!=='true')return true;
+ const client=(await db.query('SELECT phone FROM clients WHERE id=$1',[clientId])).rows[0];
+ return String(process.env.AUTHORIZED_PHONE_NUMBERS||'').split(',').map(require('./auth').normalizePhone).filter(Boolean).includes(client?.phone);
+}
+// Commands with their own deterministic handlers in messageHandler.
+function passesThrough(message){
+ if(/^\/(?:meta-|report(?:\s|$)|notifications-|business-report(?:\s|$)|readiness$|video\s)/.test(message))return true;
+ if(/^(?:דוח עסקי(?:\s+(?:7|14|30))?|בדיקת מוכנות|האם אני מוכן לפרסם\??)$/.test(message))return true;
+ if(require('./competitorAds').PATTERN.test(message))return true;
+ const video=require('./videoService');
+ return video.enabled()&&!!video.videoRequest(message);
+}
+async function handle(clientId,input,options={}){
+ if(!await owns(clientId))return null;
+ const message=input.message.trim(),eventId=input.requestId,dynamicRouting=process.env.DYNAMIC_CONVERSATION_ENABLED==='true';
+ const skills=require('./skillStatus');
+ if(skills.requested(message))return skills.reply();
+ const analysis=require('./conversationAnalysis').localAnalysis(message);
+ if(analysis.intent==='greeting')return{handled:true,reply:'היי! איך אפשר לעזור?'};
+ const active=await tasks.active(clientId);
+ if(/^אשר\s+\d{6}$/.test(message)&&!active)return{handled:true,reply:'אין פעולה ממתינה במשימה הנוכחית. לא אשתמש באישור מתוכנית קודמת. אפשר לבקש להכין את הפעולה מחדש לבדיקה.'};
+ // Only explicit infrastructure commands may reach their existing adapters.
+ if(passesThrough(message))return null;
+ // Ad account list, search, page and named switch have their own verified menu.
+ const accountRequest=require('./readConversation').request(message);
+ if(accountRequest&&accountRequest.type!=='report')return require('./readConversation').handle(clientId,message);
+ // Dashboard sign-in link, optionally to a specific screen.
+ const dashboard=await require('./dashboardLink').handle(clientId,message);if(dashboard)return dashboard;
+ // Lead status updates (also the buttons of proactive check-ins) and CRM commands.
+ const crm=await require('./crmConversation').handle(clientId,message);if(crm)return crm;
+ // "What did you do and why": the activity log.
+ const activity=await require('./activityLog').handle(clientId,message)||await require('./activityLog').handleStatus(clientId,message);if(activity)return activity;
+ // Ongoing organic content (three-month calendar) and photo-shoot requests.
+ const organic=await require('./organicContent').handle(clientId,message);if(organic){if(typeof organic.reply==='string')organic.reply=await require('./capabilityStatus').decorate('organic_content',organic.reply,clientId);return organic;}
+ const spendCap=await require('./spendCap').handle(clientId,message);if(spendCap)return spendCap;
+ if(message.startsWith('/')&&message!=='/start')return{handled:true,reply:'אפשר לכתוב כאן במילים מה תרצה להשיג. אמשיך מאותה בקשה ואציג את התוצרים לבדיקה לפני כל פעולה.'};
+ const profile=await require('./marketingStore').load(clientId);
+ const connection=['connect','disconnect','renew','connection_status','select_account'].includes(analysis.intent)||profile?.connection?.status==='ACCOUNT_SELECTION_REQUIRED'&&/^\d{1,3}$/.test(message)||profile?.connection?.status==='CONNECTION_OFFERED'&&analysis.intent==='yes';
+ if(connection){const result=await require('./metaConversation').handle(clientId,message,analysis,eventId);if(result.handled)return result;}
+ const personal=await require('./personalConversation').handle(clientId,message,eventId);if(personal)return personal;
+ if(!active&&analysis.intent==='capabilities'){const testing=await require('./capabilityStatus').testingLine().catch(()=>'');return{handled:true,reply:'אפשר להכין מודעה, עיצוב וטופס לידים, לבדוק נתוני קמפיינים ולהציע פעולות בחשבון המחובר. אברר רק מה שחסר לבקשה ואציג את התוצרים לבדיקה. יצירה ב־Meta והפעלה דורשות אישורים נפרדים.'+(testing?'\n\n'+testing:'')};}
+ if(!skills.check().ok)return{handled:true,externalActionsExecuted:false,reply:'בדיקת החיבור של היכולות נכשלה. לא אבצע משימות חדשות עד לתיקון החיבור.'};
+ if(!tasks.canPresentReview(active,message)&&(!tasks.needsGoalClarification(message)||dynamicRouting)&&!tasks.enabled()&&process.env.TASK_AGENT_ENABLED==='true'&&process.env.TASK_AGENT_REQUIRE_EVAL==='true'){
+  try{await options.onProgress?.('המערכת מתעוררת ובודקת את החיבור למודל. אמשיך בבקשה אם הבדיקה תסתיים בזמן.');}catch{require('./logger').logger.warn('Model readiness notice unavailable');}
+  // Sequential model probes can take more than two minutes. Stay within the existing
+  // five-minute inbound lease and continue this original event, never replay it.
+  await require('./taskEvaluation').waitUntilReady(180000);
+ }
+ return tasks.send(clientId,{...input,message:message==='/start'?'היי':message},{...options,dynamicRouting,deferPlanning:!tasks.enabled()});
+}
+async function media(clientId,input,options={}){
+ if(!await owns(clientId))return null;
+ if(!await tasks.active(clientId))return{handled:true,reply:'הקובץ נשמר לשיחה. מה תרצה להכין איתו?'};
+ return handle(clientId,input,options);
+}
+function acceptsInteractive(profile){return ['action_approval','account_selection','connection_offer','connected','task_review','guard_alert','billing_cancel','lead_contact','catalog','lead_concierge_optin','lead_concierge_hours','lead_concierge_lead','lead_viewing_outcome','work_agreement','no_ad_account','meta_continue','weekly_report','onboarding'].includes(profile?.ui?.decisionKey);}
+module.exports={passesThrough,owns,handle,media,acceptsInteractive};

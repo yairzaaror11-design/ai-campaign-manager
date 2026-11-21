@@ -7,6 +7,7 @@ function isAuthorized(phone) {
     .map(normalizePhone)
     .filter(Boolean);
 
+  if(process.env.PUBLIC_ONBOARDING_ENABLED==='true'&&/^\d{8,15}$/.test(normalizePhone(phone)))return true;
   return authorizedNumbers.length > 0 &&
     authorizedNumbers.includes(normalizePhone(phone));
 }

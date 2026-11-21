@@ -1,0 +1,21 @@
+name: Gemini API connectivity (manual only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  gemini-connectivity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit-security-hardening-20261025
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      - name: Single Gemini request, max 64 output tokens, no WhatsApp/Meta
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/check-gemini-connectivity.js

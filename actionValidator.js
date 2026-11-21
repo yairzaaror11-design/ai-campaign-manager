@@ -14,6 +14,13 @@ function positiveNumber(value) {
   return Number.isFinite(n) && n > 0;
 }
 
+function validMinorBudget(parameters) {
+  return Number.isSafeInteger(parameters?.dailyBudgetMinor) &&
+    parameters.dailyBudgetMinor > 0 &&
+    typeof parameters.currency === 'string' &&
+    /^[A-Z]{3}$/.test(parameters.currency);
+}
+
 function validateActionPlan(plan) {
   const errors = [];
 
@@ -49,6 +56,25 @@ function validateActionPlan(plan) {
     if (!positiveNumber(plan.parameters?.dailyBudget)) {
       errors.push('Invalid daily budget');
     }
+    if (!validMinorBudget(plan.parameters)) {
+      errors.push('Missing verified budget in Meta minor units and currency');
+    }
+  }
+
+  if (plan.intent === 'CREATE_CREATIVE') {
+    if (!plan.target?.accountId || !plan.parameters?.pageId) errors.push('Missing creative account/page');
+  }
+
+  if (plan.intent === 'PAUSE_AD' && !/^\d+$/.test(String(plan.target?.adId || ''))) errors.push('Missing ad ID');
+
+  // CREATE_BUNDLE with several different ads: each needs its own image and its own copy.
+  if (plan.intent === 'CREATE_BUNDLE' && plan.parameters?.ads !== undefined) {
+    const ads = plan.parameters.ads;
+    if (!Array.isArray(ads) || ads.length < 2 || ads.length > 5) errors.push('A bundle needs 2-5 ads');
+    else ads.forEach((a, i) => {
+      if (!a?.imageHash) errors.push(`Ad ${i + 1} is missing its image`);
+      if (!a?.headline || !a?.message) errors.push(`Ad ${i + 1} is missing its copy`);
+    });
   }
 
   if (plan.intent === 'CREATE_AD') {
@@ -58,15 +84,18 @@ function validateActionPlan(plan) {
     if (!plan.parameters?.name) errors.push('Missing ad name');
   }
 
-  if (plan.intent === 'CHANGE_BUDGET') {
+  if (['CHANGE_BUDGET', 'DUPLICATE_CAMPAIGN'].includes(plan.intent)) {
     if (!plan.target?.campaignId) errors.push('Missing campaign ID');
     if (!positiveNumber(plan.parameters?.dailyBudget)) {
       errors.push('Invalid daily budget');
     }
+    if (!validMinorBudget(plan.parameters)) {
+      errors.push('Missing verified budget in Meta minor units and currency');
+    }
   }
 
   if (
-    ['PAUSE_CAMPAIGN', 'RESUME_CAMPAIGN', 'EDIT_CAMPAIGN'].includes(plan.intent) &&
+    ['PAUSE_CAMPAIGN', 'PAUSE_AD', 'RESUME_CAMPAIGN', 'EDIT_CAMPAIGN'].includes(plan.intent) &&
     !plan.target?.campaignId
   ) {
     errors.push('Missing campaign ID');
