@@ -84,7 +84,8 @@ test('tenant OAuth lifecycle: real PostgreSQL semantics, encryption, state, isol
     const late=await meta.begin((await meta.createInvite(a)).split('#')[1]);
     let release, started;
     const entered=new Promise(r=>{started=r;});
-    axios.post=async()=>{started();await new Promise(r=>{release=r;});return {data:{access_token:'tenant-token',expires_in:3600}};};
+    // Only the code exchange blocks; the long-lived exchange that follows answers at once.
+    axios.post=async(url,body)=>{if(String(body).includes('fb_exchange_token'))return {data:{access_token:'tenant-token',expires_in:5184000}};started();await new Promise(r=>{release=r;});return {data:{access_token:'tenant-token',expires_in:3600}};};
     const pending=meta.callback(new URL(late.url).searchParams.get('state'),late.browser,'late');
     await entered; await meta.disconnect(a); release();
     await assert.rejects(pending,/CONNECTION_REVOKED/);

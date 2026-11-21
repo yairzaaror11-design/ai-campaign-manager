@@ -18,14 +18,24 @@ router.post('/start',require('./rateLimit').middleware('meta-start',10),wrap(asy
 router.get('/callback',require('./rateLimit').middleware('meta-callback',30),wrap(async(req,res)=>{
   const cookie = String(req.headers.cookie || '').split(';').map(s=>s.trim()).find(s=>s.startsWith(cookieName+'='))?.slice(cookieName.length+1);
   res.clearCookie(cookieName,{httpOnly:true,secure:true,sameSite:'lax',path:'/'});
+  // The owner pressed "cancel" in Meta's dialog (error=access_denied, error_reason=user_denied).
+  if(req.query.error){
+    try{await meta.consume(req.query.state,'STATE',cookie);}catch{/* an invalid state shows the same page */}
+    return require('./metaConnectPage').send(res,{state:'error',title:'החיבור בוטל',description:'לא ניתנה הרשאה ב־Meta, ולכן לא חיברתי דבר. אפשר לנסות שוב בכל רגע מהדשבורד (חיבורים) או מהשיחה בוואטסאפ.'});
+  }
   const clientId=await meta.callback(req.query.state,cookie,req.query.code);
+  // Some required permissions were left unticked: say exactly which, in WhatsApp and here.
+  let missing=[];
+  try{missing=(await require('./metaAuth').metaView(clientId)).missing;}catch{/* the screen shows it later */}
+  const missingText=missing.length?'\n\nחסרות עדיין הרשאות: '+missing.map(p=>require('./metaAuth').LABELS[p]).join(', ')+'. כתוב לי ״תן הרשאה״ או לחץ ״תן הרשאה״ בדשבורד ← חיבורים.':'';
+  if(missing.length)require('./metaAuth').notifyOwner(clientId,'missing',missingText.trim()).catch(()=>{});
   if(require('./marketingConversation').enabled()){
     await require('./metaConversation').recordStatus(clientId,'OAUTH_CALLBACK_RECEIVED');
     // The conversation continues in WhatsApp by itself: the agent writes first (account
     // buttons, the saved draft, or a guide when there is no ad account yet).
     const next=await require('./metaConversation').notifyConnected(clientId,await require('./metaConversation').verify(clientId));
     const connected=next.verified.status==='CONNECTED';
-    require('./metaConnectPage').send(res,{state:'done',title:connected?'החשבון חובר ✓':'ההרשאה התקבלה ✓',description:next.sent?'שלחתי לך הודעה בוואטסאפ. חזור לשיחה כדי להמשיך מאיפה שעצרנו.':'חזור לשיחה בוואטסאפ וכתוב ״המשך״ כדי להמשיך מאיפה שעצרנו.'});
-  }else require('./metaConnectPage').send(res,{state:'done'});
+    require('./metaConnectPage').send(res,{state:'done',title:connected&&!missing.length?'החשבון חובר ✓':'ההרשאה התקבלה ✓',description:(next.sent?'שלחתי לך הודעה בוואטסאפ. חזור לשיחה כדי להמשיך מאיפה שעצרנו.':'חזור לשיחה בוואטסאפ וכתוב ״המשך״ כדי להמשיך מאיפה שעצרנו.')+missingText});
+  }else require('./metaConnectPage').send(res,{state:'done',...(missing.length?{description:'ההרשאה התקבלה.'+missingText}:{})});
 }));
 module.exports = router;

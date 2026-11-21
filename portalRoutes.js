@@ -8,6 +8,7 @@ router.get('/app/dashboard.js',(req,res)=>res.sendFile(path.join(__dirname,'publ
 router.get('/app/billing.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/billing.js')));
 router.get('/app/growth.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/growth.js')));
 router.get('/app/experience.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/experience.js')));
+router.get('/app/connections.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/connections.js')));
 router.get('/app/components.js',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/components.js')));
 router.get('/app/portal.css',(req,res)=>res.sendFile(path.join(__dirname,'public/portal/portal.css')));
 router.post('/app/api/login',require('./rateLimit').middleware('portal-login',20),async(req,res)=>{
@@ -41,6 +42,7 @@ router.use('/app/api/authority',require('./authorityRoutes'));
 router.use('/app/api/catalog',require('./catalogRoutes'));
 router.use('/app/api/growth',require('./growthRoutes'));
 router.use('/app/api/channels',require('./channelRoutes'));
+router.use('/app/api/connections',require('./connectionRoutes'));
 router.get('/app/api/dashboard',endpoint(async(req,res)=>{
  const id=req.portal.clientId,p=await require('./marketingStore').load(id);
  const account=(await db.query('SELECT display_name,email,consent_version FROM customer_accounts WHERE client_id=$1',[id])).rows[0]||null;

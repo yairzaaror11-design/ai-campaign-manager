@@ -102,7 +102,7 @@ async function handleMarketingMessage(clientId,text,eventId,options={}) {
   await require('./personalConversation').hydrate(clientId);
   const personal=await require('./personalConversation').handle(clientId,text,eventId);if(personal)return personal;
   const launchProfile=await store.load(clientId);
-  if(text==='חבר הרשאת יצירת קמפיינים')return require('./metaConversation').handle(clientId,text,{},eventId);
+  if(text==='חבר הרשאת יצירת קמפיינים'||text==='תן הרשאה')return require('./metaConversation').handle(clientId,text,{},eventId);
   const startLaunch=/^(המשך ליצירת הקמפיין|צור את הקמפיין במטא|הכן ליצירה ב־Meta)$/.test(text)||launchProfile?.launch?.stage!=='SETUP'&&launchProfile?.journey?.stage==='PLAN_REVIEW'&&!launchProfile?.journey?.detour&&!launchProfile?.offerReview&&launchProfile?.journey?.requestedOutput!=='social'&&/^(כן|מאשר|מאשרת)$/.test(text);
   if(startLaunch&&launchProfile?.offerReview)return store.update(clientId,null,p=>require('./offerPolicy').review(p));
   if(startLaunch)return require('./campaignSetup').start(clientId);

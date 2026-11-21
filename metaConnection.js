@@ -35,9 +35,19 @@ function config() {
   key();
   const origin = new URL(process.env.APP_PUBLIC_URL);
   if (origin.protocol !== 'https:' || origin.pathname !== '/' || origin.search || origin.hash || origin.username || origin.password) throw Error('HTTPS_APP_ORIGIN_REQUIRED');
-  if (!/^\d+$/.test(process.env.META_APP_ID || '') || !process.env.META_APP_SECRET || !/^\d+$/.test(process.env.META_LOGIN_CONFIG_ID || '')) throw Error('META_LOGIN_CONFIG_REQUIRED');
+  // META_LOGIN_CONFIG_ID (Facebook Login for Business) is optional: without it the classic
+  // dialog asks for the permission list in `scope`.
+  if (!/^\d+$/.test(process.env.META_APP_ID || '') || !process.env.META_APP_SECRET || (process.env.META_LOGIN_CONFIG_ID && !/^\d+$/.test(process.env.META_LOGIN_CONFIG_ID))) throw Error('META_LOGIN_CONFIG_REQUIRED');
   if(!/^v\d+\.\d+$/.test(process.env.META_GRAPH_VERSION || 'v26.0')) throw Error('INVALID_GRAPH_VERSION');
-  return { origin: origin.origin, redirect: origin.origin + '/auth/meta/callback', version: process.env.META_GRAPH_VERSION || 'v26.0' };
+  // The redirect must match the one registered in the Meta app; it stays on this origin
+  // because the login-state cookie is bound to it.
+  let redirect = origin.origin + '/auth/meta/callback';
+  if (process.env.META_REDIRECT_URI) {
+    const r = new URL(process.env.META_REDIRECT_URI);
+    if (r.origin !== origin.origin || r.pathname !== '/auth/meta/callback' || r.search || r.hash) throw Error('INVALID_META_REDIRECT_URI');
+    redirect = r.origin + r.pathname;
+  }
+  return { origin: origin.origin, redirect, version: process.env.META_GRAPH_VERSION || 'v26.0' };
 }
 async function graph(path, token, params = {}) {
   const proof = crypto.createHmac('sha256', process.env.META_APP_SECRET).update(token).digest('hex');
@@ -47,15 +57,19 @@ async function graph(path, token, params = {}) {
     })).data;
   } catch(error) {
     const code=Number(error?.response?.data?.error?.code);
-    throw Error(code===190?'META_TOKEN_EXPIRED':[10,200].includes(code)?'META_PERMISSION_REQUIRED':'META_REQUEST_FAILED');
+    // 190 = invalid token (revoked, expired, password changed). Meta never notifies apps,
+    // so the business's stored token is checked with debug_token in the background.
+    const tenant=context.getStore();
+    if(code===190&&tenant)Promise.resolve().then(()=>require('./metaAuth').onTokenError(tenant)).catch(()=>{});
+    throw Object.assign(Error(code===190?'META_TOKEN_EXPIRED':[10,200].includes(code)?'META_PERMISSION_REQUIRED':'META_REQUEST_FAILED'),{metaCode:code||null,metaSubcode:Number(error?.response?.data?.error?.error_subcode)||null});
   }
 }
 function unifiedLogin(){return !!process.env.META_MANAGEMENT_LOGIN_CONFIG_ID;}
-async function createInvite(clientId,{management=unifiedLogin()}={}) {
-  if(management&&!/^\d+$/.test(process.env.META_MANAGEMENT_LOGIN_CONFIG_ID||''))throw Error('MANAGEMENT_LOGIN_CONFIG_REQUIRED');
+async function createInvite(clientId,{management=unifiedLogin(),rerequest=false}={}) {
+  if(management&&!rerequest&&!/^\d+$/.test(process.env.META_MANAGEMENT_LOGIN_CONFIG_ID||''))throw Error('MANAGEMENT_LOGIN_CONFIG_REQUIRED');
   config();
   const value = random();
-  await db.query(`INSERT INTO meta_login_secrets(secret_hash,client_id,kind,generation,expires_at,app_id,binding_hash) SELECT $1,id,'INVITE',meta_generation,NOW()+INTERVAL '10 minutes',$3,$4 FROM clients WHERE id=$2`,[hash(value),clientId,process.env.META_APP_ID,management?'MANAGEMENT':null]);
+  await db.query(`INSERT INTO meta_login_secrets(secret_hash,client_id,kind,generation,expires_at,app_id,binding_hash) SELECT $1,id,'INVITE',meta_generation,NOW()+INTERVAL '10 minutes',$3,$4 FROM clients WHERE id=$2`,[hash(value),clientId,process.env.META_APP_ID,rerequest?'REREQUEST':management?'MANAGEMENT':null]);
   // Fragment keeps the bearer invite out of request URLs and proxy logs.
   return config().origin + '/auth/meta/connect'+(management?'?mode=manage':'')+'#' + value;
 }
@@ -68,11 +82,19 @@ async function consume(value, kind, binding = null) {
 async function begin(invite) {
   const cfg = config();
   const {client_id:clientId,generation,binding_hash:purpose} = await consume(invite,'INVITE');
-  const loginConfig=purpose==='MANAGEMENT'?process.env.META_MANAGEMENT_LOGIN_CONFIG_ID:process.env.META_LOGIN_CONFIG_ID;
-  if(!/^\d+$/.test(loginConfig||''))throw Error('META_LOGIN_CONFIG_REQUIRED');
+  const loginConfig=purpose==='MANAGEMENT'||(purpose==='REREQUEST'&&unifiedLogin())?process.env.META_MANAGEMENT_LOGIN_CONFIG_ID:process.env.META_LOGIN_CONFIG_ID;
+  if(purpose==='MANAGEMENT'&&!/^\d+$/.test(loginConfig||''))throw Error('META_LOGIN_CONFIG_REQUIRED');
   const state = random(), browser = random();
   await db.query(`INSERT INTO meta_login_secrets(secret_hash,client_id,kind,binding_hash,generation,expires_at,app_id) VALUES($1,$2,'STATE',$3,$4,NOW()+INTERVAL '10 minutes',$5)`,[hash(state),clientId,hash(browser),generation,process.env.META_APP_ID]);
-  const params = new URLSearchParams({client_id:process.env.META_APP_ID,redirect_uri:cfg.redirect,response_type:'code',state,config_id:loginConfig});
+  const auth=require('./metaAuth');
+  const params = new URLSearchParams({client_id:process.env.META_APP_ID,redirect_uri:cfg.redirect,response_type:'code',state});
+  // Facebook Login for Business: the permissions live in the configuration (config_id).
+  // Classic dialog: the permissions are listed in scope.
+  if(/^\d+$/.test(loginConfig||''))params.set('config_id',loginConfig);
+  else params.set('scope',[...auth.REQUIRED,...auth.OPTIONAL].join(','));
+  // "תן הרשאה": ask again for exactly the missing permissions (declined ones are only
+  // shown again with auth_type=rerequest).
+  if(purpose==='REREQUEST'){params.set('scope',(await auth.missingScopes(clientId)).join(','));params.set('auth_type','rerequest');}
   return {url:'https://www.facebook.com/'+cfg.version+'/dialog/oauth?'+params,browser};
 }
 async function callback(state, browser, code) {
@@ -85,10 +107,19 @@ async function callback(state, browser, code) {
     data = (await axios.post('https://graph.facebook.com/'+config().version+'/oauth/access_token',new URLSearchParams({client_id:process.env.META_APP_ID,client_secret:process.env.META_APP_SECRET,redirect_uri:config().redirect,code}),{timeout:15000,maxRedirects:0})).data;
   } catch { throw Error('META_LOGIN_FAILED'); }
   if (!data.access_token || !Number.isFinite(data.expires_in) || data.expires_in<=0) throw Error('EXPIRING_USER_TOKEN_REQUIRED');
+  const auth=require('./metaAuth');
+  // Web login returns a short-lived token; exchange it for a long-lived one (about 60 days).
+  try{const long=await auth.exchangeLongLived(data.access_token);data={access_token:long.token,expires_in:long.expiresIn||data.expires_in};}
+  catch{require('./logger').logger.warn('Meta long-lived exchange failed; keeping the login token until the next renewal');}
   const user = await graph('/me',data.access_token,{fields:'id'});
   const permissions = await graph('/me/permissions',data.access_token);
-  if (!permissions.data?.some(p=>p.permission==='ads_read' && p.status==='granted')) throw Error('ADS_READ_REQUIRED');
-  if(unifiedLogin()&&!permissions.data?.some(p=>p.permission==='ads_management'&&p.status==='granted'))throw Error('ADS_MANAGEMENT_REQUIRED');
+  const grant={granted:(permissions.data||[]).filter(p=>p.status==='granted').map(p=>p.permission),declined:(permissions.data||[]).filter(p=>p.status==='declined').map(p=>p.permission)};
+  let debug=null;
+  try{debug=await auth.debugToken(data.access_token);}catch{/* expiry falls back to expires_in; the hourly check retries */}
+  if(debug&&(!debug.valid||(debug.userId&&debug.userId!==String(user.id))))throw Error('META_LOGIN_FAILED');
+  if (!grant.granted.includes('ads_read')) {await auth.recordRefused(clientId,grant.granted,grant.declined).catch(()=>{});throw Error('ADS_READ_REQUIRED');}
+  if(unifiedLogin()&&!grant.granted.includes('ads_management')){await auth.recordRefused(clientId,grant.granted,grant.declined).catch(()=>{});throw Error('ADS_MANAGEMENT_REQUIRED');}
+  const expiresAt=debug?.expiresAt||(debug?.neverExpires?Date.now()+365*86400000:Date.now()+data.expires_in*1000);
   const prior=(await db.query('SELECT meta_ad_account_id FROM clients WHERE id=$1',[clientId])).rows[0]?.meta_ad_account_id;
   let selected=null;
   if(/^act_\d+$/.test(prior||'')){
@@ -98,8 +129,9 @@ async function callback(state, browser, code) {
   await db.transaction(async tx => {
     const locked = await tx('SELECT meta_generation FROM clients WHERE id=$1 FOR UPDATE',[clientId]);
     if (String(locked.rows[0]?.meta_generation)!==String(generation)) throw Error('CONNECTION_REVOKED');
-    await tx(`INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,expires_at,app_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT(client_id) DO UPDATE SET meta_user_id=$2,token_ciphertext=$3,expires_at=$4,app_id=$5`,[clientId,user.id,encrypted,new Date(Date.now()+data.expires_in*1000),process.env.META_APP_ID]);
+    await tx(`INSERT INTO meta_connections(client_id,meta_user_id,token_ciphertext,expires_at,app_id) VALUES($1,$2,$3,$4,$5) ON CONFLICT(client_id) DO UPDATE SET meta_user_id=$2,token_ciphertext=$3,expires_at=$4,app_id=$5`,[clientId,user.id,encrypted,new Date(expiresAt),process.env.META_APP_ID]);
     await tx('UPDATE clients SET meta_ad_account_id=$3,meta_user_id=$2,meta_generation=meta_generation+1 WHERE id=$1',[clientId,user.id,selected]);
+    await auth.saveGrant(clientId,{...grant,tokenExpiresAt:expiresAt,dataAccessExpiresAt:debug?.dataAccessExpiresAt||null,fresh:true},tx);
   });
   return clientId;
   }catch(error){
@@ -146,6 +178,7 @@ async function renew(clientId) {
     const user=await graph('/me',data.access_token,{fields:'id'});
     if(user.id!==c.meta_user_id) throw Error('TOKEN_IDENTITY_MISMATCH');
     await tx('UPDATE meta_connections SET token_ciphertext=$2,expires_at=$3 WHERE client_id=$1',[clientId,encrypt(data.access_token,clientId),new Date(Date.now()+data.expires_in*1000)]);
+    await tx('UPDATE meta_auth_state SET token_expires_at=$2,updated_at=NOW() WHERE client_id=$1',[clientId,new Date(Date.now()+data.expires_in*1000)]);
   });
 }
 async function rotateStoredKeys() {
@@ -174,6 +207,7 @@ async function disconnect(clientId) {
     await tx('DELETE FROM meta_login_secrets WHERE client_id=$1',[clientId]);
     await tx('UPDATE clients SET meta_ad_account_id=NULL,meta_generation=meta_generation+1 WHERE id=$1',[clientId]);
     await tx("UPDATE approvals SET status='CANCELLED' WHERE client_id=$1 AND status='PENDING'",[clientId]);
+    await tx("UPDATE meta_auth_state SET status='DISCONNECTED',reason='OWNER_DISCONNECTED',token_expires_at=NULL,data_access_expires_at=NULL,updated_at=NOW() WHERE client_id=$1",[clientId]);
   });
 }
 async function tenantRead(path,params) {

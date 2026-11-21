@@ -76,7 +76,7 @@ async function checkJobs() {
   return { status: stale || failing.length ? 'fail' : 'ok', heartbeatSeconds: heartbeatAge, failing };
 }
 
-const JOB_NAMES = { maintenance: 'ניקוי ושמירת נתונים', reports: 'דוחות שבועיים', leadCheckins: 'תזכורות לידים', campaignGuard: 'שומר הקמפיינים', seasonal: 'הצעות עונתיות', dailyAdvice: 'עצה יומית', crmFeedback: 'משוב לידים ל־Meta', organic: 'פוסטים אורגניים', subscriptions: 'מנויים וחיובים', audiences: 'קהלי קונים', retentionNotices: 'אזהרות לפני מחיקה', selfCheck: 'בדיקה עצמית' };
+const JOB_NAMES = { maintenance: 'ניקוי ושמירת נתונים', metaAuth: 'בדיקת חיבורי Meta', reports: 'דוחות שבועיים', leadCheckins: 'תזכורות לידים', campaignGuard: 'שומר הקמפיינים', seasonal: 'הצעות עונתיות', dailyAdvice: 'עצה יומית', crmFeedback: 'משוב לידים ל־Meta', organic: 'פוסטים אורגניים', subscriptions: 'מנויים וחיובים', audiences: 'קהלי קונים', retentionNotices: 'אזהרות לפני מחיקה', selfCheck: 'בדיקה עצמית' };
 const META_REASONS = { EXPIRED: 'פג תוקף החיבור', ACCOUNT_NOT_ACTIVE: 'חשבון המודעות לא פעיל (חסום או חוב)', EXPIRING: 'החיבור יפוג בתוך שבוע' };
 
 // Runs all checks, alerts on failures, and keeps the result for /health.
