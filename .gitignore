@@ -5,3 +5,7 @@ node_modules
 *.log
 coverage/
 .DS_Store
+.local-dev/
+test-results/
+playwright-report/
+e2e/.auth/
