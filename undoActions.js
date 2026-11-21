@@ -87,7 +87,7 @@ async function undo(clientId, actionId, { channel = 'WHATSAPP' } = {}) {
 
 // ---------- WhatsApp ----------
 const REQUEST = /^(?:החזר|תחזיר|להחזיר|בטל(?:י)?)(?: את זה)? (?:ל)?(?:ה)?מצב (?:ה)?קודם[.!?]?$|^(?:undo|בטל את (?:ה)?שינוי(?: האחרון)?)$/iu;
-const PICK = /^(?:החזר|תחזיר)\s+(\d{1,2})$/u;
+const PICK = /^(?:(?:החזר|תחזיר)\s+)?(\d{1,2})$/u;
 async function handleText(clientId, text) {
   const t = String(text || '').trim().replace(/\s+/g, ' ');
   if (!db.configured() || !t || t.length > 60) return null;
@@ -96,7 +96,9 @@ async function handleText(clientId, text) {
   const store = require('./marketingStore');
   if (pick) {
     const p = await store.load(clientId).catch(() => null), menu = p?.undoMenu;
-    const id = menu && Date.now() - menu.at < 3600000 ? menu.ids[Number(pick[1]) - 1] : null;
+    // A bare number counts only right after the list (10 minutes); "החזר N" for an hour.
+    const fresh = /^\d/.test(t) ? 600000 : 3600000;
+    const id = menu && Date.now() - menu.at < fresh ? menu.ids[Number(pick[1]) - 1] : null;
     if (!id) return null; // not ours: "החזר 2" means something else when no list was shown
     return undo(clientId, id, { channel: 'WHATSAPP' });
   }

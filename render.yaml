@@ -25,8 +25,8 @@ services:
         value: "false"
       - key: GRAPHICS_ENABLED
         value: "true"
-      - key: GRAPHICS_ATTEMPT_LIMIT
-        value: "100"
+      - key: GRAPHICS_MONTHLY_LIMIT
+        value: "60"
       - key: GEMINI_IMAGE_MODEL
         value: gemini-nano-banana-2.1
       # Owned by the Render dashboard (primary model can be switched without a code change).

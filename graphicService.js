@@ -98,10 +98,12 @@ async function createGraphic(clientId,prompt,{generateImage=generate,uploadImage
  throw Error('GRAPHIC_ALREADY_ATTEMPTED');
  }
  try {
- if(!await require('./rateLimit').take('graphics:'+clientId,3,3600)) throw Error('GRAPHIC_RATE_LIMIT');
- const maximum=Number(process.env.GRAPHICS_ATTEMPT_LIMIT || 100);
- if(!Number.isInteger(maximum)||maximum<1||maximum>100) throw Error('INVALID_GRAPHICS_LIMIT');
- const reserved=await db.query("INSERT INTO graphic_usage_counters(name,attempts) VALUES('pilot',1) ON CONFLICT(name) DO UPDATE SET attempts=graphic_usage_counters.attempts+1 WHERE graphic_usage_counters.attempts<$1 RETURNING attempts",[maximum]);
+ if(!await require('./rateLimit').take('graphics:'+clientId,10,3600)) throw Error('GRAPHIC_RATE_LIMIT');
+ // Cost guard per business per calendar month (was one shared, never-reset pilot counter for everyone).
+ const maximum=Number(process.env.GRAPHICS_MONTHLY_LIMIT || 60);
+ if(!Number.isInteger(maximum)||maximum<1||maximum>1000) throw Error('INVALID_GRAPHICS_LIMIT');
+ const bucket='client:'+clientId+':'+new Date().toISOString().slice(0,7);
+ const reserved=await db.query("INSERT INTO graphic_usage_counters(name,attempts) VALUES($2,1) ON CONFLICT(name) DO UPDATE SET attempts=graphic_usage_counters.attempts+1 WHERE graphic_usage_counters.attempts<$1 RETURNING attempts",[maximum,bucket]);
  if(!reserved.rows.length) throw Error('GRAPHIC_PILOT_LIMIT');
  const image=await generateImage(prompt,{referenceImage,referenceImages});
  const whatsappId=await uploadImage(image);
