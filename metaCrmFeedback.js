@@ -9,6 +9,17 @@ const db = require('./db');
 const { logger } = require('./logger');
 
 const enabled = () => process.env.META_CRM_FEEDBACK_ENABLED === 'true';
+// A readable failure reason and whether retrying can help. Meta error codes 1, 2, 4, 17,
+// 341 and 613 (and HTTP 5xx / no answer) are temporary; other Graph errors (bad parameter,
+// expired token, missing permission) will fail the same way again.
+const TRANSIENT = [1, 2, 4, 17, 32, 341, 613];
+function failure(error) {
+  if (/^[A-Z_]+$/.test(error?.message || '')) return { reason: error.message, permanent: false };
+  const status = error?.response?.status, code = Number(error?.response?.data?.error?.code);
+  if (!status) return { reason: 'META_NO_ANSWER', permanent: false };
+  if (status >= 500 || TRANSIENT.includes(code)) return { reason: 'META_TEMPORARY_' + (code || status), permanent: false };
+  return { reason: 'META_ERROR_' + (code || status), permanent: true };
+}
 const EVENT = { NEW: 'Lead', CONTACTED: 'Contacted', APPOINTMENT: 'Qualified', WON: 'Converted' };
 // A sale is reported after a short delay so the amount the owner types next is included.
 const DELAY = { WON: 30 };
@@ -69,9 +80,9 @@ async function runDue({ limit = 20 } = {}) {
     let outcome;
     try { outcome = await send(row); }
     catch (error) {
-      const code = /^[A-Z_]+$/.test(error?.message || '') ? error.message : 'META_CRM_SEND_FAILED';
-      outcome = row.attempts + 1 >= MAX_ATTEMPTS ? { status: 'FAILED', reason: code } : { status: 'PENDING', reason: code };
-      logger.warn('CRM event to Meta not sent', { stage: row.stage, attempt: row.attempts + 1, reason: code });
+      const f = failure(error);
+      outcome = f.permanent || row.attempts + 1 >= MAX_ATTEMPTS ? { status: 'FAILED', reason: f.reason } : { status: 'PENDING', reason: f.reason };
+      logger.warn('CRM event to Meta not sent', { stage: row.stage, attempt: row.attempts + 1, reason: f.reason });
     }
     await db.query(`UPDATE meta_crm_events SET status=$3,reason=$4,attempts=attempts+1,
       available_at=NOW()+make_interval(mins=>$5) WHERE lead_id=$1 AND stage=$2 AND status='PENDING'`,
@@ -131,13 +142,20 @@ async function enqueueWebPurchase(tx, lead) {
   [lead.id, lead.client_id, pixel, 'purchase:' + lead.id, JSON.stringify(u), DELAY.WON]);
   return r.rows.length > 0;
 }
+// Conversions API rules (developers.facebook.com/docs/marketing-api/conversions-api/parameters):
+// a "website" event must carry event_source_url and client_user_agent; a lead that reached us
+// without them (a webhook from another site) is reported as system_generated. The browser pixel
+// fires Lead with eventID = the same event_id, so Meta keeps one of the two (event_name + event_id).
+// Purchase requires value and currency; a closed deal is sent only once its amount is known.
 function webPayload(row, lead) {
   const purchase = row.stage === 'PURCHASE';
+  const u = row.user_data || {};
+  const website = !purchase && !!row.event_source_url && !!u.client_user_agent;
   const event = { event_name: purchase ? 'Purchase' : 'Lead', event_time: Math.floor(new Date(row.event_time).getTime() / 1000), event_id: row.event_id,
-    action_source: purchase ? 'system_generated' : 'website', user_data: row.user_data || {}, custom_data: { lead_event_source: 'SCORPIO AI' } };
-  if (!purchase && row.event_source_url) event.event_source_url = row.event_source_url;
+    action_source: website ? 'website' : 'system_generated', user_data: u, custom_data: { lead_event_source: 'SCORPIO AI' } };
+  if (website) event.event_source_url = row.event_source_url;
   if (lead?.catalog_item_id) { event.custom_data.content_ids = [lead.catalog_item_id]; event.custom_data.content_type = 'product'; }
-  if (purchase) { event.custom_data.value = lead?.revenue_minor > 0 ? Number(lead.revenue_minor) / 100 : 0; event.custom_data.currency = lead?.currency || 'ILS'; }
+  if (purchase) { event.custom_data.value = Number(lead.revenue_minor) / 100; event.custom_data.currency = lead.currency; }
   return JSON.stringify([event]);
 }
 async function sendWeb(row) {
@@ -146,6 +164,9 @@ async function sendWeb(row) {
   try { c = await meta.credentials(row.client_id); } catch { return { status: 'SKIPPED', reason: 'NO_META_CONNECTION' }; }
   const lead = (await db.query('SELECT revenue_minor,currency,catalog_item_id,measurement_consent FROM crm_leads WHERE id=$1 AND client_id=$2', [row.lead_id, row.client_id])).rows[0];
   if (!lead?.measurement_consent) return { status: 'SKIPPED', reason: 'NO_CONSENT' };
+  // Meta rejects the whole request when an event is older than 7 days.
+  if (Date.now() - new Date(row.event_time).getTime() > 6.5 * 86400000) return { status: 'SKIPPED', reason: 'EVENT_TOO_OLD' };
+  if (row.stage === 'PURCHASE' && !(Number(lead.revenue_minor) > 0 && /^[A-Z]{3}$/.test(lead.currency || ''))) return { status: 'WAIT', reason: 'WAITING_FOR_SALE_AMOUNT' };
   const proof = crypto.createHmac('sha256', process.env.META_APP_SECRET).update(c.token).digest('hex');
   const r = (await axios.post('https://graph.facebook.com/' + meta.config().version + '/' + row.pixel_id + '/events',
     new URLSearchParams({ data: webPayload(row, lead) }),
@@ -160,8 +181,14 @@ async function runWebDue({ limit = 20 } = {}) {
     let outcome;
     try { outcome = await sendWeb(row); }
     catch (error) {
-      const code = /^[A-Z_]+$/.test(error?.message || '') ? error.message : 'META_CAPI_SEND_FAILED';
-      outcome = row.attempts + 1 >= MAX_ATTEMPTS ? { status: 'FAILED', reason: code } : { status: 'PENDING', reason: code };
+      const f = failure(error);
+      outcome = f.permanent || row.attempts + 1 >= MAX_ATTEMPTS ? { status: 'FAILED', reason: f.reason } : { status: 'PENDING', reason: f.reason };
+      logger.warn('Web conversion not sent', { stage: row.stage, attempt: row.attempts + 1, reason: f.reason });
+    }
+    if (outcome.status === 'WAIT') {
+      // Not an attempt: check again in an hour, until the 7-day limit skips it.
+      await db.query(`UPDATE meta_capi_events SET reason=$3,available_at=NOW()+INTERVAL '1 hour' WHERE lead_id=$1 AND stage=$2 AND status='PENDING'`, [row.lead_id, row.stage, outcome.reason]);
+      continue;
     }
     await db.query(`UPDATE meta_capi_events SET status=$3,reason=$4,attempts=attempts+1,available_at=NOW()+make_interval(mins=>$5),
       user_data=CASE WHEN $3='PENDING' THEN user_data ELSE '{}'::jsonb END WHERE lead_id=$1 AND stage=$2 AND status='PENDING'`,
@@ -170,4 +197,15 @@ async function runWebDue({ limit = 20 } = {}) {
   return due.length;
 }
 
-module.exports = { enabled, enqueue, runDue, payload, EVENT, webEnabled, userData, enqueueWebLead, enqueueWebPurchase, webPayload, runWebDue };
+// For the connections screen: what was sent to Meta, what is waiting and what failed (and why).
+async function status(clientId) {
+  const one = async (table) => {
+    const rows = (await db.query(`SELECT status,COUNT(*)::int AS n FROM ${table} WHERE client_id=$1 GROUP BY status`, [clientId])).rows;
+    const last = (await db.query(`SELECT reason FROM ${table} WHERE client_id=$1 AND status='FAILED' AND reason IS NOT NULL ORDER BY available_at DESC LIMIT 1`, [clientId])).rows[0];
+    const by = Object.fromEntries(rows.map((r) => [r.status.toLowerCase(), r.n]));
+    return { sent: by.sent || 0, pending: by.pending || 0, skipped: by.skipped || 0, failed: by.failed || 0, lastFailure: last?.reason || null };
+  };
+  return { website: { enabled: webEnabled(), ...(await one('meta_capi_events')) }, crm: { enabled: enabled(), ...(await one('meta_crm_events')) } };
+}
+
+module.exports = { failure, status, enabled, enqueue, runDue, payload, EVENT, webEnabled, userData, enqueueWebLead, enqueueWebPurchase, webPayload, runWebDue };
