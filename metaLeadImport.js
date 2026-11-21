@@ -3,19 +3,55 @@ const db = require('./db');
 const meta = require('./metaConnection');
 const forms = require('./metaLeadForms');
 const crm = require('./crmService');
+const crypto = require('node:crypto');
+const axios = require('axios');
+const { logger } = require('./logger');
+// Lead node fields (Graph API Lead reference). ad/adset/campaign ids can be missing (organic or test leads).
+const LEAD_FIELDS = 'id,created_time,ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,form_id,field_data,is_organic,platform';
+const digits = v => /^\d{1,40}$/.test(String(v || '')) ? String(v) : null;
+const label = v => typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 120) || null : null;
+// What the dashboard shows as the lead's source: page, form, ad, ad set, campaign.
+function sourceDetail(lead, pageId, hint = {}) {
+  const d = { channel: 'meta_lead_ads', pageId: digits(pageId), formId: digits(lead.form_id),
+    adId: digits(lead.ad_id) || digits(hint.ad_id), adName: label(lead.ad_name),
+    adsetId: digits(lead.adset_id) || digits(hint.adgroup_id), adsetName: label(lead.adset_name),
+    campaignId: digits(lead.campaign_id), campaignName: label(lead.campaign_name),
+    platform: ['fb','ig','an','msg','wa'].includes(lead.platform) ? lead.platform : null,
+    organic: lead.is_organic === true || lead.is_organic === 'true',
+    createdTime: typeof lead.created_time === 'string' ? lead.created_time.slice(0, 40) : null };
+  return Object.fromEntries(Object.entries(d).filter(([, v]) => v !== null));
+}
 
 function enabled() {
   return process.env.META_LEAD_IMPORT_ENABLED === 'true';
 }
 
-async function connect(clientId, pageId, formId) {
-  const { access } = await forms.inspect(clientId, pageId, formId);
-  const subscriptions = await meta.graph('/'+pageId+'/subscribed_apps', access.token, {
+// Lead Ads webhooks (developers.facebook.com/docs/marketing-api/guides/lead-ads/retrieving):
+// the app subscribes to object "page", field "leadgen" in the App Dashboard, and each Page
+// installs the app with POST /{page-id}/subscribed_apps?subscribed_fields=leadgen using a
+// Page token (needs pages_manage_metadata + pages_show_list; reading the lead needs leads_retrieval).
+async function pageSubscribed(pageId, token) {
+  const subscriptions = await meta.graph('/'+pageId+'/subscribed_apps', token, {
     fields:'id,subscribed_fields', limit:100
   });
-  const subscribed = subscriptions.data?.some(app =>
-    app.id === process.env.META_APP_ID && app.subscribed_fields?.includes('leadgen')
+  return !!subscriptions.data?.some(app =>
+    String(app.id) === String(process.env.META_APP_ID) && app.subscribed_fields?.includes('leadgen')
   );
+}
+async function subscribePage(pageId, token) {
+  const proof = crypto.createHmac('sha256', process.env.META_APP_SECRET).update(token).digest('hex');
+  try {
+    const r = (await axios.post('https://graph.facebook.com/' + meta.config().version + '/' + forms.id(pageId) + '/subscribed_apps',
+      new URLSearchParams({ subscribed_fields: 'leadgen' }),
+      { headers: { Authorization: 'Bearer ' + token }, params: { appsecret_proof: proof }, timeout: 15000, maxRedirects: 0 })).data;
+    return r?.success === true;
+  } catch { return false; }
+}
+
+async function connect(clientId, pageId, formId) {
+  const { access } = await forms.inspect(clientId, pageId, formId);
+  let subscribed = await pageSubscribed(pageId, access.token);
+  if (!subscribed && await subscribePage(pageId, access.token)) subscribed = await pageSubscribed(pageId, access.token);
   if (!subscribed) throw Error('META_LEAD_SUBSCRIPTION_REQUIRED');
   return db.transaction(async tx => {
     const client = (await tx('SELECT meta_generation FROM clients WHERE id=$1 FOR UPDATE', [clientId])).rows[0];
@@ -43,7 +79,7 @@ async function ingest(pageId, value, expectedGeneration) {
   if (prior.rows.length) return;
   const access = await meta.context.run(String(clientId), () => forms.pageAccess(clientId,pageId));
   if (String(access.connection.meta_generation) !== String(generation)) throw Error('CONNECTION_REVOKED');
-  const lead = await meta.graph('/'+value.leadgen_id,access.token,{fields:'id,form_id,campaign_id,field_data'});
+  const lead = await meta.graph('/'+value.leadgen_id,access.token,{fields:LEAD_FIELDS});
   if (lead.id !== value.leadgen_id || lead.form_id !== value.form_id || !Array.isArray(lead.field_data)) {
     throw Error('META_LEAD_RESPONSE_MISMATCH');
   }
@@ -70,6 +106,12 @@ async function ingest(pageId, value, expectedGeneration) {
     return current.rows.length > 0;
   });
   if (saved.revoked) throw Error('CONNECTION_REVOKED');
+  if (saved.id) {
+    const detail = sourceDetail(lead, pageId, value);
+    await db.query('UPDATE crm_leads SET source_detail=$3::jsonb,ad_id=COALESCE($4,ad_id),updated_at=NOW() WHERE client_id=$1 AND id=$2',
+      [clientId, saved.id, JSON.stringify(detail), detail.adId || null]);
+    saved.source_detail = detail;
+  }
   // A newly saved lead (not a duplicate) alerts the owner immediately.
   if (saved.id) await require('./leadConcierge').onNewLead(clientId, saved, { answers, formId: value.form_id });
 }
@@ -81,6 +123,12 @@ async function enqueue(body) {
         const v = change.value;
         if (change.field !== 'leadgen' || !v || v.page_id !== entry.id ||
             ![entry.id,v.form_id,v.leadgen_id].every(id => typeof id === 'string' && /^\d{1,40}$/.test(id))) continue;
+        // A new form on a Page this business already connected (e.g. made in Ads Manager)
+        // belongs to that business; ingest still checks the form against the Page with its token.
+        const owners = (await tx(`SELECT DISTINCT s.client_id,c.meta_generation FROM meta_lead_sources s JOIN clients c ON c.id=s.client_id
+          WHERE s.page_id=$1 AND s.app_id=$2 AND c.meta_generation=s.meta_generation`,[entry.id,process.env.META_APP_ID])).rows;
+        if (owners.length === 1) await tx(`INSERT INTO meta_lead_sources(form_id,page_id,client_id,meta_generation,app_id)
+          VALUES($1,$2,$3,$4,$5) ON CONFLICT(form_id) DO NOTHING`,[v.form_id,entry.id,owners[0].client_id,owners[0].meta_generation,process.env.META_APP_ID]);
         await tx(`INSERT INTO meta_lead_events(lead_id,form_id,generation)
           SELECT $1,s.form_id,s.meta_generation FROM meta_lead_sources s JOIN clients c ON c.id=s.client_id
           WHERE s.form_id=$2 AND s.page_id=$3 AND s.app_id=$4 AND c.meta_generation=s.meta_generation
@@ -113,4 +161,26 @@ async function runOne() {
   }
 }
 
-module.exports = { enabled, connect, enqueue, runOne };
+// After SCORPIO creates a lead form (approved CREATE_LEAD_FORM), its leads flow in by themselves.
+async function registerCreatedForm(clientId, pageId, formId) {
+  if (!enabled()) return { registered: false, reason: 'DISABLED' };
+  try {
+    await meta.context.run(String(clientId), () => connect(clientId, pageId, formId));
+    return { registered: true };
+  } catch (error) {
+    const reason = /^[A-Z_]+$/.test(error?.message || '') ? error.message : 'REGISTER_FAILED';
+    logger.warn('Lead form not connected for import', { reason });
+    return { registered: false, reason };
+  }
+}
+
+// For the connections screen: queued / failed Lead Ads imports.
+async function status(clientId) {
+  const r = (await db.query(`SELECT e.status,COUNT(*)::int AS n,MAX(e.available_at) AS last FROM meta_lead_events e
+    JOIN meta_lead_sources s ON s.form_id=e.form_id WHERE s.client_id=$1 GROUP BY e.status`, [clientId])).rows;
+  const by = Object.fromEntries(r.map(x => [x.status, x.n]));
+  const forms = (await db.query('SELECT COUNT(*)::int AS n FROM meta_lead_sources WHERE client_id=$1', [clientId])).rows[0].n;
+  return { enabled: enabled(), forms, imported: by.DONE || 0, pending: by.PENDING || 0, failed: by.FAILED || 0 };
+}
+
+module.exports = { enabled, connect, enqueue, runOne, ingest, registerCreatedForm, subscribePage, pageSubscribed, sourceDetail, status, LEAD_FIELDS };
