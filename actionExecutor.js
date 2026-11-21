@@ -76,6 +76,8 @@ async function executeApprovedForClient(clientId,plan) {
       await tx("UPDATE action_plans SET status='VERIFIED',execution_result=$3::jsonb,updated_at=NOW() WHERE id=$1 AND client_id=$2",[plan.id,client.id,JSON.stringify(result)]);
       await tx("INSERT INTO tenant_audit(client_id,action_id,event,result) VALUES($1,$2,'META_EXECUTION','VERIFIED')",[client.id,plan.id]);
     });
+    // A form SCORPIO created starts feeding Lead Ads leads into the CRM (best effort, never fails the action).
+    if(plan.intent==='CREATE_LEAD_FORM'&&/^\d+$/.test(String(result.id||'')))await require('./metaLeadImport').registerCreatedForm(client.id,plan.parameters.pageId,String(result.id)).catch(()=>{});
     return {ok:true,message:'הפעולה בוצעה ואומתה מול Meta. מזהים: '+JSON.stringify(result),writeResult:result};
   } catch {
     if(claimedFor) {

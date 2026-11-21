@@ -26,24 +26,14 @@ async function funnel(clientId, days) {
   };
 }
 
-// Meta spend for the period; null when no ad account is connected or readable.
+// Meta spend for the period, from the Ads Insights API (metaInsights, cached with a sync time);
+// null when no ad account is connected or readable. Never an estimate.
 async function metaSpend(clientId, preset) {
-  try {
-    const meta = require('./metaConnection');
-    return await meta.context.run(String(clientId), async () => {
-      const c = await meta.credentials(clientId);
-      if (!c?.meta_ad_account_id) return null;
-      const report = await require('./metaAds').getCampaignPerformance(c.meta_ad_account_id, preset);
-      const campaigns = {};
-      for (const row of report.data || []) {
-        if (!/^\d{1,40}$/.test(String(row.campaign_id || ''))) continue;
-        const entry = campaigns[row.campaign_id] || (campaigns[row.campaign_id] = { name: String(row.campaign_name || '').slice(0, 40), spend: 0 });
-        entry.spend += Number(row.spend) || 0;
-      }
-      const total = Object.values(campaigns).reduce((t, x) => t + x.spend, 0);
-      return Number.isFinite(total) ? { total, campaigns } : null;
-    });
-  } catch { return null; }
+  const r = await require('./metaInsights').safeAccountInsights(clientId, preset);
+  if (!r) return null;
+  const campaigns = {};
+  for (const c of r.campaigns || []) campaigns[c.id] = { name: String(c.name || '').slice(0, 40), spend: c.spend, leads: c.leads };
+  return { total: r.totals.spend, campaigns, currency: r.currency, impressions: r.totals.impressions, clicks: r.totals.clicks, metaLeads: r.totals.leads, costPerLead: r.totals.costPerLead, syncedAt: r.syncedAt };
 }
 
 // Source -> outcome: the same funnel per campaign, joined with that campaign's spend.
@@ -108,6 +98,9 @@ async function build(clientId, preset = 'last_7d', { spendFor = metaSpend } = {}
   const spend = raw === null || raw === undefined ? null : typeof raw === 'number' ? raw : raw.total;
   const campaigns = await byCampaign(clientId, days, raw && typeof raw === 'object' ? raw.campaigns : {});
   const m = metrics(f, spend);
+  // An ad account in another currency: never mix it with ILS revenue or show it as ₪.
+  const foreign = raw && typeof raw === 'object' && raw.currency && raw.currency !== 'ILS';
+  if (foreign) { m.costPerCustomer = null; m.revenuePerShekel = null; for (const c of campaigns) { c.costPerLead = null; c.costPerCustomer = null; } }
   const steps = nextSteps(f, m, spend || 0);
   const speed = await require('./leadSpeed').stats(clientId, days).catch(() => null);
   if (speed?.leads >= 3 && speed.avgMinutes > 60) steps.splice(f.staleUntouched > 0 ? 1 : 0, 0, `זמן התגובה הממוצע ללידים הוא ${speed.label}. מי שחוזר תוך 15 דקות סוגר הרבה יותר. ההודעה המוכנה בהתראה חוסכת את רוב הזמן.`);
@@ -116,11 +109,16 @@ async function build(clientId, preset = 'last_7d', { spendFor = metaSpend } = {}
   // Every campaign that spent in the period, with its CRM results when there are any.
   const byId = Object.fromEntries(campaigns.map((x) => [x.id, x]));
   const metaCampaigns = Object.entries(raw && typeof raw === 'object' ? raw.campaigns : {}).map(([id, x]) => ({ id, name: x.name || 'קמפיין ' + id.slice(-4), spend: x.spend, leads: byId[id]?.leads || 0, won: byId[id]?.won || 0, revenue: byId[id]?.revenue || 0 })).sort((a, b) => b.spend - a.spend).slice(0, 20);
-  return { preset, days, funnel: f, spend, metrics: m, speed, campaigns, metaCampaigns: require('./budgetControl').markWinners(metaCampaigns), nextSteps: steps.slice(0, 3) };
+  // What Meta itself reports for the period (Insights), next to our CRM funnel.
+  const ads = raw && typeof raw === 'object' ? { currency: raw.currency || null, impressions: raw.impressions ?? null, clicks: raw.clicks ?? null, leads: raw.metaLeads ?? null, costPerLead: raw.costPerLead ?? null, syncedAt: raw.syncedAt || null } : null;
+  return { preset, days, funnel: f, spend, currency: ads?.currency || 'ILS', ads, metrics: m, speed, campaigns, metaCampaigns: require('./budgetControl').markWinners(metaCampaigns), nextSteps: steps.slice(0, 3) };
 }
 
 function format(report) {
   const { funnel: f, metrics: m, spend } = report;
+  // Spend is in the ad account currency; revenue in the CRM is counted in ILS only.
+  const money = report.currency && report.currency !== 'ILS' ? (v) => (v === null ? '—' : Math.round(v).toLocaleString('he-IL') + ' ' + report.currency) : ils;
+  const mixed = report.currency && report.currency !== 'ILS';
   const lines = [`📊 הדוח העסקי שלך, ${report.days} הימים האחרונים`, ''];
   // The bottom line first: what the advertising brought in money, not clicks.
   if (f.won > 0) {
@@ -128,8 +126,9 @@ function format(report) {
     lines.push(`🏆 השורה התחתונה: ${f.won} מכירות` + (m.costPerCustomer !== null ? ` · ${ils(m.costPerCustomer)} עלות למכירה` : '') + (f.revenue ? ` · ${ils(f.revenue)} הכנסות` : '') + (left !== null && f.revenue ? ` · ${left >= 0 ? 'נשאר לך' : 'חסר'} ${ils(Math.abs(left))} אחרי הפרסום` : ''));
     lines.push('');
   }
-  lines.push('💰 סכום שהוצא: ' + (spend === null ? 'אין חשבון פרסום מחובר (כדי לחבר, כתוב ״חבר את חשבון המודעות״)' : ils(spend)));
-  lines.push(`📥 לידים: ${f.leads}` + (m.costPerLead !== null ? ` (${ils(m.costPerLead)} עלות לליד)` : ''));
+  lines.push('💰 סכום שהוצא: ' + (spend === null ? 'אין חשבון פרסום מחובר (כדי לחבר, כתוב ״חבר את חשבון המודעות״)' : money(spend)));
+  if (report.ads && report.ads.impressions !== null) lines.push(`👀 לפי Meta: ${Math.round(report.ads.impressions).toLocaleString('he-IL')} חשיפות, ${Math.round(report.ads.clicks).toLocaleString('he-IL')} קליקים, ${report.ads.leads} לידים` + (report.ads.costPerLead !== null ? ` (${money(report.ads.costPerLead)} לליד)` : ''));
+  lines.push(`📥 לידים: ${f.leads}` + (m.costPerLead !== null && !mixed ? ` (${ils(m.costPerLead)} עלות לליד)` : ''));
   lines.push(`📞 קיבלו מענה: ${f.contacted} (${pct(m.contactRate)})`);
   if (report.speed?.leads) lines.push(`⏱ זמן תגובה ממוצע: ${report.speed.label}` + (report.speed.fastShare !== null ? ` (${pct(report.speed.fastShare)} תוך 15 דקות)` : ''));
   lines.push(`🤝 פגישות: ${f.meetings} (${pct(m.meetingRate)})`);

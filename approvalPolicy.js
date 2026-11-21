@@ -16,11 +16,11 @@ const planHash=plan=>crypto.createHash('sha256').update(canonical(plan)).digest(
 const parameterKeys={
  CREATE_LEAD_FORM:['name','pageId','locale','privacyPolicyUrl','questions'],
  UPLOAD_IMAGE:['mediaId'],
- CREATE_BUNDLE:['name','objective','specialAdCategories','dailyBudget','dailyBudgetMinor','currency','pageId','link','message','headline','imageHash','formId','adSets','variants'],
+ CREATE_BUNDLE:['name','objective','specialAdCategories','dailyBudget','dailyBudgetMinor','currency','pageId','link','message','headline','imageHash','formId','instagramUserId','adSets','variants'],
  ACTIVATE_BUNDLE:['adsetIds','adIds'],
  CREATE_CAMPAIGN:['name','objective','specialAdCategories'],
  CREATE_ADSET:['name','campaignId','dailyBudget','dailyBudgetMinor','currency','billingEvent','optimizationGoal','bidStrategy','targeting','promotedObject','startTime','endTime'],
- CREATE_CREATIVE:['name','pageId','link','message','headline','imageHash','formId'],
+ CREATE_CREATIVE:['name','pageId','link','message','headline','imageHash','formId','instagramUserId'],
  CREATE_AD:['name','adsetId','creativeId'],
  CHANGE_BUDGET:['dailyBudget','dailyBudgetMinor','currency'],
  DUPLICATE_CAMPAIGN:['dailyBudget','dailyBudgetMinor','currency'],
@@ -38,7 +38,7 @@ function strictPlan(plan) {
   if(Object.keys(plan.target).some(k=>!['accountId','accountName','campaignId','campaignName','adsetId'].includes(k))) throw Error('UNSUPPORTED_TARGET');
   // Budget lives on the ad set (not the campaign) for campaigns SCORPIO creates.
   if(plan.target.adsetId!==undefined&&(!['CHANGE_BUDGET','DUPLICATE_CAMPAIGN'].includes(plan.intent)||!/^\d+$/.test(plan.target.adsetId)||!/^\d+$/.test(plan.target.campaignId||''))) throw Error('INVALID_ADSET_TARGET');
-  for(const k of ['campaignId','adsetId','creativeId','pageId','formId']) if(plan.parameters[k]!==undefined && !/^\d+$/.test(plan.parameters[k])) throw Error('INVALID_OBJECT_ID');
+  for(const k of ['campaignId','adsetId','creativeId','pageId','formId','instagramUserId']) if(plan.parameters[k]!==undefined && !/^\d+$/.test(plan.parameters[k])) throw Error('INVALID_OBJECT_ID');
   if(JSON.stringify(plan).length>16000) throw Error('PLAN_TOO_LARGE');
   if(plan.parameters.name && (typeof plan.parameters.name!=='string'||plan.parameters.name.length>200)) throw Error('INVALID_NAME');
   if(plan.intent==='CREATE_LEAD_FORM')require('./metaLeadForms').validate(plan.parameters);
@@ -50,7 +50,7 @@ function strictPlan(plan) {
     const p=plan.parameters;
     if(p.formId&&(p.objective!=='OUTCOME_LEADS'||p.adSets?.some(set=>set.optimizationGoal!=='LEAD_GENERATION'||set.promotedObject?.page_id!==p.pageId)))throw Error('FORM_DELIVERY_MISMATCH');
     strictPlan({...plan,intent:'CREATE_CAMPAIGN',parameters:{name:p.name,objective:p.objective,specialAdCategories:p.specialAdCategories}});
-    strictPlan({...plan,intent:'CREATE_CREATIVE',parameters:{name:p.name,pageId:p.pageId,link:p.link,message:p.message,headline:p.headline,imageHash:p.imageHash,...(p.formId?{formId:p.formId}:{})}});
+    strictPlan({...plan,intent:'CREATE_CREATIVE',parameters:{name:p.name,pageId:p.pageId,link:p.link,message:p.message,headline:p.headline,imageHash:p.imageHash,...(p.formId?{formId:p.formId}:{}),...(p.instagramUserId?{instagramUserId:p.instagramUserId}:{})}});
     if(p.variants!==undefined){
       // Up to two extra copy angles, each a separate ad with the same approved image.
       if(!Array.isArray(p.variants)||p.variants.length>2) throw Error('INVALID_AD_VARIANTS');
@@ -106,6 +106,27 @@ function codeDigest(clientId,code) {
   if(!key) throw Error('APPROVAL_KEY_REQUIRED');
   return crypto.createHmac('sha256',key).update(String(clientId)+':'+code).digest('hex');
 }
+// Special Ad Category (developers.facebook.com/docs/marketing-api/audiences/special-ad-category):
+// real-estate businesses (verticalProfiles.housingCategory) always declare HOUSING. Meta's
+// housing targeting restrictions apply where the audience is in the US, Canada or Europe:
+// ages 18-65+, all genders, no detailed/lookalike targeting, minimum 15 km radius. The owner
+// sees the declared category and the adjusted audience in the approval card (it is in the hash).
+const HOUSING_RESTRICTED=['US','CA','AT','BE','BG','HR','CY','CZ','DK','EE','FI','FR','DE','GR','HU','IE','IT','LV','LT','LU','MT','NL','PL','PT','RO','SK','SI','ES','SE'];
+async function applySpecialAdCategories(clientId,plan){
+ const v=await require('./verticalProfiles').detect(clientId);
+ if(!require('./verticalProfiles').get(v.key).housingCategory)return plan;
+ const p=plan.parameters,list=Array.isArray(p.specialAdCategories)?p.specialAdCategories.filter(c=>c!=='NONE'):[];
+ if(!list.includes('HOUSING'))list.push('HOUSING');
+ p.specialAdCategories=list;
+ for(const set of p.adSets||[]){
+  const t=set.targeting;if(!t)continue;
+  if(!(t.geo_locations?.countries||[]).some(c=>HOUSING_RESTRICTED.includes(c)))continue;
+  delete t.genders;delete t.flexible_spec;delete t.exclusions;delete t.custom_audiences;delete t.excluded_custom_audiences;
+  t.age_min=18;t.age_max=65;
+  for(const c of t.geo_locations.cities||[])if(c.radius<15)c.radius=15;
+ }
+ return plan;
+}
 async function preparePlan(clientId,input) {
   const meta=require('./metaConnection');
   const connection=await meta.credentials(clientId);
@@ -160,9 +181,10 @@ async function preparePlan(clientId,input) {
     plan.target.accountName=account.name;
     if(plan.intent==='CREATE_BUNDLE') for(const set of plan.parameters.adSets || []) {set.currency=account.currency;set.dailyBudgetMinor=minorUnits(set.dailyBudget,account.currency);}
   }
+  if(['CREATE_BUNDLE','CREATE_CAMPAIGN'].includes(plan.intent)) await applySpecialAdCategories(clientId,plan);
   // Buyer audiences: exclude existing customers from new ad sets (no-op unless enabled and created).
   await require('./buyerAudiences').applyExclusion(clientId,plan,connection.meta_ad_account_id);
   strictPlan(plan);
   return plan;
 }
-module.exports={canonical,planHash,strictPlan,minorUnits,codeDigest,preparePlan};
+module.exports={applySpecialAdCategories,HOUSING_RESTRICTED,canonical,planHash,strictPlan,minorUnits,codeDigest,preparePlan};

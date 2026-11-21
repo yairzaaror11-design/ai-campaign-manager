@@ -60,6 +60,8 @@ async function getCampaignPerformance(id, date = 'last_7d') {
     fields:
       'campaign_id,campaign_name,impressions,reach,clicks,spend,ctr,cpc,cpm,frequency,actions,cost_per_action_type,website_purchase_roas',
     level: 'campaign',
+    // Same attribution as Ads Manager (developers.facebook.com/docs/marketing-api/reference/ad-account/insights).
+    use_unified_attribution_setting: true,
     ...period,
     limit: 100,
     ...(after?{after}:{})
@@ -83,7 +85,8 @@ async function getCampaignInsights(campaignId, date = 'last_7d') {
   return get(`/${campaignId}/insights`, {
     fields:
       'campaign_id,campaign_name,impressions,reach,clicks,spend,ctr,cpc,cpm,frequency,actions,cost_per_action_type',
-    date_preset: date
+    date_preset: date,
+    use_unified_attribution_setting: true
   });
 }
 

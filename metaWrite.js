@@ -54,13 +54,43 @@ async function createLeadForm(plan){
   is_optimized_for_quality:true,
   thank_you_page:{title:p.locale==='HE_IL'?'תודה! קיבלנו את הפרטים':'Thanks, we got your details',body:p.locale==='HE_IL'?'נחזור אליך בהקדם, בדרך כלל בתוך כמה דקות בשעות הפעילות.':'We will get back to you shortly.',button_type:'NONE'}});
 }
+// Graph API bodies (Marketing API, verified against developers.facebook.com, 2026-11):
+// * campaigns: special_ad_categories is required; when any category is declared,
+//   special_ad_category_country is required too. SCORPIO budgets live on the ad set, and
+//   since v24 is_adset_budget_sharing_enabled must then be sent explicitly.
+// * ad sets: lead-form delivery needs destination_type ON_AD + promoted_object.page_id;
+//   since v23 targeting_automation.advantage_audience must be explicit (0 keeps the exact
+//   audience the owner approved).
+// * every object is created PAUSED; only ACTIVATE_BUNDLE / RESUME_CAMPAIGN turn spend on.
+function categoryCountries(plan){
+ const p=plan.parameters,sets=p.adSets||(p.targeting?[p]:[]);
+ const countries=[...new Set(sets.flatMap(s=>s.targeting?.geo_locations?.countries||[]))].filter(c=>/^[A-Z]{2}$/.test(c));
+ return countries.length?countries:['IL'];
+}
+function campaignBody(plan){
+ const p=plan.parameters,categories=(p.specialAdCategories||[]).filter(c=>c&&c!=='NONE');
+ return {name:p.name,objective:p.objective,status:'PAUSED',special_ad_categories:categories,
+  ...(categories.length?{special_ad_category_country:categoryCountries(plan)}:{}),
+  is_adset_budget_sharing_enabled:false};
+}
+function adsetBody(set,campaignId){
+ const targeting=require('./geoTargeting').forMeta(set.targeting)||{};
+ return {name:set.name,campaign_id:campaignId,daily_budget:set.dailyBudgetMinor,billing_event:set.billingEvent,optimization_goal:set.optimizationGoal,bid_strategy:set.bidStrategy,
+  targeting:{...targeting,targeting_automation:{advantage_audience:Number(targeting.targeting_automation?.advantage_audience)===1?1:0}},
+  promoted_object:set.promotedObject,...(set.optimizationGoal==='LEAD_GENERATION'?{destination_type:'ON_AD'}:{}),
+  start_time:set.startTime,end_time:set.endTime,status:'PAUSED'};
+}
+// Lead-form ads: Meta's lead-ads guide says link_data.link "can only be https://fb.me/".
+function creativeBody(p,{name=p.name,message=p.message,headline=p.headline}={}){
+ return {name,degrees_of_freedom_spec:NO_ENHANCEMENTS,object_story_spec:{page_id:p.pageId,...(p.instagramUserId?{instagram_user_id:p.instagramUserId}:{}),
+  link_data:{link:p.formId?'https://fb.me/':p.link,message,name:headline,image_hash:p.imageHash,...(p.formId?{call_to_action:{type:'SIGN_UP',value:{lead_gen_form_id:p.formId}}}:{})}}};
+}
 async function createCampaign(plan) {
- const p=plan.parameters;
- return post(plan,'/'+plan.target.accountId+'/campaigns',{name:p.name,objective:p.objective,status:'PAUSED',special_ad_categories:p.specialAdCategories || []});
+ return post(plan,'/'+plan.target.accountId+'/campaigns',campaignBody(plan));
 }
 async function createAdSet(plan) {
  const p=plan.parameters;
- return post(plan,'/'+plan.target.accountId+'/adsets',{name:p.name,campaign_id:p.campaignId,daily_budget:p.dailyBudgetMinor,billing_event:p.billingEvent,optimization_goal:p.optimizationGoal,bid_strategy:p.bidStrategy,targeting:require('./geoTargeting').forMeta(p.targeting),promoted_object:p.promotedObject,start_time:p.startTime,end_time:p.endTime,status:'PAUSED'});
+ return post(plan,'/'+plan.target.accountId+'/adsets',adsetBody(p,p.campaignId));
 }
 // Spend safety: Meta's Advantage+ creative "enhancements" (auto crops, touch-ups,
 // rewritten text, music, overlays, catalog products, comments...) are opted out on
@@ -69,8 +99,7 @@ async function createAdSet(plan) {
 const ENHANCEMENT_FEATURES=['standard_enhancements','image_touchups','adapt_to_placement','image_templates','image_animation','add_text_overlay','text_optimizations','description_automation','inline_comment','music_generation','site_extensions','product_extensions'];
 const NO_ENHANCEMENTS={creative_features_spec:Object.fromEntries(ENHANCEMENT_FEATURES.map(k=>[k,{enroll_status:'OPT_OUT'}]))};
 async function createCreative(plan) {
- const p=plan.parameters;
- return post(plan,'/'+plan.target.accountId+'/adcreatives',{name:p.name,degrees_of_freedom_spec:NO_ENHANCEMENTS,object_story_spec:{page_id:p.pageId,link_data:{link:p.link,message:p.message,name:p.headline,image_hash:p.imageHash,...(p.formId?{call_to_action:{type:'SIGN_UP',value:{lead_gen_form_id:p.formId}}}:{})}}});
+ return post(plan,'/'+plan.target.accountId+'/adcreatives',creativeBody(plan.parameters));
 }
 async function createAd(plan) {
  const p=plan.parameters;
@@ -104,13 +133,13 @@ async function createBundle(plan) {
  if(!/^\d+$/.test(creative.id || '')) throw Error('CREATIVE_RESULT_UNCERTAIN');
  const creatives=[{id:creative.id,headline:p.headline}];
  for(const [i,v] of (p.variants||[]).entries()){
-  const extra=await post(plan,'/'+plan.target.accountId+'/adcreatives',{name:p.name+' — גרסה '+(i+2),degrees_of_freedom_spec:NO_ENHANCEMENTS,object_story_spec:{page_id:p.pageId,link_data:{link:p.link,message:v.message,name:v.headline,image_hash:p.imageHash,...(p.formId?{call_to_action:{type:'SIGN_UP',value:{lead_gen_form_id:p.formId}}}:{})}}});
+  const extra=await post(plan,'/'+plan.target.accountId+'/adcreatives',creativeBody(p,{name:p.name+' — גרסה '+(i+2),message:v.message,headline:v.headline}));
   if(!/^\d+$/.test(extra.id || '')) throw Error('CREATIVE_RESULT_UNCERTAIN');
   creatives.push({id:extra.id,headline:v.headline});
  }
  const adsetIds=[],adIds=[];
  for(const set of p.adSets) {
-   const adset=await post(plan,'/'+plan.target.accountId+'/adsets',{name:set.name,campaign_id:campaign.id,daily_budget:set.dailyBudgetMinor,billing_event:set.billingEvent,optimization_goal:set.optimizationGoal,bid_strategy:set.bidStrategy,targeting:require('./geoTargeting').forMeta(set.targeting),promoted_object:set.promotedObject,start_time:set.startTime,end_time:set.endTime,status:'PAUSED'});
+   const adset=await post(plan,'/'+plan.target.accountId+'/adsets',adsetBody(set,campaign.id));
    if(!/^\d+$/.test(adset.id || '')) throw Error('ADSET_RESULT_UNCERTAIN');
    adsetIds.push(adset.id);
    for(const c of creatives){
@@ -179,4 +208,4 @@ async function createLookalike(plan){
  if(!/^\d+$/.test(r?.id||''))throw Error('AUDIENCE_RESULT_UNCERTAIN');
  return{id:r.id,objects:{audienceId:r.id}};
 }
-module.exports={AUDIENCE_SCHEMA,lookalikeSpec,syncBuyerAudience,createLookalike,NO_ENHANCEMENTS,ENHANCEMENT_FEATURES,createLeadForm,createBundle,activateBundle,uploadImage,createCampaign,createAdSet,createCreative,createAd,changeBudget,duplicateCampaign,pauseCampaign,resumeCampaign,editCampaign};
+module.exports={campaignBody,adsetBody,creativeBody,AUDIENCE_SCHEMA,lookalikeSpec,syncBuyerAudience,createLookalike,NO_ENHANCEMENTS,ENHANCEMENT_FEATURES,createLeadForm,createBundle,activateBundle,uploadImage,createCampaign,createAdSet,createCreative,createAd,changeBudget,duplicateCampaign,pauseCampaign,resumeCampaign,editCampaign};

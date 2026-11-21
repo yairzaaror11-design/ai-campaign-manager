@@ -4,6 +4,8 @@ const { isDeepStrictEqual } = require('node:util');
 const { query, transaction } = require('./db');
 
 function createDurableMockMetaAdapter(clientId, lifecycleId) {
+  // Never in production: real campaigns go through actionExecutor -> metaWrite (Graph API).
+  if (process.env.NODE_ENV === 'production') throw Error('MOCK_META_FORBIDDEN_IN_PRODUCTION');
   if (!clientId || !lifecycleId) throw Error('Mock scope required');
   const id = () => crypto.randomUUID();
   const fetch = async () => {
