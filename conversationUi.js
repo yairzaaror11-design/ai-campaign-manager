@@ -37,7 +37,7 @@ function choices(p,decisionKey){
   return items;
  }
  if(decisionKey==='meta_continue'&&connection?.status==='CONNECTED')return[choice('המשך ליצירת הקמפיין','המשך ליצירת הקמפיין'),choice('לא עכשיו','לא עכשיו')];
- if(decisionKey==='connection_offer'&&connection?.status==='CONNECTION_OFFERED')return[choice('שלחו קישור','כן'),choice('לא עכשיו','לא')];
+ if(decisionKey==='connection_offer'&&connection?.status==='CONNECTION_OFFERED')return[choice('כן, שלח קישור','כן'),choice('לא עכשיו','לא')];
  if(decisionKey==='account_selection'&&connection?.status==='ACCOUNT_SELECTION_REQUIRED'){
   const page=require('./accountMenu').page(connection);
   // Names cut to fit a button stay distinguishable: full name + last digits in the row description, never the raw id.
@@ -98,7 +98,7 @@ async function refresh(clientId){
  if(key==='action_approval')return{text:'האישור הזה כבר לא עדכני. אפשר לבקש הצעה חדשה לפני ביצוע.'};
  const reply='הבחירה הזו כבר לא עדכנית. הנה האפשרויות המעודכנות; אפשר גם לענות בכתיבה.';
  if(key&&choices(p,key).length)return prepare(clientId,reply,key);
- return {text:reply+' כדי להציג את חשבונות הפרסום אפשר לכתוב ״החשבונות שלי״.'};
+ return {text:reply+' אם תרצה לראות את חשבונות הפרסום, רק תבקש ממני.'};
 }
 async function prepareApproval(clientId,approval,summary){
  const nonce=crypto.randomBytes(12).toString('hex');

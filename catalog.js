@@ -279,8 +279,8 @@ function ready(item) {
 function notReady(code, item) {
   const p = profileOf(item);
   return {
-    ITEM_CONSENT_REQUIRED: `אין עדיין הסכמה של בעל ה${p.item} לפרסום, אז לא אכין לו פרסום. כשתהיה הסכמה כתוב "יש הסכמה" או סמן אותה בדשבורד.`,
-    LICENSE_REQUIRED: `חסר מספר ${p.license?.label || 'רישיון'}. כל מודעה חייבת להציג אותו. כתוב לי "רישיון 12345" (המספר שלך) ואמשיך.`,
+    ITEM_CONSENT_REQUIRED: `אין עדיין הסכמה של בעל ה${p.item} לפרסום, אז לא אכין לו פרסום. כשתהיה הסכמה, רק תגיד לי או תסמן אותה בדשבורד.`,
+    LICENSE_REQUIRED: `חסר מספר ${p.license?.label || 'רישיון'}. כל מודעה חייבת להציג אותו. רק תשלח לי את המספר ואמשיך.`,
     ITEM_CLOSED: `ה${p.item} סומן כ${statusLabel(item)}, ולכן לא מפרסמים אותו.`,
     ITEM_NOT_ACTIVE: `ה${p.item} עוד לא אושר לשיווק. צריך לאשר את הפרטים שלו קודם.`
   }[code];
@@ -348,7 +348,7 @@ async function prepareCampaign(clientId, id, { channel = 'WHATSAPP', requestId, 
   if (blocked) return { handled: true, blocked, reply: notReady(blocked, item) };
   const tasks = require('./taskAgent');
   const active = await tasks.active(clientId);
-  if (active && active.id !== item.campaign_task_id) return { handled: true, blocked: 'TASK_OPEN', reply: 'יש כרגע משימה פתוחה אחרת אצל הסוכן. כדי לא לערבב ביניהן, סיים אותה, או כתוב לי "תסגור אותה", ואז בחר שוב "קמפיין לידים".' };
+  if (active && active.id !== item.campaign_task_id) return { handled: true, blocked: 'TASK_OPEN', reply: 'יש כרגע משימה פתוחה אחרת אצל הסוכן. כדי לא לערבב ביניהן, כדאי לסיים אותה או לבקש ממני לסגור אותה, ואז לבחור שוב קמפיין לידים.' };
   const meta = await connection(clientId);
   await useCoverPhoto(clientId, item).catch(() => null);
   const run = send || ((message) => tasks.send(clientId, { message, requestId: requestId || `catalog-campaign:${item.id}:${item.version}`, channel }, { dynamicRouting: process.env.DYNAMIC_CONVERSATION_ENABLED === 'true', deferPlanning: !tasks.enabled() }));
@@ -358,8 +358,8 @@ async function prepareCampaign(clientId, id, { channel = 'WHATSAPP', requestId, 
   if (taskId) await require('./growth').rememberCampaign(clientId, { taskId, funnel: require('./growth').itemFunnel(item) }).catch(() => {});
   await db.query("INSERT INTO tenant_audit(client_id,event,result) VALUES($1,'CATALOG_CAMPAIGN','PREPARED')", [clientId]);
   const note = meta.ok ? '' : meta.reason === 'ACCOUNT'
-    ? '\n\nℹ️ שים לב: עוד לא נבחר חשבון מודעות ב־Meta, אז הקמפיין יישאר טיוטה. כתוב "החשבונות שלי" כדי לבחור חשבון.'
-    : '\n\nℹ️ שים לב: אין חיבור פעיל ל־Meta, אז כרגע אפשר להכין רק טיוטה. כדי ליצור את הקמפיין ב־Meta כתוב "חבר את Meta".';
+    ? '\n\nℹ️ שים לב: עוד לא נבחר חשבון מודעות ב־Meta, אז הקמפיין יישאר טיוטה. אם תרצה לבחור חשבון, רק תבקש ממני ואציג לך את החשבונות.'
+    : '\n\nℹ️ שים לב: אין חיבור פעיל ל־Meta, אז כרגע אפשר להכין רק טיוטה. כדי ליצור את הקמפיין ב־Meta, רק תבקש ממני לחבר את מטא.';
   return { ...result, handled: true, reply: String(result?.reply || 'התחלתי להכין טיוטת קמפיין.') + note, metaConnected: meta.ok };
 }
 
@@ -409,7 +409,7 @@ async function preparePosts(clientId, id, { writer, now = new Date() } = {}) {
   });
   const lines = posts.map((x) => `• ${x.date.split('-').reverse().slice(0, 2).map(Number).join('/')}: ${x.caption.split('\n')[0].slice(0, 90)}`);
   const license = p.license ? ` בכל פוסט מופיע ה${p.license.label}.` : '';
-  return { handled: true, count: posts.length, posts, reply: `📝 הכנתי ${posts.length} פוסטים ל${title(item)}:\n${lines.join('\n')}\n\n${license.trim() ? license.trim() + ' ' : ''}הם מחכים לאישור שלך; כתוב "אשר את כל התוכן" או ערוך אותם בדשבורד. ביום הפרסום אשלח לך כאן את הפוסט מוכן, ואתה מפרסם.` };
+  return { handled: true, count: posts.length, posts, reply: `📝 הכנתי ${posts.length} פוסטים ל${title(item)}:\n${lines.join('\n')}\n\n${license.trim() ? license.trim() + ' ' : ''}הם מחכים לאישור שלך: אפשר לאשר את כולם כאן או לערוך אותם בדשבורד. ביום הפרסום אשלח לך כאן את הפוסט מוכן, ואתה מפרסם.` };
 }
 
 // ---------- Sold out / ended ----------
@@ -427,10 +427,10 @@ async function close(clientId, id, outcomeKey, { createApproval, connection = me
   const campaignId = await resolveCampaign(clientId, item).catch(() => null);
   if (!campaignId) {
     const openTask = item.campaign_task_id && (await require('./taskAgent').active(clientId).catch(() => null))?.id === item.campaign_task_id;
-    done.push(openTask ? '📣 טיוטת הקמפיין שלו עוד פתוחה אצל הסוכן ולא נוצרה ב־Meta. אם כבר לא צריך אותה, כתוב לי "תסגור אותה".' : 'לא היה לו קמפיין מקושר, אז אין מה לעצור ב־Meta.');
+    done.push(openTask ? '📣 טיוטת הקמפיין שלו עוד פתוחה אצל הסוכן ולא נוצרה ב־Meta. אם כבר לא צריך אותה, רק תגיד לי ואסגור אותה.' : 'לא היה לו קמפיין מקושר, אז אין מה לעצור ב־Meta.');
   } else {
     const meta = await connection(clientId);
-    if (!meta.ok) done.push(`⚠️ לא יכולתי להכין עצירה של הקמפיין (${campaignId}) כי אין חיבור פעיל ל־Meta. כדי שלא תשלם על פרסום למשהו שכבר לא זמין, עצור אותו במנהל המודעות של Meta או כתוב "חבר את Meta" ואכין את העצירה.`);
+    if (!meta.ok) done.push(`⚠️ לא יכולתי להכין עצירה של הקמפיין (${campaignId}) כי אין חיבור פעיל ל־Meta. כדי שלא תשלם על פרסום למשהו שכבר לא זמין, עצור אותו במנהל המודעות של Meta, או תבקש ממני לחבר את מטא ואכין את העצירה.`);
     else {
       try {
         const { createActionPlan } = require('./actionPlan');

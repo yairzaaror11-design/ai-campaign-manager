@@ -15,7 +15,7 @@ function humanRequested(value){
  if(/^(?:speak to a human|talk to a human|human support|human|agent)(?: please)?$/i.test(t))return true;
  return HUMAN_RE.test(t)||/^(?:לדבר|לשוחח) עם (?:אדם|מישהו)$/.test(t);
 }
-function resumeRequested(value){return /^(?:המשך עם הבוט|להמשיך עם הבוט|חזרה לבוט|המשך עם הסוכן|להמשיך עם הסוכן|חזרה לסוכן|resume bot)[.!?\s]*$/i.test(String(value).trim());}
+function resumeRequested(value){return /^(?:המשך עם הבוט|להמשיך עם הבוט|חזרה לבוט|המשך עם הסוכן|להמשיך עם הסוכן|חזרה לסוכן|resume bot|(?:(?:אני\s+)?(?:רוצה|אפשר)\s+)?(?:להמשיך|לחזור|לעבור)\s+(?:עם\s+|ל|אל\s+)(?:ה)?(?:בוט|סוכן)|(?:(?:אני\s+)?(?:רוצה|אפשר)\s+)?(?:להמשיך איתך|לחזור אליך)|(?:תחזור|חזור)(?: אליי| לעבוד)?)[.!?\s]*$/i.test(String(value).trim());}
 const RESPONSE_TIME='נציג יחזור אליך עד יום העסקים הבא';
 // Tells every support operator (SUPPORT_OPERATOR_CLIENT_IDS) about a new handover, in real time.
 async function notifyOperators(clientId,c){

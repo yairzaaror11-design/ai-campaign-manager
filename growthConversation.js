@@ -5,16 +5,17 @@
 const db = require('./db');
 const growth = require('./growth');
 
-const FUNNELS = /^(?:משפכים|המשפכים|סוגי קמפיינים|איזה קמפיין (?:כדאי|לעשות|להריץ)\??|איזה קמפיין כדאי לי\??|קמפיין למוכרים|קמפיין למשכירים|קמפיין לקונים|קמפיין לשוכרים|כמה שווה הדירה שלך\??)$/;
+const FUNNELS = /^(?:משפכים|המשפכים|(?:(?:תראה|תציג|הצג)(?: לי)? את |אני רוצה לראות את |מה )?(?:ה)?סוגי (?:ה)?קמפיינים(?: שיש)?\??|איזה קמפיין (?:כדאי|לעשות|להריץ)\??|איזה קמפיין כדאי לי\??|קמפיין למוכרים|קמפיין למשכירים|קמפיין לקונים|קמפיין לשוכרים|כמה שווה הדירה שלך\??)$/;
 const DIRECT = { 'קמפיין למוכרים': 'sellers', 'כמה שווה הדירה שלך': 'sellers', 'כמה שווה הדירה שלך?': 'sellers', 'קמפיין למשכירים': 'landlords', 'קמפיין לקונים': 'buyers', 'קמפיין לשוכרים': 'renters' };
 const LOOP = /^(?:ביקורות והמלצות|לקוחות קודמים|לקוחות עבר|תודה ללקוחות|הודעות ללקוחות)$/;
-const REVIEW = /^(?:קישור (?:לביקורות|לביקורת|לגוגל)|הקישור לביקורות)(?:\s*[:：-]?\s*(\S+))?$/;
+// "קישור לביקורות https://..." and natural forms ("הקישור לביקורות שלי בגוגל הוא ..."), or a bare Google review link.
+const REVIEW = /^(?:(?:ה)?(?:קישור|לינק) (?:ל|של )?(?:ה)?(?:ביקורות|ביקורת|גוגל)(?: שלי)?(?: בגוגל)?(?: הוא| זה)?|הקישור לביקורות)(?:\s*[:：-]?\s*(\S+))?$|^(https:\/\/(?:g\.page|maps\.app\.goo\.gl|g\.co|search\.google\.com\/local\/writereview)\S*)$/;
 const COMMISSION = /^(?:עמלה|עמלת תיווך|העמלה שלי)(\s+בשכירות)?\s*[:：-]?\s*(\d{1,3}(?:[.,]\d{1,2})?)\s*%?$/;
-const LICENSE = /^רישיון תיווך\s*[:：-]?\s*(\d{3,10})$/;
+const LICENSE = /^(?:(?:ה)?מספר\s+)?(?:ה)?רישיון (?:ה)?תיווך(?:\s+שלי)?(?:\s+(?:הוא|זה))?\s*[:：-]?\s*(\d{3,10})$/;
 const TEAM = /^(?:דוח צוות|הצוות שלי|דוח הצוות)$/;
 const CMD = /^\/growth-(done|skip|consent|cadence|funnel)\s+(\S+)$/;
-const DONE = /^(?:שלחתי ללקוח|שלחתי את ההודעה)$/;
-const SKIP = /^(?:דלג על ההודעה|לא לשלוח ללקוח)$/;
+const DONE = /^(?:שלחתי ללקוח|שלחתי את ההודעה|שלחתי לו|שלחתי לה|שלחתי ללקוחה)[.!\s]*$/;
+const SKIP = /^(?:דלג על ההודעה|לא לשלוח ללקוח|(?:תדלג|דלג|לדלג) על (?:ה)?הודעה(?: הזו| הזאת)?|אל תשלח לו|אל תשלח לה)[.!\s]*$/;
 
 const clientByPhone = async (phone) => (await db.query('SELECT id FROM clients WHERE phone=$1', [String(phone).replace(/\D/g, '')])).rows[0]?.id || null;
 const shortTitle = (label, max) => label.split(' — ')[0].slice(0, max);
@@ -65,14 +66,15 @@ async function handleText(from, text) {
   if (LOOP.test(t)) {
     const o = await growth.overview(clientId);
     const lines = ['⭐ ביקורות, המלצות ולקוחות עבר', '', o.cadence, '',
-      `קישור לביקורות בגוגל: ${o.settings.reviewUrl || 'עוד לא הוגדר. כתוב: קישור לביקורות ואחריו הקישור'}`,
+      `קישור לביקורות בגוגל: ${o.settings.reviewUrl || 'עוד לא הוגדר. אם תשלח לי אותו, אשמור אותו'}`,
       o.settings.cadenceApproved ? '✅ אישרת את הקצב הזה. הסוכן פועל לפיו.' : 'לאשר את הקצב הזה פעם אחת? אחרי האישור לא אשאל שוב על כל לקוח.'];
     if (o.settings.cadenceApproved) return choices(clientId, lines.join('\n'), [{ title: 'לא לשלוח לבד', text: '/growth-cadence no' }]);
     return choices(clientId, lines.join('\n'), [{ title: 'מאשר את הקצב', text: '/growth-cadence yes' }, { title: 'לא עכשיו', text: '/growth-cadence no' }]);
   }
   if ((m = t.match(REVIEW))) {
-    if (!m[1]) return { text: 'שלח את הקישור לביקורות שלך בגוגל, למשל:\nקישור לביקורות https://g.page/r/...\nאת הקישור מוצאים בפרופיל העסק בגוגל, תחת "בקשת ביקורות".' };
-    try { await growth.saveSettings(clientId, { reviewUrl: m[1] }); } catch { return { text: 'הקישור לא נראה תקין. צריך קישור מלא שמתחיל ב־https://' }; }
+    const url = m[1] || m[2];
+    if (!url) return { text: 'שלח את הקישור לביקורות שלך בגוגל, למשל:\nקישור לביקורות https://g.page/r/...\nאת הקישור מוצאים בפרופיל העסק בגוגל, תחת "בקשת ביקורות".' };
+    try { await growth.saveSettings(clientId, { reviewUrl: url }); } catch { return { text: 'הקישור לא נראה תקין. צריך קישור מלא שמתחיל ב־https://' }; }
     return { text: 'שמרתי ✅ הקישור יצורף לכל הודעת תודה אחרי עסקה.' };
   }
   if ((m = t.match(COMMISSION))) {
@@ -82,7 +84,7 @@ async function handleText(from, text) {
   }
   if ((m = t.match(LICENSE))) {
     await store.update(clientId, null, (p) => { p.brokerLicense = m[1]; return { handled: false, changed: true }; });
-    return { text: `שמרתי את רישיון התיווך ${m[1]} ✅ הוא יופיע בכל מודעה. כתוב "משפכים" כדי לבחור קמפיין.` };
+    return { text: `שמרתי את רישיון התיווך ${m[1]} ✅ הוא יופיע בכל מודעה. רוצה לבחור עכשיו סוג קמפיין? רק תבקש ממני את סוגי הקמפיינים.` };
   }
   if (TEAM.test(t)) return { text: await growth.teamReportText(clientId) };
   return null;

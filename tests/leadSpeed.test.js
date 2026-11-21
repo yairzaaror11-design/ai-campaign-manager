@@ -121,7 +121,7 @@ test('plain "התקשרתי" marks the last alerted lead; an open decision keeps
     await require('../leadAlert').notifyOwner(client, lead, { writer: async () => null });
     const out = (await db.query('SELECT payload FROM whatsapp_outbox WHERE client_id=$1', [client])).rows;
     assert.equal(out.length, 1, 'no buttons while an approval is open');
-    assert.match(out[0].payload.text.body, /כתבו: התקשרתי/);
+    assert.match(out[0].payload.text.body, /אחרי שחזרת אליו, רק תעדכן אותי/);
     const p = await store.load(client);
     assert.equal(p.ui.decisionKey, 'action_approval', 'the approval menu is untouched');
     assert.equal(p.leadSpeedLast, lead.id);

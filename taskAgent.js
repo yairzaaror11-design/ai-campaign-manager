@@ -70,21 +70,21 @@ function replyFor(task){
   if(analysis)return require('./businessCase').format(analysis.result);
  }
  if(task.status==='WAITING_INPUT')return s.question;
- if(task.status==='WAITING_MODEL')return 'הבקשה נשמרה, אבל אני עדיין לא מוכן לעבוד עליה. בעוד כמה דקות כתוב לי ״נמשיך״ ואמשיך מאותה נקודה.';
- if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nתעבור על מה שהכנתי ותגיד לי מה תרצה לשנות. אם הכול מתאים, כתוב ״מאשר את התוכן״. זה אישור לתוכן בלבד; פרסום והפעלת תקציב דורשים אישור נפרד.';
+ if(task.status==='WAITING_MODEL')return 'הבקשה נשמרה, אבל אני עדיין לא מוכן לעבוד עליה. בעוד כמה דקות רק תגיד לי להמשיך, ואמשיך מאותה נקודה.';
+ if(task.status==='WAITING_REVIEW')return (s.steps||[]).filter(x=>x.status==='PREPARED').map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n')+'\n\nתעבור על מה שהכנתי ותגיד לי מה תרצה לשנות. אם הכול מתאים, רק תגיד לי שאתה מאשר את התוכן. זה אישור לתוכן בלבד; פרסום והפעלת תקציב דורשים אישור נפרד.';
  // A closed task answers as closed, even if a step was still waiting for approval.
  if(task.status==='CANCELLED')return 'סגרתי את המשימה, והאישורים שחיכו לך בוטלו. מה שכבר בוצע נשאר כמו שהוא.';
  const waiting=s.steps?.find(x=>x.status==='WAITING_APPROVAL');
  if(waiting){const a=waiting.result.approval;return require('./actionPlan').formatActionPlan(a.plan)+'\n\nכדי לאשר את הפעולה המדויקת, שלח: אשר '+meta.decrypt(a.codeCiphertext,task.client_id)+'\nהאישור תקף עד '+new Date(a.expiresAt).toLocaleString('he-IL',{timeZone:'Asia/Jerusalem',day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'})+'. האישור מתייחס רק לפעולה הזו.';}
  if(task.status==='COMPLETE')return 'השלמתי את כל השלבים בתוכנית שנבדקה. '+((s.steps||[]).some(x=>x.kind==='meta')?'הפעולות החיצוניות המסומנות כהושלמו אומתו מול Meta.':'התוצרים הוכנו ואושרו; לא בוצעה פעולה חיצונית.')+(s.steps.some(x=>x.result?.privateDraft)?' טיוטת דף הנחיתה נשמרה בדשבורד שלך ולא פורסמה.':'')+'\n'+(s.steps||[]).filter(x=>x.artifact).map(x=>x.artifact.title+'\n'+x.artifact.content).join('\n\n');
  if(task.status==='MANUAL_REVIEW')return 'בשלב האחרון לא קיבלתי מ־Meta תשובה ברורה אם הפעולה הושלמה, אז לא חזרתי עליה כדי שלא תיווצר כפילות. אפשר לראות מה נוצר בדשבורד, במסך פרסום.\nפשוט כתוב לי מה תרצה עכשיו, ואמשיך משם.';
- if(task.status==='PAUSED')return 'עצרתי. ההתקדמות נשמרה, וכשתרצה כתוב לי ״נמשיך״.';
+ if(task.status==='PAUSED')return 'עצרתי. ההתקדמות נשמרה, וכשתרצה להמשיך, רק תגיד לי.';
  if(task.status==='BLOCKED')return 'כדי להשלים את המשימה צריך לפתור את החלק הבא: '+(s.reason||'יכולת שלא זמינה כרגע')+'. שאר ההתקדמות נשמרה.';
  if(task.status==='HUMAN_PAUSED')return 'המענה האוטומטי והמשימה הושהו למענה אנושי.';
  if(s.lastError==='TASK_FORM_DRAFT_REQUIRED')return 'המודעה נשמרה, אבל עדיין חסר טופס המועמדות. צריך להשלים אותו לפני שאשלח הכול לבדיקה.';
  const prepared=(s.steps||[]).filter(x=>x.status==='PREPARED'&&x.artifact).map(x=>x.artifact.title).slice(0,3);
  const stage=['INVALID_TASK_JSON','TASK_STEP_FAILED'].includes(s.lastError)?'נתקעתי בתכנון השלב הבא.':s.lastError?.includes('CAMPAIGN_DRAFT')?'עדיין לא הצלחתי להשלים את הגדרות הקמפיין.':s.lastError?.includes('GRAPHIC')||s.lastError?.includes('IMAGE')?'נעצרתי בהכנת התמונה.':'לא הצלחתי להשלים את השלב הבא.';
- return stage+(prepared.length?' כבר מוכן ושמור: '+prepared.join(', ')+'.':' הבקשה שלך נשמרה.')+' כתוב לי ״נמשיך״ ואנסה שוב, או ספר לי מה לשנות.';
+ return stage+(prepared.length?' כבר מוכן ושמור: '+prepared.join(', ')+'.':' הבקשה שלך נשמרה.')+' כשתרצה, רק תגיד לי להמשיך ואנסה שוב, או ספר לי מה לשנות.';
 }
 async function settle(task,lease,requestId){
  let reply=task.customReply||replyFor(task);
@@ -230,7 +230,7 @@ async function rebaseForTurn(task,lease,requestId,message,kind){
 }
 function canPresentReview(task,message){
  if(task?.state?.pendingRouting&&require('./conversationRouter').resume(message))return false;
- return process.env.TASK_AGENT_ENABLED==='true'&&!!task&&['BLOCKED','ERROR','WAITING_MODEL','WAITING_REVIEW'].includes(task.status)&&/^(?:המשך במשימה|נמשיך|המשך|תמשיך|הצג את החבילה|תציג את החבילה|הצג את הקמפיין|תציג את הקמפיין|תראה לי מה הכנת)[.!?]*$/u.test(message.trim())&&reviewReady(task);
+ return process.env.TASK_AGENT_ENABLED==='true'&&!!task&&['BLOCKED','ERROR','WAITING_MODEL','WAITING_REVIEW'].includes(task.status)&&/^(?:המשך במשימה|תמשיך במשימה|נמשיך במשימה|להמשיך במשימה|נמשיך|המשך|תמשיך|להמשיך|אפשר להמשיך|בוא נמשיך|תמשיך מאיפה שעצרנו|הצג את החבילה|תציג את החבילה|הצג את הקמפיין|תציג את הקמפיין|תראה לי מה הכנת)[.!?]*$/u.test(message.trim())&&reviewReady(task);
 }
 const CLOSED_STUCK='סגרתי את המשימה הקודמת שנתקעה (אם משהו כבר נוצר ב־Meta, תראה אותו בדשבורד). עוברים לבקשה החדשה:';
 async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={},options={}){
@@ -243,12 +243,12 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
  try{
   if(/^(מצב המשימה|מה מצב המשימה|איפה עומדים|מה כבר עשית)$/.test(message.trim())){const labels={DONE:'הושלם',PREPARED:'מוכן לבדיקה',WAITING_INPUT:'ממתין לפרט ממך',WAITING_APPROVAL:'ממתין לאישור פעולה',PENDING:'טרם בוצע',RUNNING:'בתהליך'};task.customReply='היעד: '+task.request+'\n'+task.state.steps.map(s=>s.label+': '+(labels[s.status]||s.status)).join('\n');return await settle(task,lease,requestId);}
   if(task.status==='MANUAL_REVIEW'){
-   if(/^(?:המשך במשימה|נמשיך|המשך|תמשיך|מה קרה|מה המצב)$/.test(message.trim()))return await settle(task,lease,requestId);
+   if(/^(?:המשך במשימה|תמשיך במשימה|נמשיך במשימה|להמשיך במשימה|נמשיך|המשך|תמשיך|להמשיך|אפשר להמשיך|בוא נמשיך|תמשיך מאיפה שעצרנו|מה קרה|מה המצב)$/.test(message.trim()))return await settle(task,lease,requestId);
    task.customReply=CLOSED_STUCK;await settle(task,lease,requestId);await cancel(clientId);
    const next=await send(clientId,{message,requestId:String(requestId).slice(0,190)+'~next',channel},options);
    return{...next,reply:CLOSED_STUCK+'\n\n'+next.reply};
   }
-  if(task.status==='PAUSED'&&!options.dynamicRouting&&!/^(המשך במשימה|נמשיך|המשך|תמשיך)$/.test(message.trim()))return await settle(task,lease,requestId);
+  if(task.status==='PAUSED'&&!options.dynamicRouting&&!/^(המשך במשימה|תמשיך במשימה|נמשיך במשימה|להמשיך במשימה|נמשיך|המשך|תמשיך|להמשיך|אפשר להמשיך|בוא נמשיך|תמשיך מאיפה שעצרנו)$/.test(message.trim()))return await settle(task,lease,requestId);
   if(/^(עצור|עצירה|עצור את המשימה)$/.test(message.trim())){task.status='PAUSED';return await settle(task,lease,requestId);}
   if(options.dynamicRouting){
    const router=require('./conversationRouter'),pending=task.state.pendingRouting;
@@ -278,7 +278,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
   if(task.status==='PAUSED'&&!require('./conversationRouter').resume(message))return await settle(task,lease,requestId);
   if(task.state.awaitingGoal){
    const first=task.state.messages.length===1;
-   if(first||/^(?:כן|לא|אוקיי|בסדר|המשך|תמשיך|המשך במשימה|היי|תודה|מאשר את התוכן|מאשרת את התוכן|מאשר את החבילה|אשר\s+\d{6})[.!?]*$/u.test(message.trim())){task.status='WAITING_INPUT';task.state.question=goalQuestion;return await settle(task,lease,requestId);}
+   if(first||/^(?:כן|לא|אוקיי|בסדר|המשך|תמשיך|המשך במשימה|היי|תודה|(?:אני )?(?:מאשר|מאשרת) את (?:כל )?התוכן|התוכן מאושר|מאשר את החבילה|אשר\s+\d{6})[.!?]*$/u.test(message.trim())){task.status='WAITING_INPUT';task.state.question=goalQuestion;return await settle(task,lease,requestId);}
    task.request=message.trim();delete task.state.awaitingGoal;delete task.state.question;
    await db.query('UPDATE agent_tasks SET request=$4 WHERE id=$1 AND client_id=$2 AND lease_token=$3',[task.id,clientId,lease,task.request]);
   }
@@ -328,7 +328,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     task.customReply='שמרתי ✓ הוספתי למודעה: '+lic.spec.adLine(m[1])+'\n\n'+replyFor(task);return await settle(task,lease,requestId);
    }
   }
- if(task.status==='WAITING_REVIEW'&&/^(מאשר את התוכן|מאשרת את התוכן|מאשר את החבילה|מאשרת את החבילה)$/.test(message.trim())){
+ if(task.status==='WAITING_REVIEW'&&/^((?:אני )?(?:מאשר|מאשרת) את (?:כל )?התוכן|התוכן מאושר|מאשר את החבילה|מאשרת את החבילה)$/.test(message.trim())){
    if(task.state.reviewHash!==hash(task.state.steps.filter(s=>s.status==='PREPARED').map(s=>[s.id,s.artifact.hash])))throw Error('TASK_REVIEW_CHANGED');
    const lic=await estateLicense(clientId);
    if(lic&&!lic.number){task.state.awaitingLicense=true;task.customReply='רגע לפני: '+lic.spec.question;return await settle(task,lease,requestId);}
@@ -480,7 +480,7 @@ async function send(clientId,{message,requestId,channel='PORTAL',taskRevision}={
     let a;
     // Creating the approval sends nothing to Meta; a refusal here is not an uncertain write.
     try{a=await require('./approvalEngine').createApprovalForClient(clientId,plan);}
-    catch(error){step.status='PENDING';if(error.reply)task.customReply=error.reply+'\nאחרי שתעדכן, כתוב ״המשך במשימה״.';throw error;}
+    catch(error){step.status='PENDING';if(error.reply)task.customReply=error.reply+'\nאחרי שתעדכן, רק תגיד לי להמשיך במשימה.';throw error;}
     step.result={approval:{actionId:a.actionId,planHash:require('./approvalPolicy').planHash(a.actionPlan),plan:a.actionPlan,codeCiphertext:meta.encrypt(a.code,clientId),expiresAt:a.expiresAt}};step.status='WAITING_APPROVAL';task.status='WAITING_APPROVAL';
     if(require('./scopedAuthority').enabled()){
      await checkpoint(task,lease);

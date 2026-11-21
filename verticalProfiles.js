@@ -106,7 +106,7 @@ const PROFILES = {
       { key: 'serviceArea', label: 'אזור שירות', type: 'text', max: 120 },
       { key: 'priceFrom', label: 'המחיר הוא "החל מ־"', type: 'boolean' }
     ],
-    priceRequired: true, priceQuestion: () => 'כמה עולה השירות? (אם המחיר משתנה, כתוב "החל מ־200")', priceSuffix: () => '', pricePrefix: (i) => (i.attributes?.priceFrom ? 'החל מ־' : ''),
+    priceRequired: true, priceQuestion: () => 'כמה עולה השירות? (אם המחיר משתנה, אפשר לכתוב מחיר התחלתי, למשל החל מ־200)', priceSuffix: () => '', pricePrefix: (i) => (i.attributes?.priceFrom ? 'החל מ־' : ''),
     closeOutcomes: [{ key: 'ENDED', status: 'ENDED', label: 'הופסק', verb: /^(?:הופסק|הסתיים|נגמר|הפסקתי(?:\s+לתת)?)$/ }],
     defaultOutcome: () => 'ENDED', angles: ['הכירו את השירות', 'למי זה מתאים', 'שאלות נפוצות'], goal: () => 'לידים של לקוחות שמתעניינים בשירות הזה',
     extract: (t) => {

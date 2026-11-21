@@ -20,7 +20,9 @@ HOW YOU WRITE (Hebrew, WhatsApp)
 
 // Words and patterns that must never reach the owner.
 const JARGON = /\b(?:CREATE_BUNDLE|ACTIVATE_BUNDLE|UPLOAD_IMAGE|CREATE_LEAD_FORM|CHANGE_BUDGET|LEAD_GENERATION|OUTCOME_[A-Z]+|LINK_CLICKS|CONVERSIONS|act_\d+|adset_id|campaign_id|Page ID|Pixel ID|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/;
-const COMMAND = /(?:כתוב|כתבו|תכתוב|תכתבו|תכתבי|כתבי)\s*(?:לי\s*)?[:：]?\s*["״“][^"״”]{2,40}["״”]|שלח\s*:\s*(?!אשר)/;
+// Quoted ("כתוב ״X״") and unquoted ("כתוב: X", "כתבו: X") instructions to type an exact command.
+// An exact approval code ("שלח: אשר 123456") is allowed: the approval engine needs it verbatim.
+const COMMAND = /(?:^|[^\u05d0-\u05ea])ו?(?:כתוב|כתבו|לכתוב|תכתוב|תכתבו|תכתבי|כתבי)\s*(?:לי\s*)?(?:[:：]?\s*["״“][^"״”]{2,40}["״”]|[:：]\s*(?:$|[^\s\d]))|שלח\s*:(?!\s*[*_]?אשר)/;
 
 // Checks one outgoing owner-facing message. Returns a list of issue codes (empty = fine).
 function check(text, { limit = 600, allowCommand = false } = {}) {

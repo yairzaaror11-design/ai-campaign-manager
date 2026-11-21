@@ -60,12 +60,12 @@ function parseAnswer(q, text) {
   if (/^(בערך|הערכה|להערכתי)\s/.test(raw)) {status='estimated';input=raw.replace(/^(בערך|הערכה|להערכתי)\s+/,'');}
   const kind = q.answer_type;
   if (kind==='קישור') {
-    if (/^(אין אתר|אין לי אתר|אין|לא)$/.test(n)) return {value:null,status:'not_applicable'};
+    if (/^(אין אתר|אין לי אתר|אין לעסק אתר|אין לנו אתר|עוד אין אתר|אין|לא)$/.test(n)) return {value:null,status:'not_applicable'};
     try {
       const url=new URL(input);
       if(!['https:','http:'].includes(url.protocol)||url.username||url.password) throw Error();
       return {value:url.href,status};
-    } catch {return {error:'מה כתובת האתר המלאה? למשל https://example.com. אם אין אתר, אפשר לכתוב ״אין אתר״.'};}
+    } catch {return {error:'מה כתובת האתר המלאה? למשל https://example.com. ואם אין לעסק אתר, פשוט תגיד לי.'};}
   }
   if (kind === 'כן/לא' || kind === 'כן/לא/לא ידוע') {
     if (/^(כן|יש)$/.test(n)) return {value:true,status};

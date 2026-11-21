@@ -31,7 +31,7 @@ function evaluate({ account = {}, campaigns = [], now = new Date() }) {
     const name = String(c.name || 'הקמפיין').slice(0, 40);
     const ageHours = c.created_time ? (now - new Date(c.created_time)) / 36e5 : 1e9;
     if (['WITH_ISSUES', 'DISAPPROVED'].includes(c.effective_status)) {
-      findings.push({ kind: 'DELIVERY', campaignId: c.id, priority: 1, text: `⚠️ הקמפיין "${name}" ${c.effective_status === 'DISAPPROVED' ? 'נדחה על ידי Meta' : 'נתקע ולא מציג מודעות'}.\nבינתיים הוא לא מביא פניות. כתוב לי "מה הבעיה בקמפיין ${name}" ואבדוק מה צריך לתקן.`, choices: [{ title: 'תבדוק מה הבעיה', text: `מה הבעיה בקמפיין ${name}` }] });
+      findings.push({ kind: 'DELIVERY', campaignId: c.id, priority: 1, text: `⚠️ הקמפיין "${name}" ${c.effective_status === 'DISAPPROVED' ? 'נדחה על ידי Meta' : 'נתקע ולא מציג מודעות'}.\nבינתיים הוא לא מביא פניות. אם תרצה, אבדוק מה הבעיה ומה צריך לתקן.`, choices: [{ title: 'תבדוק מה הבעיה', text: `מה הבעיה בקמפיין ${name}` }] });
       continue;
     }
     if (c.effective_status !== 'ACTIVE' || ageHours < RULES.learningHours) continue;
@@ -180,7 +180,7 @@ function evaluateToday({ account = {}, campaigns = [], cap = null, now = new Dat
   }
   if (cap && total > cap) {
     findings.push({ kind: 'SPEND_CAP', campaignId: 'account', priority: 0,
-      text: `💰 היום כבר הוצאו ${money(total, cur)} על פרסום, מעל תקרת ההוצאה היומית שקבעת (${money(cap, cur)}).\nלא עצרתי כלום בלי אישור שלך. אם תרצה לעצור קמפיין, כתוב לי "תעצור את הקמפיין" ואת השם שלו.\nאם התקרה נמוכה מדי, כתוב "תקרה יומית" ומספר חדש.` });
+      text: `💰 היום כבר הוצאו ${money(total, cur)} על פרסום, מעל תקרת ההוצאה היומית שקבעת (${money(cap, cur)}).\nלא עצרתי כלום בלי אישור שלך. אם תרצה לעצור קמפיין, רק תגיד לי איזה.\nואם התקרה נמוכה מדי, תגיד לי לאיזה סכום להעלות אותה.` });
   }
   return findings.sort((a, b) => a.priority - b.priority);
 }

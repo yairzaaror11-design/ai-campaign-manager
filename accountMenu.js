@@ -13,5 +13,5 @@ function shortName(name,max){const n=String(name||'חשבון ללא שם').trim
 function sameName(a,all){return (all||[]).filter(b=>normalize(b.name)===normalize(a.name)).length>1;}
 function describe(a,all){const tail=digits(a)?`מספר חשבון שמסתיים ב־${digits(a)}`:'';const full=String(a.name||'').length>16?String(a.name).slice(0,72-tail.length-3):'';return [full,tail].filter(Boolean).join(' · ').slice(0,72)||undefined;}
 function label(a,all){return String(a.name||'חשבון ללא שם')+(sameName(a,all)&&digits(a)?` (מסתיים ב־${digits(a)})`:'');}
-function reply(connection){const p=page(connection);return p.total?`באיזה חשבון נרצה לעבוד? (${p.offset+1}–${p.offset+p.items.length} מתוך ${p.total})\n`+p.items.map((a,i)=>`${p.offset+i+1}. ${label(a,connection.accounts)}`).join('\n')+'\nאפשר גם לכתוב ״תעבור לחשבון״ ואת שם החשבון.':'לא נמצאו חשבונות בשם הזה. אפשר לכתוב ״החשבונות שלי״ להצגת כולם.';}
+function reply(connection){const p=page(connection);return p.total?`באיזה חשבון נרצה לעבוד? (${p.offset+1}–${p.offset+p.items.length} מתוך ${p.total})\n`+p.items.map((a,i)=>`${p.offset+i+1}. ${label(a,connection.accounts)}`).join('\n')+'\nאפשר גם פשוט לבקש ממני לעבור לחשבון לפי השם שלו.':'לא מצאתי חשבון בשם הזה. אם תרצה, רק תבקש ואציג לך את כל החשבונות.';}
 module.exports={normalize,page,reply,shortName,describe,label};

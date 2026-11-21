@@ -193,7 +193,7 @@ async function handleTenantMessage(message, contact) {
 
   const botClient=await getOrCreateClient(from,contact?.profile?.name||null);
   // Human handover works on every route (billing also points owners to "נציג").
-  {const support=require('./humanSupport'),body=message.type==='text'?String(message.text?.body||'').trim():'';if(!['/meta-delete-data-confirm','/notifications-off'].includes(body)){if(support.humanRequested(body)){await support.request(botClient.id,{reason:body,channel:'WHATSAPP',eventId:message.id});await require('./whatsappDelivery').messageContext.run({...require('./whatsappDelivery').messageContext.getStore(),humanSupportNotice:true},()=>safeSend(from,`קיבלתי ✓ העברתי את הבקשה לצוות. ${support.RESPONSE_TIME}.\nעד אז הסוכן מושהה כדי לא להפריע לשיחה. כדי לחזור לסוכן לפני כן, כתוב ״המשך עם הבוט״.`));return;}const paused=await support.current(botClient.id);if(paused?.bot_paused){if(support.resumeRequested(body)){await support.resume(botClient.id,paused.id,paused.version);await safeSend(from,'המענה האוטומטי חודש. אפשר להמשיך במשימה.');}else await support.append(botClient.id,paused.id,{body:body||'התקבל קובץ בזמן ההשהיה',eventId:message.id});return;}}}
+  {const support=require('./humanSupport'),body=message.type==='text'?String(message.text?.body||'').trim():'';if(!['/meta-delete-data-confirm','/notifications-off'].includes(body)){if(support.humanRequested(body)){await support.request(botClient.id,{reason:body,channel:'WHATSAPP',eventId:message.id});await require('./whatsappDelivery').messageContext.run({...require('./whatsappDelivery').messageContext.getStore(),humanSupportNotice:true},()=>safeSend(from,`קיבלתי ✓ העברתי את הבקשה לצוות. ${support.RESPONSE_TIME}.\nעד אז הסוכן מושהה כדי לא להפריע לשיחה. אם תרצה לחזור אליי לפני כן, רק תגיד לי.`));return;}const paused=await support.current(botClient.id);if(paused?.bot_paused){if(support.resumeRequested(body)){await support.resume(botClient.id,paused.id,paused.version);await safeSend(from,'המענה האוטומטי חודש. אפשר להמשיך במשימה.');}else await support.append(botClient.id,paused.id,{body:body||'התקבל קובץ בזמן ההשהיה',eventId:message.id});return;}}}
 
   if (['image', 'video'].includes(message.type)) {
     await handleMedia(from, message);
@@ -307,12 +307,12 @@ async function routeText(from, text, prefix = '') {
       else if (text === '/meta-renew') { await meta.renew(client.id); reply='הרשאת Meta חודשה. לא בוצע שינוי בקמפיינים.'; }
       else if (text === '/meta-permissions') reply = 'קישור אישי להשלמת ההרשאות החסרות ב־Meta (תקף ל־10 דקות): ' + await meta.createInvite(client.id,{rerequest:true});
       else if (text === '/meta-connect') reply = 'קישור אישי לחיבור חשבון הפרסום (תקף ל־10 דקות, אל תעביר אותו לאחרים): ' + await meta.createInvite(client.id);
-      else if (text === '/meta-accounts') {const list=(await meta.accounts(client.id)).data||[];reply=list.length?'*חשבונות הפרסום שלך:*\n'+list.slice(0,20).map((a,i)=>(i+1)+'. '+(a.name||'ללא שם')+(a.account_status===1?'':' (לא פעיל)')).join('\n')+'\n\nכדי להחליף חשבון, כתוב ״החשבונות שלי״ ובחר מהרשימה.':'לא מצאתי חשבונות פרסום בחיבור הנוכחי. כדי לחבר מחדש, כתוב ״חבר את חשבון המודעות״.';}
-      else if (/^\/meta-select act_\d+$/.test(text)) { const a=await meta.selectAccount(client.id,text.split(' ')[1]); reply = '✅ עברתי לחשבון ״'+(a?.name||'החשבון שבחרת')+'״.\nמעכשיו כל הקמפיינים והדוחות יהיו בחשבון הזה. אפשר לכתוב ״אני רוצה קמפיין״.'; }
+      else if (text === '/meta-accounts') {const list=(await meta.accounts(client.id)).data||[];reply=list.length?'*חשבונות הפרסום שלך:*\n'+list.slice(0,20).map((a,i)=>(i+1)+'. '+(a.name||'ללא שם')+(a.account_status===1?'':' (לא פעיל)')).join('\n')+'\n\nאם תרצה להחליף חשבון, רק תבקש ממני ואציג לך את הרשימה.':'לא מצאתי חשבונות פרסום בחיבור הנוכחי. אם תרצה לחבר מחדש, רק תבקש ממני.';}
+      else if (/^\/meta-select act_\d+$/.test(text)) { const a=await meta.selectAccount(client.id,text.split(' ')[1]); reply = '✅ עברתי לחשבון ״'+(a?.name||'החשבון שבחרת')+'״.\nמעכשיו כל הקמפיינים והדוחות יהיו בחשבון הזה. כשתרצה קמפיין חדש, רק תגיד לי.'; }
       else if (text === '/meta-disconnect') { await meta.disconnect(client.id); reply = 'החיבור לחשבון הפרסום נותק ונמחק אצלנו. אפשר גם להסיר את האפליקציה בהגדרות של פייסבוק.'; }
-      else reply = 'אפשר לכתוב לי במילים: ״חבר את חשבון המודעות״, ״החשבונות שלי״ או ״נתק את חשבון מטא״.';
+      else reply = 'אפשר פשוט לבקש ממני במילים שלך: לחבר את חשבון המודעות, להציג את החשבונות או לנתק את החיבור למטא.';
       await safeSend(from,reply);
-    } catch { await safeSend(from,'החיבור לחשבון הפרסום לא זמין כרגע או שפג תוקפו. כתוב ״חבר את חשבון המודעות״ ואשלח קישור חדש.'); }
+    } catch { await safeSend(from,'החיבור לחשבון הפרסום לא זמין כרגע או שפג תוקפו. אם תבקש ממני לחבר אותו מחדש, אשלח לך קישור חדש.'); }
     return;
   }
   const competitorMatch=text.match(require('./competitorAds').PATTERN);
@@ -418,7 +418,7 @@ async function routeText(from, text, prefix = '') {
   if (text === '/start' && (!configured() || !require('./marketingConversation').enabled())) {
     await safeSend(
       from,
-      'היי, אני SCORPIO AI. אפשר לבקש קמפיין, גרפיקה ודוחות בעברית. לחיבור חשבון פרסום כתוב ״חבר את חשבון המודעות״. ליצירת גרפיקה: צור לי גרפיקה ותאר את העסק והמסר. לדוח: /report. כל שינוי בקמפיין דורש אישור; פרסום זמין רק כאשר הרשאות הכתיבה מופעלות.'
+      'היי, אני SCORPIO AI. אפשר לבקש קמפיין, גרפיקה ודוחות בעברית. אם תרצה לחבר חשבון פרסום, רק תבקש. לגרפיקה, תתאר לי את העסק והמסר. ודוח ביצועים אפשר לבקש בכל רגע. כל שינוי בקמפיין דורש אישור; פרסום זמין רק כאשר הרשאות הכתיבה מופעלות.'
     );
     return;
   }

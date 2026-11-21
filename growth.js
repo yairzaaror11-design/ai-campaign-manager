@@ -72,7 +72,7 @@ function cadenceText(profile, s) {
     '1. מיד: הודעת תודה ללקוח עם קישור לביקורת בגוגל.',
     `2. אחרי ${s.referral_days} ימים: בקשה עדינה להמליץ עלינו לחבר.`,
     `3. אחרי ${winback} ימים: תזכורת ללקוח (${profile.winback.owner}).`,
-    'בכל הודעה ללקוח יש אפשרות לכתוב ״הסר״, ומי שהסיר לא יקבל יותר הודעות.'].join('\n');
+    'בכל הודעה ללקוח יש אפשרות להסיר את עצמו מהרשימה, ומי שהסיר לא יקבל יותר הודעות.'].join('\n');
 }
 
 // ---------- 1. funnels ----------
@@ -148,12 +148,12 @@ async function funnelForCampaign(clientId, campaignId) {
 // the owner to review; creation and activation go through the existing approvals and work agreement.
 async function prepareFunnelCampaign(clientId, key, { channel = 'WHATSAPP', requestId, send } = {}) {
   const v = await vertical(clientId), f = funnel(v, key);
-  if (!f) return { handled: true, blocked: 'UNKNOWN_FUNNEL', reply: 'לא מצאתי את סוג הקמפיין הזה. כתוב "משפכים" כדי לראות את האפשרויות.' };
+  if (!f) return { handled: true, blocked: 'UNKNOWN_FUNNEL', reply: 'לא מצאתי את סוג הקמפיין הזה. אם תבקש ממני את סוגי הקמפיינים, אציג לך את האפשרויות.' };
   const brief = await funnelBrief(clientId, v, key);
-  if (brief.blocked === 'LICENSE_MISSING') return { handled: true, blocked: brief.blocked, reply: 'כל מודעת נדל"ן חייבת להציג מספר רישיון תיווך. כתוב: רישיון תיווך ואחריו המספר (למשל: רישיון תיווך 3141592), ואז נכין את הקמפיין.' };
+  if (brief.blocked === 'LICENSE_MISSING') return { handled: true, blocked: brief.blocked, reply: 'כל מודעת נדל"ן חייבת להציג מספר רישיון תיווך. מה מספר הרישיון שלך? אחרי שתשלח לי אותו (למשל: רישיון תיווך 3141592), נכין את הקמפיין.' };
   const tasks = require('./taskAgent');
   const active = await tasks.active(clientId);
-  if (active) return { handled: true, blocked: 'TASK_OPEN', reply: 'יש כרגע משימה פתוחה אחרת אצל הסוכן. כדי לא לערבב ביניהן, סיים אותה, או כתוב לי "תסגור אותה", ואז בחר שוב את סוג הקמפיין.' };
+  if (active) return { handled: true, blocked: 'TASK_OPEN', reply: 'יש כרגע משימה פתוחה אחרת אצל הסוכן. כדי לא לערבב ביניהן, כדאי לסיים אותה או לבקש ממני לסגור אותה, ואז לבחור שוב את סוג הקמפיין.' };
   const run = send || ((message) => tasks.send(clientId, { message, requestId: requestId || `growth-funnel:${key}:${Date.now()}`, channel }, { dynamicRouting: process.env.DYNAMIC_CONVERSATION_ENABLED === 'true', deferPlanning: !tasks.enabled() }));
   const result = await run(brief.text);
   const taskId = result?.task?.id || (await tasks.active(clientId))?.id || null;
@@ -464,10 +464,10 @@ async function deliver(clientId, row, { owner = true } = {}) {
   if (!owner) return { status: 'OFFERED', body, blocker };
   const link = `https://wa.me/${row.wa_phone}?text=${encodeURIComponent(body)}`;
   const lines = [`${row.kind === 'WINBACK' ? '🔁' : row.kind === 'REFERRAL' ? '🤝' : '⭐'} ${KIND_HE[row.kind]} ל${clean(row.name, 40) || 'הלקוח'}`,
-    row.kind === 'THANKS_REVIEW' && !s.review_url ? 'עוד אין לי קישור לביקורות שלך בגוגל. כתוב: קישור לביקורות ואחריו הקישור (פעם אחת), ואוסיף אותו לכל הודעת תודה.' : null,
+    row.kind === 'THANKS_REVIEW' && !s.review_url ? 'עוד אין לי קישור לביקורות שלך בגוגל. אם תשלח לי אותו פעם אחת, אוסיף אותו לכל הודעת תודה.' : null,
     'הודעה מוכנה, נשלחת מהוואטסאפ שלך בלחיצה:', `״${body}״`, link, '',
     blocker === 'NO_CONSENT' && s.outreach_approved_at ? 'אם הלקוח הסכים לקבל ממך הודעות, סמן את זה ואשלח בעצמי בפעם הבאה.' : null,
-    'אחרי ששלחת כתוב: שלחתי ללקוח. לדלג: דלג על ההודעה'].filter((x) => x !== null);
+    'אחרי ששלחת, תעדכן אותי בכפתור למטה. אפשר גם לדלג על ההודעה הזו.'].filter((x) => x !== null);
   const buttons = [{ title: '✅ שלחתי', text: '/growth-done ' + row.id }, { title: 'דלג', text: '/growth-skip ' + row.id }];
   if (blocker === 'NO_CONSENT' && s.outreach_approved_at) buttons.push({ title: 'הלקוח הסכים', text: '/growth-consent ' + row.lead_id });
   await require('./marketingStore').update(clientId, null, (p) => { p.growthLast = row.id; return { handled: false, changed: true }; }).catch(() => {});
@@ -555,13 +555,13 @@ async function routeInbound(message) {
       await notify(member.client_id, `✅ ${clean(member.name, 40)} הצטרף לצוות בוואטסאפ ויקבל לידים שמועברים אליו.`, 'joined:' + member.id + ':' + id);
       return true;
     }
-    if (/^(?:הפסק לידים|הפסק|עצור|הסר|stop)$/i.test(text)) {
+    if (/^(?:הפסק לידים|הפסק|עצור|הסר|stop|(?:(?:אני רוצה|רוצה)\s+)?(?:להפסיק|תפסיק)(?: לקבל| לשלוח לי)? לידים|תפסיק)[.!\s]*$/i.test(text)) {
       await db.query('UPDATE team_members SET opted_out_at=NOW(),updated_at=NOW() WHERE id=$1', [member.id]);
       await reply(member.client_id, from, 'הפסקתי לשלוח לך לידים. לחזרה, שלח שוב את קוד ההצטרפות.', 'stop:' + id);
       await notify(member.client_id, `ℹ️ ${clean(member.name, 40)} ביקש להפסיק לקבל לידים בוואטסאפ. הלידים שלו עדיין מסומנים עליו בדשבורד.`, 'member-stop:' + id);
       return true;
     }
-    if (/^(?:הדוח שלי|דוח|הלידים שלי)$/.test(text)) {
+    if (/^(?:הדוח שלי|דוח|הלידים שלי|(?:(?:אני רוצה|רוצה)\s+לראות|(?:תראה|תשלח|תציג)(?: לי)?) את (?:ה)?(?:דוח|לידים)(?: שלי)?|מה (?:עם )?הלידים שלי)[?.!\s]*$/.test(text)) {
       const r = await teamReport(member.client_id);
       const m = r.members.find((x) => x.id === member.id);
       const leads = (await db.query("SELECT name,phone,status FROM crm_leads WHERE client_id=$1 AND assigned_member_id=$2 AND status IN ('NEW','CONTACTED','APPOINTMENT') ORDER BY created_at DESC LIMIT 5", [member.client_id, member.id])).rows;
@@ -569,7 +569,7 @@ async function routeInbound(message) {
       await reply(member.client_id, from, [`📋 הדוח שלך, 30 הימים האחרונים`, memberLine(m || { name: member.name, leads: 0, handled: 0, waiting: 0, won: 0, revenue: 0 }), ...(leads.length ? ['', 'פתוחים עכשיו:', ...leads.map((l) => `• ${clean(l.name, 40)}${l.phone ? ' · ' + l.phone : ''} — ${LABEL[l.status]}`)] : [])].join('\n'), 'report:' + id);
       return true;
     }
-    await reply(member.client_id, from, `כאן אני שולח לך לידים${business ? ' של ' + business : ''}. אפשר לכתוב "הדוח שלי" או "הפסק לידים". לכל השאר, דבר עם ${business || 'בעל העסק'} ישירות.`, 'help:' + id);
+    await reply(member.client_id, from, `כאן אני שולח לך לידים${business ? ' של ' + business : ''}. אם תרצה לראות את הדוח שלך או להפסיק לקבל לידים, רק תגיד לי. לכל השאר, דבר עם ${business || 'בעל העסק'} ישירות.`, 'help:' + id);
     return true;
   }
   if (OPT_OUT.test(text)) {

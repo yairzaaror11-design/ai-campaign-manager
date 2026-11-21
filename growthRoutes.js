@@ -6,7 +6,7 @@ const router = require('express').Router();
 const growth = require('./growth');
 
 const MESSAGES = {
-  INVALID_DEAL: [400, 'הסכום לא נראה תקין. כתבו מספר בלבד, למשל 2900000.'],
+  INVALID_DEAL: [400, 'הסכום לא נראה תקין. צריך מספר בלבד, למשל 2900000.'],
   INVALID_GROWTH_SETTINGS: [400, 'אחד הערכים לא תקין. בדקו ונסו שוב.'],
   INVALID_REVIEW_URL: [400, 'הקישור לביקורות צריך להיות קישור מלא שמתחיל ב־https://'],
   INVALID_TEAM_MEMBER: [400, 'צריך שם (עד 80 תווים). אזורים מופרדים בפסיקים.'],

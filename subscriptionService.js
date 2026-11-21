@@ -75,7 +75,7 @@ async function selectPlan(clientId, planKey) {
   if (!plans.plan(planKey)) throw Error('BILLING_PLAN_UNKNOWN');
   await ensureRow(clientId);
   const r = await row(clientId);
-  if (r.cancel_requested_at && LIVE.includes(r.status)) return { ok: false, reason: 'CANCEL_PENDING', message: 'המנוי בתהליך ביטול. כדי לחזור — כתבו לנו בוואטסאפ ונחדש אותו.' };
+  if (r.cancel_requested_at && LIVE.includes(r.status)) return { ok: false, reason: 'CANCEL_PENDING', message: 'המנוי בתהליך ביטול. אם תרצה לחזור, רק תכתוב לנו בוואטסאפ ונחדש אותו.' };
   if (!r.trial_started_at && !r.provider_subscription_id) {
     const updated = (await db.query(`UPDATE customer_subscriptions SET plan_key=$2,status='TRIAL',trial_started_at=NOW(),trial_ends_at=NOW()+make_interval(days=>$3),cancel_requested_at=NULL,access_ends_at=NULL,updated_at=NOW()
       WHERE client_id=$1 AND trial_started_at IS NULL RETURNING *`, [clientId, planKey, plans.TRIAL_DAYS])).rows[0];
@@ -88,7 +88,7 @@ async function selectPlan(clientId, planKey) {
   if (fresh.plan_key === planKey) return { ok: true, unchanged: true, summary: await summary(clientId) };
   if (fresh.provider_subscription_id && LIVE.includes(fresh.status)) {
     const adapter = providers.active();
-    if (!adapter || adapter.id !== fresh.provider) return { ok: false, reason: 'PROVIDER_UNAVAILABLE', message: 'לא הצלחנו לשנות מסלול כרגע. כתבו לנו בוואטסאפ ונשנה ידנית.' };
+    if (!adapter || adapter.id !== fresh.provider) return { ok: false, reason: 'PROVIDER_UNAVAILABLE', message: 'לא הצלחנו לשנות מסלול כרגע. אם תכתוב לנו בוואטסאפ, נשנה אותו ידנית.' };
     const price = await adapter.price(planKey);
     await adapter.changePlan({ subscriptionId: fresh.provider_subscription_id, priceId: price.id });
   }

@@ -8,7 +8,7 @@ const { logger } = require('./logger');
 
 const CONTACTED_STATUSES = ['CONTACTED', 'APPOINTMENT', 'WON'];
 const MANUAL_SOURCES = ['manual', 'whatsapp_manual']; // added after the owner already talked to them
-const DONE_WORDS = /^(?:התקשרתי|שלחתי הודעה|שלחתי לו הודעה|שלחתי לה הודעה|חזרתי ללקוח|חזרתי לליד|חזרתי אליו|חזרתי אליה)[.! ]*$/;
+const DONE_WORDS = /^(?:התקשרתי|התקשרתי אליו|התקשרתי אליה|דיברתי איתו|דיברתי איתה|שלחתי הודעה|שלחתי לו הודעה|שלחתי לה הודעה|חזרתי ללקוח|חזרתי לליד|חזרתי אליו|חזרתי אליה)[.! ]*$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 const aiEnabled = () => process.env.LEAD_FIRST_MESSAGE_AI !== 'false' && !!(process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY);
@@ -146,12 +146,12 @@ async function clientByPhone(phone) {
 // Marks one lead as contacted (only if it is still NEW). Returns a reply for the owner.
 async function markContacted(clientId, leadId) {
   const lead = (await db.query('SELECT id,name,status,version,created_at FROM crm_leads WHERE client_id=$1 AND id=$2', [clientId, leadId])).rows[0];
-  if (!lead) return { status: 'NOT_FOUND', reply: 'לא מצאתי את הליד הזה. אפשר לכתוב ״הלידים שלי״ כדי לעדכן מהרשימה.' };
+  if (!lead) return { status: 'NOT_FOUND', reply: 'לא מצאתי את הליד הזה. אם תבקש ממני לראות את הלידים, תוכל לעדכן מהרשימה.' };
   const name = String(lead.name || 'הליד').slice(0, 40);
   if (lead.status !== 'NEW') return { status: 'ALREADY', reply: `${name} כבר מסומן/ת שקיבל/ה מענה 👍` };
   let updated;
   try { updated = await require('./crmService').update(clientId, lead.id, { status: 'CONTACTED', version: Number(lead.version) }); }
-  catch { return { status: 'STALE', reply: 'הליד עודכן בינתיים במקום אחר. אפשר לכתוב ״הלידים שלי״ כדי לראות את המצב.' }; }
+  catch { return { status: 'STALE', reply: 'הליד עודכן בינתיים במקום אחר. אם תבקש ממני לראות את הלידים, אציג לך את המצב העדכני.' }; }
   await require('./marketingStore').update(clientId, null, (p) => {
     let changed = false;
     if (p.leadSpeedLast === lead.id) { delete p.leadSpeedLast; changed = true; }
@@ -160,7 +160,7 @@ async function markContacted(clientId, leadId) {
   });
   const minutes = (new Date(updated.first_contact_at || Date.now()) - new Date(lead.created_at)) / 60000;
   const praise = minutes <= 5 ? ' ⚡ מהיר מאוד, ככה סוגרים עסקאות!' : minutes <= 15 ? ' 👏 זמן מצוין.' : '';
-  return { status: 'CONTACTED', reply: `סימנתי ש${name} קיבל/ה מענה, תוך ${duration(minutes)}.${praise}\nכשיהיה עדכון (פגישה או עסקה), כתבו: הלידים שלי` };
+  return { status: 'CONTACTED', reply: `סימנתי ש${name} קיבל/ה מענה, תוך ${duration(minutes)}.${praise}\nכשיהיה עדכון (פגישה או עסקה), רק תבקש ממני לראות את הלידים.` };
 }
 
 // WhatsApp replies: the alert's buttons (/lead-contacted <id>) or plain words like "התקשרתי".
@@ -178,7 +178,7 @@ async function handleReply(from, text) {
     if (!leadId) {
       // No recent alert: only the single newest waiting lead is unambiguous.
       const waiting = (await db.query("SELECT id FROM crm_leads WHERE client_id=$1 AND status='NEW' AND created_at>NOW()-INTERVAL '2 days' ORDER BY created_at DESC LIMIT 2", [clientId])).rows;
-      if (waiting.length !== 1) return button ? null : { reply: 'לאיזה ליד חזרת? כתבו ״הלידים שלי״ ובחרו אותו מהרשימה.' };
+      if (waiting.length !== 1) return button ? null : { reply: 'לאיזה ליד חזרת? אם תבקש ממני לראות את הלידים, תוכל לבחור אותו מהרשימה.' };
       leadId = waiting[0].id;
     }
   }

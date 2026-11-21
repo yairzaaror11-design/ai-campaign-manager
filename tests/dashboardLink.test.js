@@ -10,7 +10,12 @@ test('dashboard requests map to a screen; anything else is ignored', () => {
   assert.deepEqual(link.request('ניהול לידים'), { screen: 'leads' });
   assert.equal(link.request('תכין לי קמפיין לדשבורד'), null);
   assert.equal(link.request('דשבורד מחיקה'), null);
-  assert.match(link.hint('leads'), /דשבורד לידים/);
+  assert.match(link.hint('leads'), /דשבורד הלידים/);
+  assert.ok(!require('../agentProfile').COMMAND.test(link.hint('leads')), 'a soft sentence, not a command');
+  // The words the hint suggests are understood, with natural phrasing around them.
+  assert.deepEqual(link.request('דשבורד הלידים'), { screen: 'leads' });
+  assert.deepEqual(link.request('תשלח לי את דשבורד הביצועים'), { screen: 'performance' });
+  assert.deepEqual(link.request('אני רוצה לראות את הדשבורד'), { screen: null });
 });
 
 test('the sign-in link opens the requested screen and refuses unknown screens', async () => {
